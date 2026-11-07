@@ -33,7 +33,7 @@
           <option value="new">提名的在前</option>
         </select>
       </label>
-      <button id="randomBtn" class="btn ghost">🎲 随机抽一位</button>
+      <button id="randomBtn" class="btn ghost">🎁 拆个盲盒</button>
       <a class="btn ghost" href="pet.html">🐾 桌宠模式</a>
       <a class="btn ghost" href="pet3d.html">🌀 3D 展台</a>
       <button id="voiceBtn" class="btn ghost">🔑 语音设置</button>
@@ -61,6 +61,53 @@
   <div class="modal-card">
     <button class="modal-close" data-close aria-label="关闭">✕</button>
     <div id="modalBody"></div>
+  </div>
+</div>
+
+<!-- 盲盒抽取弹窗 -->
+<div id="blindBoxModal" class="modal box-modal hidden" role="dialog" aria-modal="true" aria-labelledby="boxTitle">
+  <div class="modal-mask" data-close></div>
+  <div class="modal-card box-modal-card">
+    <button type="button" class="modal-close box-close" data-close aria-label="关闭盲盒">✕</button>
+    <div id="boxStudio" class="box-studio idle">
+      <div class="box-studio-topline">
+        <div><h2 id="boxTitle">奶家村 · 拆盒现场</h2><span>奶味 100% · 正经 0%</span></div>
+        <span class="box-season-label">VOL. 01<br>抽象形象大乱炖</span>
+      </div>
+      <div class="box-orbit box-orbit-one" aria-hidden="true"></div>
+      <div class="box-orbit box-orbit-two" aria-hidden="true"></div>
+      <span class="box-star box-star-one" aria-hidden="true">✳</span>
+      <span class="box-star box-star-two" aria-hidden="true">✧</span>
+      <div class="box-stage">
+        <div class="box-ground-shadow" aria-hidden="true"></div>
+        <button type="button" id="boxTouch" class="box-touch" aria-label="点击拆开奶家村盲盒">
+          <span class="box-toy" aria-hidden="true">
+            <span class="box-top"><span>WHAT'S INSIDE?</span></span>
+            <span class="box-side"><span>奶<br>味<br>超<br>标</span><i class="box-side-stripes"></i></span>
+            <span class="box-front">
+              <span class="box-edition">THE NAIJIACUN BOX CLUB / 01</span>
+              <span class="box-question">?</span>
+              <span class="box-bubble">里面的家伙<br>有点抽象</span>
+              <span class="box-logo">奶家村<br><b>盲盒</b></span>
+              <span class="box-baseline"><span>UNBOX YOUR WEIRDNESS</span><span>↗</span></span>
+            </span>
+            <span class="box-lid"><span>奶味封印 · 撕开即生效</span></span>
+          </span>
+        </button>
+        <div id="boxReveal" class="box-revealed-wrap hidden"></div>
+      </div>
+      <div class="box-open-controls">
+        <p id="boxStatus" class="box-opening-status" role="status" aria-live="polite">不用做选择，交给你的奶运气。</p>
+        <button type="button" id="boxOpenBtn" class="box-open-button">🎁 拆一个，看看是啥 →</button>
+        <div id="boxResultActions" class="box-result-actions hidden">
+          <button type="button" id="boxAudioBtn" class="btn ghost clip-detail">🎵 原声</button>
+          <button type="button" id="boxDetailBtn" class="btn ghost">查看这位村民 ↗</button>
+        </div>
+        <p id="boxOwnedNote" class="box-owned-note hidden"></p>
+        <p id="boxPoolNote" class="box-draw-note"></p>
+        <p id="boxInventoryCount" class="box-inventory-count"></p>
+      </div>
+    </div>
   </div>
 </div>
 

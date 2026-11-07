@@ -6,6 +6,7 @@
 
   var VOTE_KEY = "naijacun_votes";
   var EXTRA_KEY = "naijacun_extra";
+  var BOX_KEY = "naijacun_blind_boxes_v1";
 
   var state = {
     keyword: "",
@@ -335,6 +336,128 @@
     document.getElementById("modal").classList.add("hidden");
     document.getElementById("addModal").classList.add("hidden");
     document.getElementById("voiceModal").classList.add("hidden");
+    closeBlindBox();
+  }
+
+  // ---------- 奶家村盲盒 ----------
+  var boxPhase = "idle";
+  var boxPool = [];
+  var boxResult = null;
+  var boxIsNew = false;
+  var boxInventory = null;
+  var boxTimers = [];
+  var boxReturnFocus = null;
+
+  function clearBoxTimers() {
+    boxTimers.forEach(function (timer) { clearTimeout(timer); });
+    boxTimers = [];
+  }
+
+  function readBoxInventory() {
+    var saved = readJSON(BOX_KEY, {});
+    var clean = {};
+    allPeople().forEach(function (p) {
+      var count = saved && saved[p.id];
+      if (typeof count === "number" && isFinite(count) && count > 0 &&
+          Math.floor(count) === count && count < 9007199254740991) clean[p.id] = count;
+    });
+    return clean;
+  }
+
+  function renderBlindBox() {
+    var busy = boxPhase === "shaking" || boxPhase === "opening";
+    var revealed = boxPhase === "revealed";
+    var total = 0;
+    var collected = 0;
+    allPeople().forEach(function (p) {
+      if (boxInventory[p.id]) { total += boxInventory[p.id]; collected++; }
+    });
+    document.getElementById("boxStudio").className = "box-studio " + boxPhase;
+    document.getElementById("boxTouch").disabled = busy || revealed;
+    var button = document.getElementById("boxOpenBtn");
+    button.disabled = busy;
+    button.textContent = busy ? "正在开盒……" : revealed ? "↻ 再拆一个，继续离谱 →" : "🎁 拆一个，看看是啥 →";
+    var status = "不用做选择，交给你的奶运气。";
+    if (boxPhase === "shaking") status = "听听，这盒里好像有动静……";
+    if (boxPhase === "opening") status = "奶味封印正在解除！";
+    if (revealed) status = boxResult.name + "来啦 · " + (boxIsNew ? "新的精神状态！" : "重复抽取也会记录哦");
+    document.getElementById("boxStatus").textContent = status;
+    document.getElementById("boxPoolNote").textContent = "当前筛选池 " + boxPool.length + " 位 · 每位等概率 · 可重复抽取 · 免费";
+    document.getElementById("boxInventoryCount").textContent = "本机已拆 " + total + " 盒 · 收集 " + collected + " 位村民";
+    document.getElementById("boxReveal").classList.toggle("hidden", !revealed);
+    document.getElementById("boxResultActions").classList.toggle("hidden", !revealed);
+    document.getElementById("boxOwnedNote").classList.toggle("hidden", !revealed);
+    if (!revealed) {
+      document.getElementById("boxReveal").innerHTML = "";
+      return;
+    }
+    var confetti = "";
+    var colors = ["#ffcd42", "#508dd9", "#f38c90", "#97b898"];
+    for (var i = 0; i < 22; i++) {
+      confetti += '<i style="--x:' + ((i * 53) % 350 - 175) + 'px;--y:' +
+        (-50 - (i * 29) % 220) + 'px;--turn:' + (i * 67) + 'deg;--delay:' +
+        ((i % 4) * 40) + 'ms;background:' + colors[i % 4] + '"></i>';
+    }
+    document.getElementById("boxReveal").innerHTML =
+      '<div class="box-confetti" aria-hidden="true">' + confetti + '</div>' +
+      '<div class="box-reveal-card"><div class="box-reveal-card-top"><span>拆到了！</span><span>' +
+        (boxIsNew ? "NEW · 新朋友" : "又见面啦") + '</span></div>' +
+        '<div class="box-reveal-image">' + avatarHTML(boxResult) + '</div>' +
+        '<h3 class="box-reveal-name">' + escapeHTML(boxResult.name) + '<span aria-hidden="true">✧</span></h3>' +
+        '<p>' + escapeHTML(boxResult.title || boxResult.category) + '</p></div>';
+    document.getElementById("boxAudioBtn").classList.toggle("hidden", !boxResult.clip);
+    document.getElementById("boxOwnedNote").textContent = "你在这台设备上拆到 TA " + boxInventory[boxResult.id] + " 次";
+    refreshClipButtons();
+  }
+
+  function openBlindBox() {
+    var pool = filtered();
+    if (!pool.length) { showToast("当前没有可抽取的村民，换个搜索或分类试试"); return; }
+    closeModals();
+    boxReturnFocus = document.activeElement;
+    boxPool = pool;
+    boxInventory = boxInventory || readBoxInventory();
+    boxResult = null;
+    boxPhase = "idle";
+    renderBlindBox();
+    document.getElementById("blindBoxModal").classList.remove("hidden");
+    document.getElementById("boxOpenBtn").focus();
+  }
+
+  function drawBlindBox() {
+    if (boxPhase === "shaking" || boxPhase === "opening" || !boxPool.length) return;
+    stopClip();
+    if (hasTTS()) window.NaijiacunTTS.stop();
+    clearBoxTimers();
+    var chosen = boxPool[Math.floor(Math.random() * boxPool.length)];
+    boxIsNew = !boxInventory[chosen.id];
+    boxResult = null;
+    boxPhase = "shaking";
+    renderBlindBox();
+    var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    boxTimers.push(setTimeout(function () {
+      boxPhase = "opening";
+      renderBlindBox();
+    }, reduced ? 60 : 650));
+    boxTimers.push(setTimeout(function () {
+      boxResult = chosen;
+      boxInventory[chosen.id] = (boxInventory[chosen.id] || 0) + 1;
+      writeJSON(BOX_KEY, boxInventory);
+      boxPhase = "revealed";
+      renderBlindBox();
+      document.getElementById("boxOpenBtn").focus();
+    }, reduced ? 160 : 1400));
+  }
+
+  function closeBlindBox() {
+    clearBoxTimers();
+    boxPhase = "idle";
+    boxResult = null;
+    var modal = document.getElementById("blindBoxModal");
+    if (modal.classList.contains("hidden")) return;
+    modal.classList.add("hidden");
+    if (boxReturnFocus && boxReturnFocus.isConnected) boxReturnFocus.focus();
+    boxReturnFocus = null;
   }
 
   // ---------- 提名新人 ----------
@@ -587,11 +710,16 @@
       renderGrid();
     });
 
-    document.getElementById("randomBtn").addEventListener("click", function () {
-      var list = filtered();
-      if (!list.length) return;
-      var pick = list[Math.floor(Math.random() * list.length)];
-      openDetail(pick.id);
+    document.getElementById("randomBtn").addEventListener("click", openBlindBox);
+    document.getElementById("boxTouch").addEventListener("click", drawBlindBox);
+    document.getElementById("boxOpenBtn").addEventListener("click", drawBlindBox);
+    document.getElementById("boxAudioBtn").addEventListener("click", function () { toggleClip(boxResult); });
+    document.getElementById("boxDetailBtn").addEventListener("click", function () {
+      if (!boxResult) return;
+      var id = boxResult.id;
+      closeModals();
+      openDetail(id);
+      document.querySelector("#modal .modal-close").focus();
     });
 
     document.getElementById("addBtn").addEventListener("click", function () {
@@ -607,6 +735,21 @@
 
     document.addEventListener("keydown", function (e) {
       if (e.key === "Escape") closeModals();
+      var modal = document.getElementById("blindBoxModal");
+      if (e.key !== "Tab" || modal.classList.contains("hidden")) return;
+      var buttons = Array.prototype.filter.call(modal.querySelectorAll("button:not(:disabled)"), function (button) {
+        return button.getClientRects().length > 0;
+      });
+      var first = buttons[0];
+      var last = buttons[buttons.length - 1];
+      var outside = buttons.indexOf(document.activeElement) === -1;
+      if (e.shiftKey && (document.activeElement === first || outside)) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && (document.activeElement === last || outside)) {
+        e.preventDefault();
+        first.focus();
+      }
     });
   }
 

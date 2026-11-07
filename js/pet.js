@@ -51,7 +51,7 @@
     var p = findPerson(id);
 
     if (p && p.image) {
-      var src = p.image;
+      var src = new URL(p.image, document.baseURI).href;
       var img = function (alt) {
         return '<img class="pet-img" src="' + src + '" alt="' + alt + '" draggable="false">';
       };

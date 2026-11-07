@@ -1,0 +1,52 @@
+{
+  "note": "公开素材来源记录。保留下载字节，未自绘、生成或克隆声音；公开可访问不代表已取得开放再分发许可，素材与角色权利归各自权利人。",
+  "assets": [
+    {
+      "file": "assets/characters/naidan.png",
+      "source": "https://github.com/Nailong-Studio/NaiWa-Wallpaper/blob/036afc4f4930c90e78c0a8e26d4a2da6606c95e2/emotes/%E5%A5%B6%E8%9B%99-%E7%AB%8B%E7%BB%98-%E5%A5%B6%E8%9B%8B.png",
+      "archive": "https://raw.githubusercontent.com/fisher-byte/NaiwaHub/main/originals/nai-dan/dot-naiwa-0196.png",
+      "sha256": "4873ea84ae02e54f1a99de87a6c336625f4fbbc22bb65fce1a37cb94ca82d7f2",
+      "rightsStatus": "unknown"
+    },
+    {
+      "file": "assets/audio/naidan.mp3",
+      "source": "https://www.bilibili.com/video/BV1WGGN6XE2U/?t=7",
+      "download": "https://raw.githubusercontent.com/sdjasj/naiwa-arcade/07399da4f9360ce6cf816c3c69dad3fdb4261ad1/assets/voices/andy-v3.mp3",
+      "evidence": "https://github.com/sdjasj/naiwa-arcade/blob/07399da4f9360ce6cf816c3c69dad3fdb4261ad1/docs/voice-sources.md",
+      "description": "奶史_《选择奶蛙还是奶蛋？》奶蛋开口的6.860–7.940秒，由来源项目裁切为安迪短句，沿用其成品。",
+      "sha256": "1eeae1e06df4a73d441baccbaf06d4820705e555d3aac6a6e27039c63b5372b1",
+      "rightsStatus": "unknown"
+    },
+    {
+      "file": "assets/characters/naicha.png",
+      "source": "https://www.qiubiaoqing.com/album/user_album/950799775018517702.html",
+      "download": "https://imgs.qiubiaoqing.com/qiubiaoqing/imgs/6ace64aab2ebexs3.png",
+      "archive": "https://raw.githubusercontent.com/fisher-byte/NaiwaHub/main/originals/nai-wa/dot-naiwa-0976.png",
+      "sha256": "76ee84e07ebef24a80ef3d88fb4ed09eed7fd7d8a72c6ab0e466cc2713c7cfc1",
+      "rightsStatus": "unknown"
+    },
+    {
+      "file": "assets/audio/naicha.mp3",
+      "source": "https://github.com/yaohuicong/naiwa-fight/blob/f3d91ea78f259dee3fcfb8e580ff42ccfe3cf3f1/src/game/audio.ts",
+      "download": "https://raw.githubusercontent.com/yaohuicong/naiwa-fight/f3d91ea78f259dee3fcfb8e580ff42ccfe3cf3f1/public/assets/audio/vo_light_gagadi.mp3",
+      "description": "来源清单将vo_light_gagadi.mp3映射为奶察-打斗-嘎嘎滴辣虾.mp3；是二创配套梗语音，不主张官方角色原声。",
+      "sha256": "6d59b6c4f54a86192fc2f17c3f744a0c7b117a468da19d582058f1bcc3cd4713",
+      "rightsStatus": "unknown"
+    },
+    {
+      "file": "assets/characters/feidudu.png",
+      "source": "https://github.com/XIANG5556/fat-dudu-effect-extension",
+      "download": "https://raw.githubusercontent.com/XIANG5556/fat-dudu-effect-extension/main/assets/icon-128.png",
+      "sha256": "683113a8012f32ef01dba5d04a9b81f616c1cf6a520d5e44554f5282e071be28",
+      "rightsStatus": "unknown"
+    },
+    {
+      "file": "assets/audio/feidudu.mp3",
+      "source": "https://github.com/XIANG5556/fat-dudu-effect-extension/blob/main/README.md",
+      "download": "https://raw.githubusercontent.com/XIANG5556/fat-dudu-effect-extension/main/assets/fat-dudu-sound.mp3",
+      "description": "来源项目从原视频裁切的配套音频，5秒容器，仅开头你的胆子真是肥嘟嘟一句有声音。",
+      "sha256": "d75a92aa38499961c1a667a626dfa9e408b5b1788bd6168546a4a798f91fa93d",
+      "rightsStatus": "unknown"
+    }
+  ]
+}

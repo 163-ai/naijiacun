@@ -103,6 +103,48 @@ const PEOPLE = [
     desc: "水豚的中文昵称，原本是南美洲的啮齿动物，因为表情淡定、和谁都能共处、喜欢集体泡温泉的画面被大量传播，成为「松弛感」的代名词。它不属于任何卡通 IP，是真实动物变成的网络顶流。",
     tags: ["水豚", "松弛感", "真实动物", "治愈"],
     origin: "真实动物，无卡通 IP 归属"
+  },
+  {
+    id: "naicha",
+    name: "奶察",
+    emoji: "👮",
+    image: "assets/characters/naicha.png",
+    clip: "assets/audio/naicha.mp3",
+    category: "抽象迷因",
+    title: "戴着警帽的黄色抽象搭子",
+    heat: 3600,
+    quote: "嘎嘎滴辣虾。",
+    desc: "网友给奶蛙加上警帽、制服等元素形成的二创变体，常作为小剧场中的执法角色。这里使用社区公开的奶察表情图，搭配同人格斗项目收录的「嘎嘎滴辣虾」梗语音；不是官方设定或官方配音。",
+    tags: ["奶蛙衍生", "警帽", "奶察", "梗语音"],
+    origin: "社区二创，图片与音频权利归各自权利人所有，开放再分发许可未核实。图片收录：https://github.com/fisher-byte/NaiwaHub；音频及对应清单：https://github.com/yaohuicong/naiwa-fight"
+  },
+  {
+    id: "naidan",
+    name: "奶蛋",
+    emoji: "🥚",
+    image: "assets/characters/naidan.png",
+    clip: "assets/audio/naidan.mp3",
+    category: "抽象迷因",
+    title: "圆滚滚的黄色蛋形小伙伴",
+    heat: 3400,
+    quote: "因为我只是一只奶蛋。",
+    desc: "奶蛙相关二创里的蛋形小伙伴，以圆润的黄色身体、绿色圆眼和小巧表情为辨识点。除了站姿和大笑，也常被放进睡觉、干饭、节日等日常场景。原声按钮播放公开二创视频中奶蛋开口的「安迪」短片段，与上方表情配文分别收录。",
+    tags: ["奶蛙衍生", "蛋形", "圆滚滚", "表情包"],
+    origin: "社区二创，图片与音频权利归各自权利人所有，开放再分发许可未核实。图片：https://naiwahub.com/zh/series/nai-dan；音频截自奶史_《选择奶蛙还是奶蛋？》6.860–7.940 秒，切片来源：https://github.com/sdjasj/naiwa-arcade"
+  },
+  {
+    id: "feidudu",
+    name: "肥嘟嘟袋鼠",
+    emoji: "🦘",
+    image: "assets/characters/feidudu.png",
+    clip: "assets/audio/feidudu.mp3",
+    category: "抽象迷因",
+    title: "你的胆子真是肥嘟嘟",
+    heat: 3200,
+    quote: "你的胆子真是肥嘟嘟。",
+    desc: "与奶蛙一起流传的黄色抽象迷因，辨识特征是长耳朵、大鼻子和圆滚滚的身体。代表片段配上「你的胆子真是肥嘟嘟」一句，常被用来做夸张反应。这里使用社区公开项目里的配套头像与原视频裁切配音，归入黄色抽象宇宙。",
+    tags: ["黄色抽象宇宙", "长耳", "肥嘟嘟", "梗语音"],
+    origin: "社区二创，图片与音频权利归各自权利人所有，开放再分发许可未核实。配套素材与处理说明：https://github.com/XIANG5556/fat-dudu-effect-extension"
   }
 ];
 
