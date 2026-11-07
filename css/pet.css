@@ -480,3 +480,111 @@ body.pet-page {
   .pet-chars, .pet-toolbar { padding-left: 14px; padding-right: 14px; }
   .pet-note { margin: 0 14px 16px; }
 }
+
+/* ---------- 桌宠聊天条 ----------
+ * 宠物头顶的气泡负责显示正在说的话，这里的日志留最近几轮，方便回看。
+ */
+.pet-chat {
+  margin: 0 22px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pet-chat-log {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  max-height: 30vh;
+  overflow-y: auto;
+  padding-right: 4px;
+  scroll-behavior: smooth;
+}
+.pet-chat-log:empty { display: none; }
+.pet-chat-log::-webkit-scrollbar { width: 7px; }
+.pet-chat-log::-webkit-scrollbar-thumb { background: #e0dacd; border-radius: 4px; }
+
+.pet-chat-row { display: flex; }
+.pet-chat-row.me { justify-content: flex-end; }
+.pet-chat-bubble {
+  max-width: 78%;
+  padding: 7px 12px;
+  font-size: 13.5px;
+  line-height: 1.6;
+  border-radius: 13px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  animation: pet-chat-in .2s ease-out;
+}
+@keyframes pet-chat-in {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: none; }
+}
+.pet-chat-row.bot .pet-chat-bubble {
+  background: #fff;
+  border: 1px solid var(--line, #e5e0d6);
+  border-bottom-left-radius: 5px;
+  color: var(--ink, #2c2c2a);
+  box-shadow: 0 2px 6px rgba(60, 50, 34, .04);
+}
+.pet-chat-row.me .pet-chat-bubble {
+  background: var(--green, #0f6e56);
+  color: #fff;
+  border-bottom-right-radius: 5px;
+}
+.pet-chat-row.err .pet-chat-bubble {
+  background: #fdf3e7;
+  border-color: #f0d9bd;
+  color: #8a5a12;
+}
+
+.pet-chat-form {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.pet-chat-form input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--line, #e5e0d6);
+  border-radius: 11px;
+  background: #fff;
+  color: var(--ink, #2c2c2a);
+  padding: 9px 13px;
+  font-size: 13.5px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color .15s, box-shadow .15s;
+}
+.pet-chat-form input:focus {
+  border-color: var(--green, #0f6e56);
+  box-shadow: 0 0 0 3px rgba(15, 110, 86, .1);
+}
+.pet-chat-form button {
+  border: 0;
+  background: var(--green, #0f6e56);
+  color: #fff;
+  border-radius: 10px;
+  padding: 9px 18px;
+  font-size: 13.5px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background .15s;
+}
+.pet-chat-form button:hover:not(:disabled) { background: #0b5a46; }
+.pet-chat-form button:disabled { background: #b9c7c2; cursor: not-allowed; }
+.pet-chat-cfg {
+  text-decoration: none;
+  font-size: 16px;
+  line-height: 1;
+  padding: 6px 4px;
+  opacity: .65;
+  transition: opacity .15s;
+}
+.pet-chat-cfg:hover { opacity: 1; }
+
+@media (max-width: 560px) {
+  .pet-chat { margin: 0 12px 6px; }
+  .pet-chat-log { max-height: 24vh; }
+  .pet-stage { min-height: 260px; }
+}

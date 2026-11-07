@@ -22,12 +22,16 @@ const ORIGIN_PATTERNS = [
 const API_BASE = "https://api.breeze.blue/v1";
 const MODEL_ID = "breeze-tts-2";
 
-// 聊天接口的上游（OpenAI 兼容）。部署时可以用环境变量覆盖：
-//   wrangler secret put LLM_KEY      ← 你自己申请的大模型 Key，不写进代码
-//   wrangler secret put LLM_BASE     ← 例如 https://api.deepseek.com/v1
-//   wrangler secret put LLM_MODEL    ← 例如 deepseek-chat
-const LLM_BASE = "https://api.deepseek.com/v1";
-const LLM_MODEL = "deepseek-chat";
+// 聊天接口的上游（OpenAI 兼容）。默认走智谱 GLM-4-Flash（永久免费）。
+// 部署时用环境变量覆盖，不要把 Key 写进代码：
+//   wrangler secret put LLM_KEY      ← 你自己申请的大模型 Key
+//   wrangler secret put LLM_BASE     ← 例如 https://open.bigmodel.cn/api/paas/v4
+//   wrangler secret put LLM_MODEL    ← 例如 glm-4-flash
+//
+// 为什么必须走 Worker：智谱的跨域预检（OPTIONS）不返回 Access-Control-Allow-Origin，
+// 浏览器直连会被拦。Worker 在服务端转发，既绕开跨域，也把 Key 藏在服务端。
+const LLM_BASE = "https://open.bigmodel.cn/api/paas/v4";
+const LLM_MODEL = "glm-4-flash";
 
 function corsHeaders(origin) {
   const allow = ORIGIN_PATTERNS.some((re) => re.test(origin)) ? origin : "null";

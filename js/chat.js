@@ -22,17 +22,18 @@
   var MAX_TURNS = 12;    // 送给模型的历史轮数
   var MAX_KEEP = 60;     // 每个角色本地最多留多少条
 
+  // cors: false 表示实测该服务商的跨域预检不放行，浏览器直连会被拦，只能走代理。
   var PRESETS = {
-    deepseek: { label: "DeepSeek（便宜好用）", base: "https://api.deepseek.com/v1", model: "deepseek-chat" },
-    dashscope: { label: "通义千问 / 阿里百炼", base: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen-plus" },
-    zhipu: { label: "智谱 GLM", base: "https://open.bigmodel.cn/api/paas/v4", model: "glm-4-flash" },
-    siliconflow: { label: "硅基流动 SiliconFlow", base: "https://api.siliconflow.cn/v1", model: "Qwen/Qwen2.5-7B-Instruct" },
+    zhipu: { label: "智谱 GLM-4-Flash（永久免费·需代理）", base: "https://open.bigmodel.cn/api/paas/v4", model: "glm-4-flash", cors: false },
+    siliconflow: { label: "硅基流动（有免费模型·可直连）", base: "https://api.siliconflow.cn/v1", model: "Qwen/Qwen3-8B", cors: true },
+    deepseek: { label: "DeepSeek（便宜好用·可直连）", base: "https://api.deepseek.com/v1", model: "deepseek-chat", cors: true },
+    dashscope: { label: "通义千问 / 阿里百炼（可直连）", base: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen-plus", cors: true },
     moonshot: { label: "月之暗面 Kimi", base: "https://api.moonshot.cn/v1", model: "moonshot-v1-8k" },
     openai: { label: "OpenAI", base: "https://api.openai.com/v1", model: "gpt-4o-mini" },
-    custom: { label: "自定义 / 我自己的代理", base: "", model: "" }
+    custom: { label: "自定义 / 别的兼容接口", base: "", model: "" }
   };
 
-  var CFG = { mode: "direct", base: "", model: "", key: "" };
+  var CFG = { mode: "direct", base: "", proxyBase: "", model: "", key: "" };
 
   // ---------- 本地存储 ----------
   function readJSON(key, fallback) {
@@ -50,6 +51,7 @@
     if (c) {
       CFG.mode = c.mode === "proxy" ? "proxy" : "direct";
       CFG.base = c.base || "";
+      CFG.proxyBase = c.proxyBase || "";
       CFG.model = c.model || "";
       CFG.key = c.key || "";
     }
@@ -59,13 +61,18 @@
     if (next) {
       CFG.mode = next.mode === "proxy" ? "proxy" : "direct";
       CFG.base = (next.base || "").trim().replace(/\/+$/, "");
+      CFG.proxyBase = (next.proxyBase || "").trim().replace(/\/+$/, "");
       CFG.model = (next.model || "").trim();
       CFG.key = (next.key || "").trim();
     }
     writeJSON(STORE_CFG, CFG);
     return CFG;
   }
-  function isConfigured() { return !!(CFG.base && CFG.model); }
+  // 直连要服务商地址 + 模型名；走代理只要 Worker 地址（模型名可由 Worker 环境变量定）
+  function isConfigured() {
+    if (CFG.mode === "proxy") return !!CFG.proxyBase;
+    return !!(CFG.base && CFG.model);
+  }
 
   // ---------- 人设 ----------
   function personaOf(id) {
@@ -119,8 +126,10 @@
 
   // ---------- 请求 ----------
   function chatURL() {
-    var base = (CFG.base || "").replace(/\/+$/, "");
-    return CFG.mode === "proxy" ? base + "/api/chat" : base + "/chat/completions";
+    if (CFG.mode === "proxy") {
+      return (CFG.proxyBase || "").replace(/\/+$/, "") + "/api/chat";
+    }
+    return (CFG.base || "").replace(/\/+$/, "") + "/chat/completions";
   }
 
   function headers() {
@@ -513,7 +522,9 @@
       pushLog(currentId, "assistant", reply);
       renderRail();
       if (speakEnabled() && window.NaijiacunTTS) window.NaijiacunTTS.speak(reply, currentId);
-      setStatus("回复来自 " + (isConfigured() ? CFG.model : "内置话术"));
+      setStatus("回复来自 " + (isConfigured()
+        ? (CFG.mode === "proxy" ? "代理（" + (CFG.model || "服务端默认模型") + "）" : CFG.model)
+        : "内置话术"));
     }).catch(function (err) {
       if (typing && typing.parentNode) typing.parentNode.removeChild(typing);
       if (bot) bot.bubble.textContent = "" ;
@@ -576,8 +587,13 @@
   var presetSel = document.getElementById("presetSel");
   var modeSel = document.getElementById("modeSel");
   var baseInput = document.getElementById("baseInput");
+  var proxyInput = document.getElementById("proxyInput");
   var modelInput = document.getElementById("modelInput");
   var keyInput = document.getElementById("keyInput");
+  var baseField = document.getElementById("baseField");
+  var proxyField = document.getElementById("proxyField");
+  var modelField = document.getElementById("modelField");
+  var cfgHint = document.getElementById("cfgHint");
   var ttsBase = document.getElementById("ttsBase");
   var ttsKey = document.getElementById("ttsKey");
   var saveBtn = document.getElementById("saveBtn");
@@ -590,22 +606,53 @@
     presetSel.appendChild(o);
   });
 
+  // 直连 / 代理两种模式要填的东西不一样，切换时把无关字段藏掉，避免填错地址
+  function syncModeUI() {
+    var proxy = modeSel.value === "proxy";
+    baseField.hidden = proxy;
+    modelField.hidden = proxy;
+    proxyField.hidden = !proxy;
+    var p = PRESETS[presetSel.value];
+    if (proxy) {
+      cfgHint.innerHTML = "Worker 已经替你保管 Key 和上游地址，这里只填 Worker 根地址即可。" +
+        "模型名、上游由 Worker 的环境变量决定。";
+    } else if (p && p.cors === false) {
+      cfgHint.innerHTML = "<b>" + p.label.split("（")[0] + " 不允许浏览器直连</b>（跨域预检被拦），" +
+        "请把接入方式改成「走我的代理」。";
+    } else {
+      cfgHint.textContent = "Key 只存在你自己的浏览器里，不会上传到任何地方。";
+    }
+  }
+
   function fillDialog() {
     loadCfg();
     var hit = "custom";
     Object.keys(PRESETS).forEach(function (k) {
       if (PRESETS[k].base && PRESETS[k].base === CFG.base) hit = k;
     });
+    // 第一次打开（什么都没配）默认停在推荐的免费方案上
+    if (!CFG.base && !CFG.proxyBase && !CFG.key) hit = "zhipu";
+
     presetSel.value = hit;
     modeSel.value = CFG.mode;
     baseInput.value = CFG.base;
+    proxyInput.value = CFG.proxyBase;
     modelInput.value = CFG.model;
     keyInput.value = CFG.key;
+
+    // 选了服务商却没填地址 → 用预设补上，省得手打
+    var p = PRESETS[hit];
+    if (p && p.base) {
+      if (!baseInput.value) baseInput.value = p.base;
+      if (!modelInput.value) modelInput.value = p.model;
+    }
+    if (!CFG.proxyBase && (!p || p.cors === false)) modeSel.value = "proxy";
 
     var t = readJSON("naijacun_tts", null) || {};
     ttsBase.value = t.endpoint || "";
     ttsKey.value = t.key || "";
     dlgStatus.textContent = "";
+    syncModeUI();
   }
 
   presetSel.addEventListener("change", function () {
@@ -615,7 +662,12 @@
       baseInput.value = p.base;
       modelInput.value = p.model;
     }
+    // 该服务商不支持直连时，自动切到代理，省得用户填完 Key 才发现连不上
+    if (p.cors === false) modeSel.value = "proxy";
+    syncModeUI();
   });
+
+  modeSel.addEventListener("change", syncModeUI);
 
   cfgBtn.addEventListener("click", function () {
     fillDialog();
@@ -625,7 +677,13 @@
 
   saveBtn.addEventListener("click", function (e) {
     e.preventDefault();
-    saveCfg({ mode: modeSel.value, base: baseInput.value, model: modelInput.value, key: keyInput.value });
+    saveCfg({
+      mode: modeSel.value,
+      base: baseInput.value,
+      proxyBase: proxyInput.value,
+      model: modelInput.value,
+      key: keyInput.value
+    });
 
     // 语音配置写回主站那份
     var tts = readJSON("naijacun_tts", null) || {};
@@ -635,11 +693,13 @@
     writeJSON("naijacun_tts", tts);
     bootTTS();
 
-    dlgStatus.textContent = isConfigured() ? "已保存，可以开始聊了" : "已保存（没填接口地址，仍用内置话术）";
-    setStatus(isConfigured()
-      ? "已连上模型：" + CFG.model
+    var ok = isConfigured();
+    var where = CFG.mode === "proxy" ? "代理" : (CFG.model || "直连");
+    dlgStatus.textContent = ok ? "已保存，可以开始聊了" : "已保存（还没填地址，仍用内置话术）";
+    setStatus(ok
+      ? "已连上模型：" + where
       : "还没配模型 Key，当前用内置话术回答。",
-      !isConfigured());
+      !ok);
     setTimeout(function () { if (dlg.close) dlg.close(); }, 600);
   });
 
