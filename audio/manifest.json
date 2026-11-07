@@ -46,5 +46,13 @@
     "model": "breeze-tts-2",
     "bytes": 25632,
     "generatedAt": "2026-11-07T06:28:07.837Z"
+  },
+  "xiaocao": {
+    "file": "audio/xiaocao.mp3",
+    "text": "太棒了！你今天也很棒！",
+    "voice_id": "voc_u3nxkd5578wc",
+    "model": "breeze-tts-2",
+    "bytes": 29376,
+    "generatedAt": "2026-11-07T11:19:12.092Z"
   }
 }
