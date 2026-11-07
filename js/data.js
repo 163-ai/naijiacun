@@ -157,6 +157,9 @@ const PEOPLE = [
 //   gender / age / tone / accent  音色的结构化标签，保存音色时一并写入，方便在控制台筛选。
 //   rate / pitch  没有 Key 时的浏览器语音参数：语速与音高（1 = 原声）。
 //            用来让六个角色在没有云端音色时也能听出差别，不影响 Breeze 音色。
+//   tempo    Breeze 音色的播放速率，默认 1 = 原速原调。小于 1 时连音高一起压低
+//            （磁带变速），用来把偏尖的音色压沉：0.9 = 低 10%、慢 10%。
+//            云端音色是成品音频，改不了合成端，只能在播放时处理。
 //
 // 说明：这里描述的是"听感"（音高、语速、气质），不指向任何具体的人。
 // 若要克隆真实配音演员的声音，需先取得本人书面授权。
@@ -171,7 +174,7 @@ const CHARACTER_VOICES = {
     voiceId: "voc_kjt4wqrndgf6",
     style: "清亮稚嫩的童声嗓音，咬字软糯、句尾轻轻收住；克隆自《一百分的家》开头 15 秒的说话声",
     gender: "male", age: "young", tone: ["playful", "energetic"], accent: null,
-    rate: 1.18, pitch: 1.3
+    rate: 1.0, pitch: 1.0, tempo: 0.9
   },
   baobaolong: {
     voiceId: "voc_2h2sbun8qvbk",

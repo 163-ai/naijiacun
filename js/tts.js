@@ -119,8 +119,26 @@
     return {
       rate: p && typeof p.rate === "number" ? p.rate : null,
       pitch: p && typeof p.pitch === "number" ? p.pitch : null,
+      tempo: p && typeof p.tempo === "number" ? p.tempo : null,
       gender: (p && p.gender) || ""
     };
+  }
+
+  // 云端音色返回的是成品音频，没法在合成端调音高，只能改播放速率。
+  // 关掉 preservesPitch 后速率会连音高一起压下去（磁带变速），
+  // 所以 tempo 既是「低沉程度」也是「放慢程度」：0.9 = 低 10%、慢 10%。
+  function applyTempo(el, id) {
+    if (!el) return el;
+    var p = characterProfile(id);
+    var t = p && typeof p.tempo === "number" ? p.tempo : 1;
+    if (!t || t === 1) return el;
+    try {
+      el.preservesPitch = false;
+      el.mozPreservesPitch = false;
+      el.webkitPreservesPitch = false;
+      el.playbackRate = t;
+    } catch (e) { /* 老浏览器忽略 */ }
+    return el;
   }
 
   function listBrowserVoices() {
@@ -261,7 +279,7 @@
       })
       .then(function (blob) {
         var url = URL.createObjectURL(blob);
-        audioEl = new Audio(url);
+        audioEl = applyTempo(new Audio(url), id);
         audioEl.onended = function () {
           URL.revokeObjectURL(url);
           currentId = null;
@@ -329,7 +347,7 @@
     currentId = id;
     emit();
 
-    audioEl = new Audio(entry.file);
+    audioEl = applyTempo(new Audio(entry.file), id);
     audioEl.onended = function () { currentId = null; emit(); };
     audioEl.onerror = function () { currentId = null; emit(); };
     audioEl.play().catch(function () {
@@ -340,7 +358,7 @@
   }
 
   function tryDirectFile(text, id) {
-    var probe = new Audio("audio/" + id + ".mp3");
+    var probe = applyTempo(new Audio("audio/" + id + ".mp3"), id);
     currentId = id;
     emit();
 
