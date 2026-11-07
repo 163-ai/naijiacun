@@ -51,6 +51,17 @@
       .replace(/'/g, "&#39;");
   }
 
+  // 头像：优先用原创 SVG 形象，其次首字圆牌，最后才回退 emoji
+  function avatarHTML(p) {
+    var a = window.NaijiacunAvatars;
+    if (a && p) {
+      var s = a.svg(p.id);
+      if (s) return s;
+      if (p.name) return a.initial(p.name);
+    }
+    return '<span class="avatar-emoji">' + escapeHTML((p && p.emoji) || "🙂") + '</span>';
+  }
+
   function categoriesOf(people) {
     var seen = {};
     var list = ["全部"];
@@ -157,7 +168,7 @@
       card.className = "card";
       card.innerHTML =
         '<div class="card-top">' +
-          '<div class="avatar">' + escapeHTML(p.emoji || "🙂") + '</div>' +
+          '<div class="avatar">' + avatarHTML(p) + '</div>' +
           '<div>' +
             '<h3 class="card-name">' + escapeHTML(p.name) + '</h3>' +
             '<span class="card-cat">' + escapeHTML(p.category) + '</span>' +
@@ -214,7 +225,7 @@
 
     document.getElementById("modalBody").innerHTML =
       '<div class="detail-head">' +
-        '<div class="avatar">' + escapeHTML(people.emoji || "🙂") + '</div>' +
+        '<div class="avatar avatar-lg">' + avatarHTML(people) + '</div>' +
         '<div>' +
           '<h2 class="detail-name">' + escapeHTML(people.name) + '</h2>' +
           '<p class="detail-title">' + escapeHTML(people.category) +
