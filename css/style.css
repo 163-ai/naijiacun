@@ -717,6 +717,67 @@ a.btn {
 .status-line.ok { color: var(--green); }
 .status-line.err { color: #a32d2d; }
 
+/* ---------- 管理面板 ---------- */
+.admin-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0;
+  max-height: 46vh;
+  overflow-y: auto;
+}
+
+.admin-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg);
+}
+
+.admin-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.admin-meta strong {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.admin-meta span {
+  font-size: 12px;
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.btn.danger {
+  flex: none;
+  color: #a32d2d;
+  border-color: #edd6d0;
+}
+
+.btn.danger:hover {
+  background: #fbeae6;
+  border-color: #d9a79b;
+  color: #8a2323;
+}
+
+#adminModal code {
+  font-size: 12px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
 .toast {
   position: fixed;
   left: 50%;
