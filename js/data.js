@@ -120,7 +120,7 @@ const PEOPLE = [
 // 若要克隆真实配音演员的声音，需先取得本人书面授权。
 const CHARACTER_VOICES = {
   nailong: {
-    voiceId: "voc_fzjcsvs6awx2",
+    voiceId: "voc_d3c9d5yh6m6v",
     style: "软萌的小童声，圆润鼻音，语速偏慢，句尾带笑，像在撒娇",
     gender: "female", age: "child", tone: ["gentle", "playful"], accent: null,
     rate: 0.9, pitch: 1.4

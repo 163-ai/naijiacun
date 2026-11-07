@@ -2,10 +2,10 @@
   "nailong": {
     "file": "audio/nailong.mp3",
     "text": "duang~duang~ 的大肚子，和一双童真的圆眼睛。",
-    "voice_id": "voc_fzjcsvs6awx2",
+    "voice_id": "voc_d3c9d5yh6m6v",
     "model": "breeze-tts-2",
-    "bytes": 89856,
-    "generatedAt": "2026-11-07T06:25:14.696Z"
+    "bytes": 71712,
+    "generatedAt": "2026-11-07T06:58:08.821Z"
   },
   "naiwa": {
     "file": "audio/naiwa.mp3",
