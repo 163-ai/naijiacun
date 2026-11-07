@@ -5,20 +5,31 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>桌宠模式 · 奶家村</title>
 <meta name="description" content="把奶家村的角色变成一只会走会瞌睡的桌宠，还能浮在其他窗口上面。">
-<link rel="stylesheet" href="css/style.css">
-<link rel="stylesheet" href="css/pet.css?v=user-models-9">
+<link rel="stylesheet" href="css/style.css?v=village-1">
+<link rel="stylesheet" href="css/pet.css?v=village-1">
+<link rel="stylesheet" href="css/village.css?v=village-1">
 </head>
-<body class="pet-page">
+<body class="village-theme pet-page">
 
+<main class="pet-wrap">
 <header class="pet-head">
-  <a class="pet-back" href="index.html">← 回到图鉴</a>
-  <h1>桌宠模式</h1>
-  <p>拖它、点它说话；移动鼠标它会转头看你，点「置顶小窗」可以浮在其他窗口上面，干别的活时它也在旁边。</p>
+  <div>
+    <span class="pet-kicker">村里的慢时光</span>
+    <h1>桌宠陪伴</h1>
+    <p>领一位村民来小院坐坐。拖一拖、聊两句，也能让它住进桌面小窗。</p>
+  </div>
+  <a class="pet-back" href="index.html">← 回村民名册</a>
 </header>
 
-<section class="pet-chars" id="charBar"></section>
+<section class="pet-roster" aria-labelledby="petRosterTitle">
+  <div class="pet-section-head">
+    <h2 id="petRosterTitle">今天，谁来陪你？</h2>
+    <span>点选一位村民</span>
+  </div>
+  <div class="pet-chars" id="charBar" aria-label="选择桌宠角色"></div>
+</section>
 
-<div class="pet-toolbar">
+<div class="pet-toolbar" aria-label="桌宠操作">
   <button class="pet-btn primary" id="pinBtn">📌 置顶小窗</button>
   <button class="pet-btn" id="talkBtn">💬 说句话</button>
   <button class="pet-btn" id="wanderBtn">🚶 随便走走</button>
@@ -29,26 +40,32 @@
   </label>
 </div>
 
-<div class="pet-stage" id="petStage"></div>
+<div class="pet-stage" id="petStage" aria-label="桌宠小院，可拖动角色">
+  <span class="pet-yard-label" aria-hidden="true">村口小院 <i>·</i> 今日宜发呆</span>
+  <span class="pet-yard-window" aria-hidden="true"></span>
+</div>
 
 <!-- 和桌宠聊天：回复直接弹在它头上，同时用它的音色念出来 -->
 <div class="pet-chat" id="petChat">
   <div class="pet-chat-log" id="chatLog" aria-live="polite"></div>
   <form class="pet-chat-form" id="chatForm">
     <input id="chatInput" type="text" maxlength="300" autocomplete="off"
+           aria-label="跟桌宠说句话"
            placeholder="跟它说句话…（Enter 发送）">
     <button type="submit" id="chatSend">发送</button>
-    <a class="pet-chat-cfg" href="chat.html" title="配置大模型接口">⚙️</a>
+    <a class="pet-chat-cfg" href="chat.html" title="配置大模型接口" aria-label="聊天设置">⚙️</a>
   </form>
 </div>
 
 <p class="pet-note" id="petNote">点一下它试试。</p>
+</main>
 
-<script src="js/data.js?v=user-models-9"></script>
+<script src="js/data.js?v=village-1"></script>
 <script src="js/avatars.js"></script>
-<script src="js/tts.js"></script>
+<script src="js/tts.js?v=village-1"></script>
 <script src="js/chat.js"></script>
 <script src="js/pet.js?v=user-models-9"></script>
 <script src="js/pet-page.js"></script>
+<script src="js/village.js?v=village-1"></script>
 </body>
 </html>

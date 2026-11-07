@@ -5,27 +5,46 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>奶家村 · 网络热门虚拟形象图鉴</title>
 <meta name="description" content="一个关于网络热门虚拟形象的互动图鉴：奶龙、奶蛙、卡皮巴拉……可以搜索、投票、随机抽取，还能提名新角色。非官方、非商业的同人整理。">
-<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/style.css?v=village-1">
+<link rel="stylesheet" href="css/village.css?v=village-1">
 </head>
-<body>
+<body class="village-theme home-page">
 
 <header class="hero">
-  <div class="container">
-    <p class="hero-badge">🌾 村口广播 · 非官方同人整理</p>
-    <h1>奶家村</h1>
-    <p class="hero-sub">网络热门虚拟形象图鉴 —— 那些在表情包和短视频里陪你打发过时间的黄色小东西们</p>
-    <div class="stats" id="stats"></div>
+  <div class="container hero-inner">
+    <div class="hero-copy">
+      <p class="hero-badge">村口集合 · 奶味超标</p>
+      <h1>欢迎来到<span>奶家村</span></h1>
+      <p class="hero-sub">今天也来村里整点抽象。</p>
+      <div class="hero-actions">
+        <button id="randomBtn" class="btn primary">拆一个盲盒 <span aria-hidden="true">→</span></button>
+        <a class="btn ghost" href="#villagers">认识村民</a>
+      </div>
+      <div class="stats" id="stats"></div>
+    </div>
+    <div class="hero-scene" aria-hidden="true">
+      <div class="hero-villagers">
+        <img class="hero-nailong" src="assets/characters/3d/nailong-pet.png" width="720" height="900" alt="" fetchpriority="high">
+        <img class="hero-naiwa" src="assets/characters/3d/naiwa-pet.png" width="720" height="900" alt="">
+        <img class="hero-naicha" src="assets/characters/3d/naicha-pet.png" width="720" height="900" alt="">
+        <img class="hero-baobaolong" src="assets/characters/3d/baobaolong-pet.png" width="720" height="900" alt="">
+      </div>
+    </div>
   </div>
 </header>
 
 <main class="container">
-
-  <section class="controls">
-    <div class="search-row">
-      <input id="search" type="search" placeholder="搜索人物、称号或关键词…" autocomplete="off">
+  <div class="village-broadcast"><svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M4 9h4l6-4v14l-6-4H4V9Zm14-1c2 2 2 6 0 8M7 15l1 5h3l-1-4"/></svg><strong>村口广播</strong><span>全体村民，集合啦！今天你想找谁玩？</span></div>
+  <section class="controls" id="villagers" aria-labelledby="villagersTitle">
+    <div class="roster-heading">
+      <div><p class="section-kicker">THE VILLAGERS</p><h2 id="villagersTitle">村民名册</h2><p>挑一位，听听他怎么说。</p></div>
+      <div class="search-row">
+        <label class="sr-only" for="search">搜索村民</label>
+        <input id="search" type="search" placeholder="搜索村民、称号或热梗…" autocomplete="off">
+      </div>
     </div>
-    <div class="chips" id="chips"></div>
-    <div class="toolbar">
+    <div class="roster-filters">
+      <div class="chips" id="chips"></div>
       <label class="sort-label">排序
         <select id="sort">
           <option value="heat">按热度</option>
@@ -33,28 +52,23 @@
           <option value="new">提名的在前</option>
         </select>
       </label>
-      <div class="tool-group" role="group" aria-label="玩法模式">
-        <button id="randomBtn" class="btn ghost" title="随机抽一位村民开箱">🎁 拆盲盒</button>
-        <a class="btn ghost" href="pet.html" title="把村民变成桌宠，浮在其他窗口上面">🐾 桌宠</a>
-        <a class="btn ghost" href="chat.html" title="挑一个村民直接开聊，回复会用他的音色念出来">💬 聊两句</a>
-        <a class="btn ghost" href="pet3d.html" title="WebGL 3D 网格展台，可 360° 拖拽">🌀 3D 展台</a>
-      </div>
-      <div class="tool-group tool-actions" role="group" aria-label="设置与贡献">
-        <button id="voiceBtn" class="btn ghost" title="配置朗读音色（Breeze Key 或浏览器语音）">🔑 语音</button>
-        <button id="addBtn" class="btn primary" title="提名一位新村民入住奶家村">➕ 提名新人</button>
-      </div>
     </div>
   </section>
 
   <section id="grid" class="grid" aria-live="polite"></section>
   <p id="empty" class="empty hidden">村里暂时没有这个人，要不要提名一下？</p>
-
+  <section class="village-places" aria-label="村里还有这些玩法">
+    <a href="pet.html"><svg class="place-icon" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M9 14C4 3 9 0 12 12c2-1 5-1 7 0 3-12 8-9 4 2 8 8 3 16-7 16S1 23 9 14Z"/><path d="M11 19v2m10-2v2m-7 3h4"/></svg><span><strong>桌宠陪伴</strong><small>让村民住进你的桌面。</small></span><span aria-hidden="true">↗</span></a>
+    <a href="pet3d.html"><svg class="place-icon" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m16 2 13 7v14l-13 7L3 23V9L16 2ZM3 9l13 7 13-7M16 16v14"/></svg><span><strong>360° 看形象</strong><small>转一圈，每一面都有奶味。</small></span><span aria-hidden="true">↗</span></a>
+    <a href="chat.html"><svg class="place-icon" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M29 14c0 7-6 12-13 12h-5l-7 4 1-9c-9-16 24-26 24-7Z"/><circle cx="11" cy="15" r="1"/><circle cx="17" cy="15" r="1"/><circle cx="23" cy="15" r="1"/></svg><span><strong>和村民聊两句</strong><small>村口闲聊，主打一个陪伴。</small></span><span aria-hidden="true">↗</span></a>
+  </section>
+  <div class="village-contribute"><span>村里还缺谁？带你的抽象搭子来串门。<small id="communityStats"></small></span><div><button id="addBtn" class="btn primary">提名新村民 ＋</button><button id="voiceBtn" class="btn ghost">语音设置</button></div></div>
 </main>
 
 <footer class="footer">
   <div class="container">
-    <p>奶家村是非官方、非商业的粉丝向文字整理，仅供娱乐与交流。</p>
-    <p>文中出现的角色名称与形象，著作权归各自权利人所有。本站为非官方、非商业的同人整理；页面中的形象图与原声音轨由使用者自行提供，仅供本地个人学习与比赛演示，请勿商用或再分发，如权利人认为不妥请联系删除。</p>
+    <p class="footer-brand">奶家村 <span>· 今天也来整点抽象。</span></p>
+    <details class="footer-rights"><summary>非官方同人整理 · 素材与权利说明</summary><p>文中出现的角色名称与形象，著作权归各自权利人所有。本站为非官方、非商业的同人整理；页面中的形象图与原声音轨由使用者自行提供，仅供本地个人学习与比赛演示，请勿商用或再分发，如权利人认为不妥请联系删除。</p></details>
     <p>维护者 <a href="https://github.com/163-ai" target="_blank" rel="noopener">163-ai</a> · 源码开源，欢迎在 GitHub 提 Issue 或 PR。</p>
     <p><a href="gallery.html">📋 形象总表</a> · <a href="pet.html">🐾 桌宠模式</a> · <a href="chat.html">💬 和村民聊两句</a> · <a href="pet3d.html">🌀 3D 展台</a> · <a href="#admin" id="adminEntry">🔒 管理</a></p>
   </div>
@@ -250,10 +264,11 @@
 </div>
 
 <script src="js/config.js"></script>
-<script src="js/data.js?v=user-models-9"></script>
+<script src="js/data.js?v=village-1"></script>
 <script src="js/avatars.js"></script>
-<script src="js/tts.js"></script>
-<script src="js/app.js"></script>
+<script src="js/tts.js?v=village-1"></script>
+<script src="js/app.js?v=village-1"></script>
 <script src="js/admin.js"></script>
+<script src="js/village.js?v=village-1"></script>
 </body>
 </html>

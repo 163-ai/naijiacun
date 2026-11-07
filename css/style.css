@@ -1,29 +1,31 @@
 :root {
-  --bg: #faf7f2;
-  --surface: #ffffff;
-  --ink: #2c2c2a;
-  --ink-2: #5f5e5a;
-  --ink-3: #888780;
-  --line: #e5e0d6;
-  --green: #0f6e56;
-  --green-soft: #e1f5ee;
-  --amber: #ba7517;
-  --amber-soft: #faeeda;
-  --radius: 14px;
+  --bg: #f8f2e5;
+  --surface: #fffcf5;
+  --ink: #2c312c;
+  --ink-2: #655d50;
+  --ink-3: #786f61;
+  --line: #deceb6;
+  --green: #823d2f;
+  --green-soft: #f3e3d4;
+  --amber: #95631d;
+  --amber-soft: #f8ebcc;
+  --tile: #344f49;
+  --gold: #e9bf46;
+  --radius: 20px;
 }
 
 * { box-sizing: border-box; }
 
 body {
   margin: 0;
-  font-family: system-ui, "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-family: "Microsoft YaHei UI", "PingFang SC", "Microsoft YaHei", sans-serif;
   background: var(--bg);
   color: var(--ink);
   line-height: 1.6;
 }
 
 .container {
-  max-width: 1080px;
+  max-width: 1240px;
   margin: 0 auto;
   padding: 0 20px;
 }
@@ -220,20 +222,21 @@ a.btn {
 /* ---------- 卡片 ---------- */
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 16px;
-  padding-bottom: 48px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 20px;
+  padding-bottom: 32px;
 }
 
 .card {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  padding: 20px;
+  padding: 0;
+  overflow: hidden;
   cursor: pointer;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 0;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
@@ -242,10 +245,43 @@ a.btn {
   box-shadow: 0 8px 20px rgba(44, 44, 42, 0.08);
 }
 
-.card-top {
+.card-visual {
+  position: relative;
+  height: 242px;
+  padding: 20px 24px 0;
+  background: radial-gradient(ellipse at 50% 78%, #f2dfb9 0, #fcf5e8 48%, transparent 75%);
+}
+.card-character {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  transition: transform .25s ease;
+}
+.card:hover .card-character { transform: translateY(-4px); }
+.card-fallback { display: grid; place-items: center; padding: 36px; }
+.card-fallback svg { width: 100%; height: 100%; }
+.card-fallback .avatar-emoji { font-size: 76px; }
+.card-stamp {
+  position: absolute;
+  right: 15px;
+  top: 16px;
+  border: 1.5px solid #a7553d;
+  border-radius: 5px;
+  color: var(--green);
+  padding: 3px 4px;
+  font: 13px/1.1 "KaiTi", serif;
+  transform: rotate(5deg);
+}
+.card-copy { padding: 6px 18px 8px; text-align: center; }
+.card-actions {
   display: flex;
+  gap: 7px;
   align-items: center;
-  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+  padding: 10px 12px 13px;
+  margin-top: auto;
 }
 
 .avatar {
@@ -275,40 +311,51 @@ a.btn {
 .avatar-emoji { font-size: 26px; line-height: 1; }
 
 .card-name {
-  font-size: 16px;
-  font-weight: 500;
+  font-size: 21px;
+  font-weight: 800;
   margin: 0;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 
 .card-cat {
   display: inline-block;
+  position: absolute;
+  top: 15px;
+  left: 14px;
+  z-index: 1;
   font-size: 11px;
   color: var(--green);
-  background: var(--green-soft);
+  background: var(--amber-soft);
   border-radius: 999px;
-  padding: 1px 8px;
+  padding: 3px 9px;
 }
 
 .card-title {
-  margin: 0;
-  font-size: 13px;
+  margin: 5px 0;
+  font-size: 12px;
   color: var(--ink-2);
 }
 
 .card-quote {
   margin: 0;
   font-size: 13px;
-  color: var(--ink-3);
-  border-left: 3px solid var(--line);
-  padding-left: 10px;
+  color: var(--ink-2);
+  font-size: 12px;
+  line-height: 1.7;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .card-foot {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-top: auto;
-  padding-top: 6px;
+  padding: 11px 15px;
+  border-top: 1px solid #e7d9c4;
+  background: #f7eedf;
 }
 
 .heat {
@@ -332,39 +379,26 @@ a.btn {
   color: var(--green);
 }
 
-.speak-btn {
-  margin-left: auto;
-  width: 34px;
-  height: 34px;
+.speak-btn, .clip-btn, .card-detail {
   flex-shrink: 0;
   border: 1px solid var(--line);
-  background: var(--bg);
-  border-radius: 50%;
-  font-size: 14px;
-  line-height: 1;
+  background: #fff8e9;
+  border-radius: 999px;
+  padding: 7px 10px;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.4;
   cursor: pointer;
-  color: var(--ink-2);
+  color: var(--green);
 }
+.speak-btn { background: transparent; border-color: transparent; padding-inline: 4px; }
+.card-detail { border-color: transparent; background: transparent; font-weight: 600; padding-inline: 3px; }
 
 .speak-btn:hover { border-color: var(--ink-3); }
 
 .speak-btn.playing {
   background: var(--green-soft);
   border-color: var(--green);
-}
-
-/* 原声播放按钮：与朗读按钮同款圆形样式 */
-.clip-btn {
-  flex-shrink: 0;
-  width: 34px;
-  height: 34px;
-  border: 1px solid var(--line);
-  background: var(--bg);
-  border-radius: 50%;
-  font-size: 14px;
-  line-height: 1;
-  cursor: pointer;
-  color: var(--ink-2);
 }
 
 .clip-btn:hover { border-color: var(--ink-3); }

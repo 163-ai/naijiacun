@@ -5,41 +5,47 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>形象总表 · 奶家村</title>
 <meta name="description" content="奶家村全部角色的形象、分类、热梗与音色设定一览表。">
-<link rel="stylesheet" href="css/style.css">
-<link rel="stylesheet" href="css/gallery.css">
+<link rel="stylesheet" href="css/style.css?v=village-1">
+<link rel="stylesheet" href="css/gallery.css?v=village-1">
+<link rel="stylesheet" href="css/village.css?v=village-1">
 </head>
-<body class="gallery-page">
+<body class="village-theme gallery-page">
 
 <div class="g-wrap">
 
-  <div class="g-head">
-    <a class="g-back" href="index.html">← 回到图鉴</a>
-    <h1>形象总表</h1>
-  </div>
-  <p class="g-sub">
-    全部角色一眼看完。形象与原声素材由使用者自行提供（assets/ 目录），
-    版权归各自权利人所有，仅供本地个人学习与比赛演示，请勿商用或再分发。
-    点击「导出 CSV」可以拿到表格数据，点击「打印 / 存 PDF」可以直接存档。
-  </p>
+  <header class="g-head">
+    <div>
+      <a class="g-back" href="index.html">村民图鉴 /</a>
+      <p class="g-eyebrow">奶家村村民档案 <span>VILLAGE REGISTER</span></p>
+      <h1>一村熟面孔，<span>一本好名册。</span></h1>
+      <p class="g-sub">从形象、热梗到音色，村民的来历都记在这里。<br>导出一份表格，或打印下来，慢慢翻看。</p>
+    </div>
+    <div class="g-seal" aria-hidden="true"><span>奶家村</span><strong>村民名册</strong><small>形象总表</small></div>
+  </header>
 
+  <div class="g-toolbar">
+    <div class="g-section-title"><h2>村民档案</h2><span>形象 · 分类 · 热梗 · 音色 · 来源</span></div>
   <div class="g-tools">
-    <button class="g-btn" id="csvBtn">⬇ 导出 CSV</button>
-    <button class="g-btn" id="printBtn">🖨 打印 / 存 PDF</button>
-    <button class="g-btn" id="jumpBtn">🐾 去桌宠模式</button>
+    <button class="g-btn primary" id="csvBtn" type="button">↓ 导出 CSV</button>
+    <button class="g-btn" id="printBtn" type="button">打印 / 存 PDF</button>
+    <button class="g-btn" id="jumpBtn" type="button">去桌宠作伴 ↗</button>
+  </div>
   </div>
 
-  <div class="g-table-wrap">
+  <p class="g-scroll-hint" id="gScrollHint">左右滑动表格，查看完整档案 <span aria-hidden="true">↔</span></p>
+  <div class="g-table-wrap" tabindex="0" role="region" aria-label="村民形象总表，可横向滚动" aria-describedby="gScrollHint">
     <table class="g-table">
+      <caption class="g-caption">奶家村村民形象、分类、热梗、音色设定与权利归属总表</caption>
       <thead>
         <tr>
-          <th class="g-idx">#</th>
-          <th>形象</th>
-          <th>名称 / ID</th>
-          <th>分类</th>
-          <th>一句话称号</th>
-          <th>热梗</th>
-          <th>音色设定</th>
-          <th>权利归属</th>
+          <th class="g-idx" scope="col">编号</th>
+          <th scope="col">村民形象</th>
+          <th scope="col">名称 / ID</th>
+          <th scope="col">分类</th>
+          <th scope="col">一句话称号</th>
+          <th scope="col">热梗</th>
+          <th scope="col">音色设定</th>
+          <th scope="col">来源 / 权利归属</th>
         </tr>
       </thead>
       <tbody id="gBody"></tbody>
@@ -47,11 +53,13 @@
   </div>
 
   <p class="g-foot" id="gFoot"></p>
+  <p class="g-rights">形象与原声版权归各自权利人所有，仅供个人学习与比赛演示，请勿商用或再分发。</p>
 
 </div>
 
-<script src="js/data.js?v=user-models-9"></script>
+<script src="js/data.js?v=village-1"></script>
 <script src="js/avatars.js"></script>
 <script src="js/gallery.js"></script>
+<script src="js/village.js?v=village-1"></script>
 </body>
 </html>

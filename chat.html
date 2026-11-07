@@ -4,26 +4,32 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>和村民聊两句 · 奶家村</title>
-  <link rel="stylesheet" href="css/style.css">
-  <link rel="stylesheet" href="css/chat.css">
+  <link rel="stylesheet" href="css/style.css?v=village-1">
+  <link rel="stylesheet" href="css/chat.css?v=village-1">
+  <link rel="stylesheet" href="css/village.css?v=village-1">
 </head>
-<body>
+<body class="village-theme chat-page">
   <div class="ch-wrap">
     <header class="ch-head">
-      <a class="ch-back" href="index.html">← 回图鉴</a>
-      <h1>💬 和村民聊两句</h1>
-      <p>挑一个村民，直接开聊。回复会用他的音色念出来（没配语音 Key 时用浏览器语音顶上）。
-        对话只存在你这台设备的浏览器里，不上传服务器。
-        <b>角色语气是网友二创的玩梗版，不代表官方设定。</b></p>
+      <div class="ch-head-copy">
+        <a class="ch-back" href="index.html">村民图鉴 /</a>
+        <p class="ch-eyebrow">村口茶话会 <span>VILLAGE TEAHOUSE</span></p>
+        <h1>和村民，坐下聊两句。</h1>
+        <p class="ch-intro">挑一位熟面孔，说说今天的新鲜事。点一下朗读，还能听听他的声音。</p>
+      </div>
+      <div class="ch-head-note">
+        <span class="ch-note-mark" aria-hidden="true">“</span>
+        <p>一张长凳，几句闲话。<br><span>角色语气为网友二创，不代表官方设定。</span></p>
+      </div>
     </header>
 
     <div class="ch-main">
       <aside class="ch-rail">
-        <h2>选个村民</h2>
+        <div class="ch-rail-heading"><h2>今天和谁聊？</h2><span>选位村民</span></div>
         <div id="charRail" class="ch-rail-list"></div>
       </aside>
 
-      <section class="ch-panel">
+      <section class="ch-panel" aria-label="村民对话">
         <div class="ch-bar">
           <img id="chAvatar" class="ch-avatar" alt="">
           <div class="ch-who">
@@ -42,20 +48,24 @@
         <div id="openers" class="ch-openers"></div>
 
         <form id="composer" class="ch-composer">
-          <textarea id="input" rows="1" maxlength="500" placeholder="说点什么…（Enter 发送，Shift + Enter 换行）"></textarea>
-          <button id="sendBtn" type="submit">发送</button>
+          <textarea id="input" rows="1" maxlength="500" aria-label="给村民的消息" placeholder="说点什么吧…"></textarea>
+          <button id="sendBtn" type="submit">发送 <span aria-hidden="true">↗</span></button>
         </form>
+        <p class="ch-input-hint">Enter 发送 · Shift + Enter 换行 <span>对话记录保存在当前浏览器</span></p>
         <p id="chStatus" class="ch-status">准备中…</p>
       </section>
     </div>
   </div>
 
-  <dialog id="cfgDlg" class="ch-dlg">
+  <dialog id="cfgDlg" class="ch-dlg" aria-labelledby="chCfgTitle">
     <form method="dialog" class="ch-dlg-inner">
-      <h2>设置</h2>
+      <button class="ch-dlg-close" value="close" aria-label="关闭设置">×</button>
+      <p class="ch-eyebrow">茶话会设置</p>
+      <h2 id="chCfgTitle">让聊天更合心意</h2>
+      <p class="ch-dlg-intro">可使用站点自带模型，也可接入自己的模型与角色音色。</p>
 
       <fieldset>
-        <legend>① 对话用的模型</legend>
+        <legend>01 / 对话模型</legend>
         <label class="ch-field">
           <span>服务商</span>
           <select id="presetSel"></select>
@@ -87,7 +97,7 @@
       </fieldset>
 
       <fieldset>
-        <legend>② 语音（可选，填了才用真音色）</legend>
+        <legend>02 / 角色语音 · 可选</legend>
         <label class="ch-field">
           <span>语音代理地址</span>
           <input id="ttsBase" type="text" spellcheck="false" placeholder="https://naijiacun-tts.xxx.workers.dev">
@@ -96,7 +106,7 @@
           <span>Breeze Key</span>
           <input id="ttsKey" type="password" spellcheck="false" autocomplete="off" placeholder="brz_…">
         </label>
-        <p class="ch-hint">和主站「语音设置」共用同一份配置，这里填过，图鉴页和桌宠也能用。</p>
+        <p class="ch-hint">配置后使用角色音色；未配置时使用浏览器朗读。与图鉴页、桌宠的语音设置共用。</p>
       </fieldset>
 
       <div class="ch-dlg-foot">
@@ -107,8 +117,9 @@
     </form>
   </dialog>
 
-  <script src="js/data.js?v=user-models-9"></script>
-  <script src="js/tts.js"></script>
+  <script src="js/data.js?v=village-1"></script>
+  <script src="js/tts.js?v=village-1"></script>
   <script src="js/chat.js"></script>
+  <script src="js/village.js?v=village-1"></script>
 </body>
 </html>

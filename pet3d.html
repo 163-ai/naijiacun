@@ -4,15 +4,19 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>3D 形象展台 · 奶家村</title>
-  <link rel="stylesheet" href="css/style.css">
-  <link rel="stylesheet" href="css/pet3d.css?v=user-models-9">
+  <link rel="stylesheet" href="css/style.css?v=village-1">
+  <link rel="stylesheet" href="css/pet3d.css?v=village-1">
+  <link rel="stylesheet" href="css/village.css?v=village-1">
 </head>
-<body>
-  <div class="p3-wrap">
+<body class="village-theme p3-page">
+  <main class="p3-wrap">
     <header class="p3-head">
-      <a class="p3-back" href="pet.html">← 返回 2D 桌宠</a>
-      <h1>🌀 3D 形象展台</h1>
-      <p>把喜欢的角色放到眼前，<b>完整转一圈</b>。拖动查看每个方向，也可以一键切换正面、侧面和背面。</p>
+      <div>
+        <span class="p3-kicker">换个角度认识邻居</span>
+        <h1>村民 3D 展台</h1>
+        <p>把喜欢的村民放到眼前，转一圈，看看它的每一面。</p>
+      </div>
+      <a class="p3-back" href="pet.html">← 回桌宠小院</a>
     </header>
 
     <div class="p3-main">
@@ -27,20 +31,22 @@
         <div id="fallback" class="p3-fallback hidden" role="status"><p id="errorMessage"></p><button id="retryBtn" class="p3-btn">重新加载</button></div>
         <div id="bubble" class="p3-bubble hidden"></div>
         <div class="p3-hint">按住拖拽旋转 · 滚轮缩放 · 双击复位</div>
-        <div class="p3-corner">完整模型 · 360° 旋转</div>
+        <div class="p3-corner">村民立体档案 <span>360°</span></div>
       </div>
 
       <aside class="p3-side">
-        <h2>选一个角色</h2>
-        <div id="chips" class="p3-chips"></div>
+        <section class="p3-select" aria-labelledby="p3RosterTitle">
+          <div class="p3-section-head"><h2 id="p3RosterTitle">哪位村民上台？</h2><span>点选切换</span></div>
+          <div id="chips" class="p3-chips" aria-label="选择 3D 角色"></div>
+        </section>
 
-        <div class="p3-tools">
+        <div class="p3-tools" aria-label="模型操作">
           <button class="p3-btn" id="spinBtn" aria-pressed="true" title="自动旋转观察完整角色">🔄 自动展示</button>
           <button class="p3-btn" id="wireBtn" aria-pressed="false" title="显示真实的三角网格">🧱 线框</button>
           <button class="p3-btn" id="talkBtn">🔊 说句话</button>
           <button class="p3-btn" id="clipBtn">🎵 原声</button>
           <button class="p3-btn" id="resetBtn">↩️ 复位视角</button>
-          <button class="p3-btn" id="pinBtn">📌 置顶小窗</button>
+          <button class="p3-btn primary" id="pinBtn">📌 置顶小窗</button>
         </div>
         <p id="status" class="p3-status">准备中…</p>
 
@@ -53,11 +59,17 @@
         <p id="missingModels" class="p3-caveat"></p>
       </aside>
     </div>
-  </div>
+  </main>
 
   <script type="importmap">{"imports":{"three":"./vendor/three/three.module.min.js"}}</script>
-  <script src="js/data.js?v=user-models-9"></script>
+  <script src="js/data.js?v=village-1"></script>
   <script src="js/3d-models.js?v=user-models-9"></script>
   <script type="module" src="js/pet3d.js?v=user-models-9"></script>
+  <script src="js/village.js?v=village-1"></script>
+  <script>
+    window.addEventListener("load", function () {
+      if (window.matchMedia("(prefers-reduced-motion: reduce)").matches && window.__p3) window.__p3.spin(false);
+    });
+  </script>
 </body>
 </html>

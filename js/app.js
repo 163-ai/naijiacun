@@ -117,7 +117,8 @@
     document.querySelectorAll(".clip-btn").forEach(function (btn) {
       var playing = btn.dataset.id === clipCurrentId;
       btn.classList.toggle("playing", playing);
-      btn.textContent = playing ? "⏹" : "🎵";
+      btn.textContent = playing ? "■ 停止原声" : "▶ 听原声";
+      btn.setAttribute("aria-pressed", String(playing));
     });
     document.querySelectorAll(".clip-detail").forEach(function (btn) {
       var playing = clipCurrentId !== null;
@@ -157,9 +158,11 @@
       totalHeat += (p.heat || 0) + (votes[p.id] || 0);
     });
     document.getElementById("stats").innerHTML =
-      '<div class="stat"><b>' + people.length + '</b><span>收录人物</span></div>' +
-      '<div class="stat"><b>' + formatHeat(totalHeat) + '</b><span>全村总热度</span></div>' +
-      '<div class="stat"><b>' + Object.keys(votes).length + '</b><span>你顶过的人</span></div>';
+      '<div class="stat"><b>' + people.length + '</b><span>位村民</span></div>' +
+      '<span class="stat-separator" aria-hidden="true">·</span>' +
+      '<div class="stat"><b>' + PEOPLE.filter(function (p) { return p.petImage; }).length + '</b><span>位 3D 形象</span></div>';
+    document.getElementById("communityStats").textContent =
+      '全村热度 ' + formatHeat(totalHeat) + ' · 你已为 ' + Object.keys(votes).length + ' 位村民加油';
   }
 
   // ---------- 分类按钮 ----------
@@ -221,19 +224,19 @@
       var card = document.createElement("article");
       card.className = "card";
       card.innerHTML =
-        '<div class="card-top">' +
-          '<div class="avatar">' + avatarHTML(p) + '</div>' +
-          '<div>' +
-            '<h3 class="card-name">' + escapeHTML(p.name) + '</h3>' +
-            '<span class="card-cat">' + escapeHTML(p.category) + '</span>' +
-          '</div>' +
-          '<button class="speak-btn" data-id="' + escapeHTML(p.id) + '"' +
-            ' aria-label="朗读" title="听 TA 说">🔊</button>' +
-          (p.clip ? '<button class="clip-btn" data-id="' + escapeHTML(p.id) + '"' +
-            ' aria-label="原声" title="播放原声片段">🎵</button>' : "") +
+        '<div class="card-visual">' +
+          '<span class="card-cat">' + escapeHTML(p.category) + '</span>' +
+          '<span class="card-stamp" aria-hidden="true">村<br>民</span>' +
+          (p.petImage || p.image ? '<img class="card-character" src="' + escapeHTML(p.petImage || p.image) + '" alt="' + escapeHTML(p.name) + '" width="720" height="900" loading="lazy">' : '<div class="card-character card-fallback">' + avatarHTML(p) + '</div>') +
         '</div>' +
-        '<p class="card-title">' + escapeHTML(p.title || "") + '</p>' +
-        (p.quote ? '<p class="card-quote">“' + escapeHTML(p.quote) + '”</p>' : "") +
+        '<div class="card-copy"><h3 class="card-name">' + escapeHTML(p.name) + '</h3>' +
+          (p.quote ? '<p class="card-quote">“' + escapeHTML(p.quote) + '”</p>' : '<p class="card-title">' + escapeHTML(p.title || "") + '</p>') +
+        '</div>' +
+        '<div class="card-actions">' +
+          (p.clip ? '<button class="clip-btn" data-id="' + escapeHTML(p.id) + '" aria-label="播放' + escapeHTML(p.name) + '的原声" aria-pressed="false">▶ 听原声</button>' : "") +
+          '<button class="speak-btn" data-id="' + escapeHTML(p.id) + '" aria-label="朗读' + escapeHTML(p.name) + '的热梗" aria-pressed="false">朗读</button>' +
+          '<button class="card-detail" aria-label="查看' + escapeHTML(p.name) + '详情">查看 ↗</button>' +
+        '</div>' +
         '<div class="card-foot">' +
           '<span class="heat">🔥 ' + formatHeat((p.heat || 0) + (votes[p.id] || 0)) + '</span>' +
           '<button class="vote' + (isVoted ? " voted" : "") + '">' +
@@ -882,7 +885,8 @@
     window.NaijiacunTTS.onChange(function (id) {
       document.querySelectorAll(".speak-btn").forEach(function (btn) {
         btn.classList.toggle("playing", btn.dataset.id === id);
-        btn.textContent = btn.dataset.id === id ? "⏹" : "🔊";
+        btn.textContent = btn.dataset.id === id ? "停止" : "朗读";
+        btn.setAttribute("aria-pressed", String(btn.dataset.id === id));
       });
       document.querySelectorAll(".speak-detail").forEach(function (btn) {
         btn.classList.toggle("playing", id !== null);
