@@ -56,7 +56,7 @@
     <p>奶家村是非官方、非商业的粉丝向文字整理，仅供娱乐与交流。</p>
     <p>文中出现的角色名称与形象，著作权归各自权利人所有。本站为非官方、非商业的同人整理；页面中的形象图与原声音轨由使用者自行提供，仅供本地个人学习与比赛演示，请勿商用或再分发，如权利人认为不妥请联系删除。</p>
     <p>维护者 <a href="https://github.com/163-ai" target="_blank" rel="noopener">163-ai</a> · 源码开源，欢迎在 GitHub 提 Issue 或 PR。</p>
-    <p><a href="gallery.html">📋 形象总表</a> · <a href="pet.html">🐾 桌宠模式</a> · <a href="chat.html">💬 和村民聊两句</a> · <a href="pet3d.html">🌀 3D 展台</a></p>
+    <p><a href="gallery.html">📋 形象总表</a> · <a href="pet.html">🐾 桌宠模式</a> · <a href="chat.html">💬 和村民聊两句</a> · <a href="pet3d.html">🌀 3D 展台</a> · <a href="#admin" id="adminEntry">🔒 管理</a></p>
   </div>
 </footer>
 
@@ -194,9 +194,53 @@
 
 <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
 
+<!-- 管理面板：仅仓库协作者（有写权限的 GitHub Token）可用 -->
+<div id="adminModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="adminTitle">
+  <div class="modal-mask" data-close></div>
+  <div class="modal-card">
+    <button class="modal-close" data-close aria-label="关闭">✕</button>
+    <h2 class="modal-title" id="adminTitle">🔒 管理 · 删除村民</h2>
+
+    <div id="adminLocked">
+      <p class="hint">
+        这个面板只给拥有 <b>163-ai/naijiacun</b> 写权限的协作者用。删除会直接改仓库里的
+        <code>js/data.js</code> 并提交到 <code>main</code>，GitHub Pages 约 1~2 分钟后重新发布。
+        没有写权限的账号，GitHub 会直接拒绝提交 —— 所以光打开这个面板删不掉任何东西。
+      </p>
+      <form id="adminForm" class="add-form">
+        <label>GitHub Token
+          <input name="token" type="password" placeholder="ghp_… 或 github_pat_…" autocomplete="off" spellcheck="false">
+        </label>
+        <p class="hint tiny">
+          两种 Token 任选其一：<b>经典 Token</b>（github.com/settings/tokens/new，勾 <b>repo</b> 权限）
+          —— 仓库在别人个人账号名下时只能用这种；
+          <b>fine-grained Token</b>（只授权本仓库 <b>Contents: Read and write</b>）
+          —— 仅当仓库在你自己名下或在组织里时可用。
+          Token 只存在你自己的浏览器里（不勾选「记住」则关闭页面即失效），建议都设置有效期。
+        </p>
+        <label class="checkbox">
+          <input type="checkbox" name="remember" checked>
+          记住在这台设备上
+        </label>
+        <button type="submit" class="btn primary wide">验证并进入</button>
+      </form>
+      <p id="adminStatus" class="status-line"></p>
+    </div>
+
+    <div id="adminPanel" class="hidden">
+      <p class="hint tiny" id="adminWho"></p>
+      <div id="adminList" class="admin-list"></div>
+      <div class="settings-actions">
+        <button type="button" id="adminOut" class="btn ghost">退出管理</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script src="js/data.js"></script>
 <script src="js/avatars.js"></script>
 <script src="js/tts.js"></script>
 <script src="js/app.js"></script>
+<script src="js/admin.js"></script>
 </body>
 </html>
