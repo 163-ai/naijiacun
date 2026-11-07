@@ -1,0 +1,11 @@
+# Cloudflare Worker 部署配置（大模型对话代理 + 语音代理）
+# 部署：npx wrangler deploy
+# 配 Key：npx wrangler secret put LLM_KEY
+name = "naijiacun"
+main = "server/tts-worker.js"
+compatibility_date = "2026-11-01"
+
+# 上游模型（也可以在 Dashboard 用 Variables 覆盖；Key 必须用 secret，不要写这里）
+[vars]
+LLM_BASE = "https://open.bigmodel.cn/api/paas/v4"
+LLM_MODEL = "glm-4-flash"

@@ -22,8 +22,14 @@
   var MAX_TURNS = 12;    // 送给模型的历史轮数
   var MAX_KEEP = 60;     // 每个角色本地最多留多少条
 
+  // 站点自带的对话代理（Key 在服务端，访客免配置）。没配置过的访客默认走这里，
+  // 想用自己的模型 Key 在 ⚙️ 设置里换服务商即可。
+  var BUILTIN_PROXY = "https://naijiacun-chat.app.workbuddy.host/?sharecode=LJAS5NSXQO";
+  var BUILTIN_MODEL = "glm-4-flash";
+
   // cors: false 表示实测该服务商的跨域预检不放行，浏览器直连会被拦，只能走代理。
   var PRESETS = {
+    builtin: { label: "站点自带代理（免配置·推荐）", base: "", model: BUILTIN_MODEL, proxyBase: BUILTIN_PROXY },
     zhipu: { label: "智谱 GLM-4-Flash（永久免费·需代理）", base: "https://open.bigmodel.cn/api/paas/v4", model: "glm-4-flash", cors: false },
     siliconflow: { label: "硅基流动（有免费模型·可直连）", base: "https://api.siliconflow.cn/v1", model: "Qwen/Qwen3-8B", cors: true },
     deepseek: { label: "DeepSeek（便宜好用·可直连）", base: "https://api.deepseek.com/v1", model: "deepseek-chat", cors: true },
@@ -54,6 +60,13 @@
       CFG.proxyBase = c.proxyBase || "";
       CFG.model = c.model || "";
       CFG.key = c.key || "";
+    } else {
+      // 没配置过 → 直接用站点自带代理，打开就能聊
+      CFG.mode = "proxy";
+      CFG.base = "";
+      CFG.proxyBase = BUILTIN_PROXY;
+      CFG.model = BUILTIN_MODEL;
+      CFG.key = "";
     }
     return CFG;
   }
@@ -127,7 +140,11 @@
   // ---------- 请求 ----------
   function chatURL() {
     if (CFG.mode === "proxy") {
-      return (CFG.proxyBase || "").replace(/\/+$/, "") + "/api/chat";
+      // 代理地址可能带查询串（如 ?sharecode=xxx），要把路径插到查询串前面
+      var pb = (CFG.proxyBase || "").trim().replace(/\/+$/, "");
+      var q = pb.indexOf("?");
+      if (q === -1) return pb + "/api/chat";
+      return pb.slice(0, q) + "/api/chat" + pb.slice(q);
     }
     return (CFG.base || "").replace(/\/+$/, "") + "/chat/completions";
   }
@@ -609,11 +626,16 @@
   // 直连 / 代理两种模式要填的东西不一样，切换时把无关字段藏掉，避免填错地址
   function syncModeUI() {
     var proxy = modeSel.value === "proxy";
+    var builtin = presetSel.value === "builtin";
     baseField.hidden = proxy;
     modelField.hidden = proxy;
-    proxyField.hidden = !proxy;
+    proxyField.hidden = !proxy || builtin;
+
     var p = PRESETS[presetSel.value];
-    if (proxy) {
+    if (builtin) {
+      cfgHint.innerHTML = "正在使用<b>站点自带代理</b>：模型 Key 在服务端，你什么都不用填。" +
+        "想换成自己的模型，从上面「服务商」里另选一个。";
+    } else if (proxy) {
       cfgHint.innerHTML = "Worker 已经替你保管 Key 和上游地址，这里只填 Worker 根地址即可。" +
         "模型名、上游由 Worker 的环境变量决定。";
     } else if (p && p.cors === false) {
@@ -627,11 +649,10 @@
   function fillDialog() {
     loadCfg();
     var hit = "custom";
+    if (CFG.proxyBase && CFG.proxyBase === BUILTIN_PROXY) hit = "builtin";
     Object.keys(PRESETS).forEach(function (k) {
       if (PRESETS[k].base && PRESETS[k].base === CFG.base) hit = k;
     });
-    // 第一次打开（什么都没配）默认停在推荐的免费方案上
-    if (!CFG.base && !CFG.proxyBase && !CFG.key) hit = "zhipu";
 
     presetSel.value = hit;
     modeSel.value = CFG.mode;
@@ -639,14 +660,6 @@
     proxyInput.value = CFG.proxyBase;
     modelInput.value = CFG.model;
     keyInput.value = CFG.key;
-
-    // 选了服务商却没填地址 → 用预设补上，省得手打
-    var p = PRESETS[hit];
-    if (p && p.base) {
-      if (!baseInput.value) baseInput.value = p.base;
-      if (!modelInput.value) modelInput.value = p.model;
-    }
-    if (!CFG.proxyBase && (!p || p.cors === false)) modeSel.value = "proxy";
 
     var t = readJSON("naijacun_tts", null) || {};
     ttsBase.value = t.endpoint || "";
@@ -658,6 +671,15 @@
   presetSel.addEventListener("change", function () {
     var p = PRESETS[presetSel.value];
     if (!p) return;
+    if (p.proxyBase) {
+      // 站点自带代理：地址固定，不需要用户填
+      baseInput.value = "";
+      proxyInput.value = p.proxyBase;
+      modelInput.value = p.model;
+      modeSel.value = "proxy";
+      syncModeUI();
+      return;
+    }
     if (p.base) {
       baseInput.value = p.base;
       modelInput.value = p.model;
