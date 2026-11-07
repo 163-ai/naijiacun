@@ -1,0 +1,87 @@
+{
+  "models": [
+    {
+      "id": "nailong",
+      "file": "assets/models/nailong.glb",
+      "bytes": 1822964,
+      "sha256": "a5e1867385cf29d40c3a976cf16b8e6d8b3f23f59bd6f31f8e79017fe5ab7ac5",
+      "source": "https://raw.githubusercontent.com/ericshang98/cowcoming/cd1d7774658d2eb9f8aab8bf341165fbfb2d1716/public/characters/nailong/v1/model.glb",
+      "conversion": "Unchanged downloaded GLB bytes",
+      "meshes": 1,
+      "triangles": 49726,
+      "animations": [
+        "bow",
+        "idle",
+        "look",
+        "nod",
+        "reflect",
+        "tilt",
+        "wave"
+      ],
+      "extensionsUsed": [],
+      "extensionsRequired": [],
+      "externalResources": [],
+      "asset": {
+        "generator": "Khronos glTF Blender I/O v5.2.40",
+        "version": "2.0"
+      }
+    },
+    {
+      "id": "naiwa",
+      "file": "assets/models/naiwa.glb",
+      "bytes": 3397852,
+      "sha256": "a55c91173eb683cfd8a2b3dc27776e5ab9f0962db9d627c9af46b32d65854107",
+      "source": "https://raw.githubusercontent.com/bigdiu/naiwa-nailoong-blender-model/82bbeba708861ed55b65372bf561f73ee68cde88/nailong_colored.blend",
+      "conversion": "Original Blender geometry and material colours exported to GLB",
+      "meshes": 1,
+      "triangles": 67960,
+      "animations": [],
+      "extensionsUsed": [],
+      "extensionsRequired": [],
+      "externalResources": [],
+      "asset": {
+        "copyright": "WeDai / bigdiu. Learning and practice, non-commercial use. Retain author credit and source; character rights belong to their respective owners.",
+        "generator": "Khronos glTF Blender I/O v5.2.41",
+        "version": "2.0"
+      }
+    },
+    {
+      "id": "niulai",
+      "file": "assets/models/niulai.glb",
+      "bytes": 3563108,
+      "sha256": "7ccc6f74babe638f6c7fd67f2e4abd4dad1c683461dfb6091a35a4fa45c9389a",
+      "source": "https://raw.githubusercontent.com/askuy/niulai-site/d2488fb9b2a42f2183bb84752925dd0c8107b752/assets/niulai.glb",
+      "conversion": "Unchanged downloaded GLB bytes",
+      "meshes": 175,
+      "triangles": 159260,
+      "animations": [
+        "NIU LAI",
+        "NIU LAI head",
+        "NIU LAI jaw volume",
+        "NIU LAI lips",
+        "NIU LAI lower jaw teeth",
+        "NIU LAI tongue",
+        "NIU LAI mouth cavity",
+        "NIU LAI upper teeth",
+        "MAMA head",
+        "MAMA jaw volume",
+        "MAMA lips",
+        "MAMA lower jaw teeth",
+        "MAMA tongue",
+        "MAMA mouth cavity",
+        "MAMA upper teeth",
+        "Snake sway"
+      ],
+      "extensionsUsed": [],
+      "extensionsRequired": [],
+      "externalResources": [],
+      "asset": {
+        "generator": "Khronos glTF Blender I/O v4.5.51",
+        "version": "2.0"
+      },
+      "displayNode": "NIU_LAI",
+      "displayMeshes": 52,
+      "displayTriangles": 61656
+    }
+  ]
+}

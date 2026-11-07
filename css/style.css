@@ -155,9 +155,49 @@ body {
   padding: 9px 16px;
   font-size: 14px;
   cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 
 .btn:hover { border-color: var(--ink-3); }
+
+.btn:focus-visible,
+.chip:focus-visible,
+.sort-label select:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
+
+/* 工具栏里的成组按钮：连体胶囊，整组换行、不会被拆散 */
+.tool-group {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.tool-group .btn {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  white-space: nowrap;
+  padding: 9px 13px;
+}
+
+.tool-group .btn + .btn { border-left: 1px solid var(--line); }
+
+.tool-group .btn:hover {
+  background: var(--green-soft);
+  color: var(--green);
+  border-color: transparent;
+}
+
+.tool-group .btn.primary:hover {
+  background: var(--green);
+  color: #fff;
+  opacity: 0.9;
+}
 
 /* 用 <a> 当按钮时对齐一致 */
 a.btn {
@@ -712,4 +752,30 @@ a.btn {
 @media (max-width: 560px) {
   .hero h1 { font-size: 32px; letter-spacing: 4px; }
   .form-row { flex-direction: column; gap: 0; }
+
+  /* 顶部工具栏：排序独占一行，两组按钮各自铺满一行，不再乱换行 */
+  .stats { gap: 16px; }
+  .stat { min-width: 84px; }
+  .toolbar { gap: 8px; }
+  .sort-label {
+    width: 100%;
+    margin-right: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 4px 4px 10px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--surface);
+  }
+  .sort-label select { margin-left: 0; flex: 1; max-width: 140px; }
+  .tool-group { width: 100%; }
+  .tool-group .btn {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 11px 4px;
+    font-size: 13px;
+  }
 }

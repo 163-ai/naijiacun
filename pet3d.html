@@ -5,25 +5,29 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>3D 形象展台 · 奶家村</title>
   <link rel="stylesheet" href="css/style.css">
-  <link rel="stylesheet" href="css/pet3d.css">
+  <link rel="stylesheet" href="css/pet3d.css?v=public-models-3">
 </head>
 <body>
   <div class="p3-wrap">
     <header class="p3-head">
       <a class="p3-back" href="pet.html">← 返回 2D 桌宠</a>
       <h1>🌀 3D 形象展台</h1>
-      <p>这次是<b>真的 3D 网格</b>：由原图算出厚度与浮雕，顶点沿 Z 抬起、轮廓补侧壁，再打上真实光照和投影。
-        转一转就能看到侧面厚度。<b>形象仍然是你那 6 张原图</b>，没有重新绘制、没有生成新模型。</p>
+      <p>把喜欢的角色放到眼前，<b>完整转一圈</b>。拖动查看每个方向，也可以一键切换正面、侧面和背面。</p>
     </header>
 
     <div class="p3-main">
       <div id="stage" class="p3-stage">
         <canvas id="gl"></canvas>
-        <div id="loading" class="p3-loading">正在生成 3D 网格…</div>
-        <div id="fallback" class="p3-fallback hidden"></div>
+        <div class="p3-views" aria-label="观察方向">
+          <button class="p3-btn" id="frontBtn" data-view="front" aria-pressed="false">正面</button>
+          <button class="p3-btn" id="sideBtn" data-view="side" aria-pressed="false">侧面</button>
+          <button class="p3-btn" id="backBtn" data-view="back" aria-pressed="false">背面</button>
+        </div>
+        <div id="loading" class="p3-loading" role="status">正在加载模型…</div>
+        <div id="fallback" class="p3-fallback hidden" role="status"><p id="errorMessage"></p><button id="retryBtn" class="p3-btn">重新加载</button></div>
         <div id="bubble" class="p3-bubble hidden"></div>
         <div class="p3-hint">按住拖拽旋转 · 滚轮缩放 · 双击复位</div>
-        <div class="p3-corner">Three.js · WebGL</div>
+        <div class="p3-corner">完整模型 · 360° 旋转</div>
       </div>
 
       <aside class="p3-side">
@@ -31,7 +35,7 @@
         <div id="chips" class="p3-chips"></div>
 
         <div class="p3-tools">
-          <button class="p3-btn primary" id="spinBtn" aria-pressed="true" title="在正面左右摆动展示（手动拖拽仍可 360° 旋转）">🔄 自动展示</button>
+          <button class="p3-btn" id="spinBtn" aria-pressed="true" title="自动旋转观察完整角色">🔄 自动展示</button>
           <button class="p3-btn" id="wireBtn" aria-pressed="false" title="显示真实的三角网格">🧱 线框</button>
           <button class="p3-btn" id="talkBtn">🔊 说句话</button>
           <button class="p3-btn" id="clipBtn">🎵 原声</button>
@@ -41,26 +45,19 @@
         <p id="status" class="p3-status">准备中…</p>
 
         <div class="p3-panel">
-          <h3>怎么变成立体的</h3>
-          <ol>
-            <li>把透明 PNG 的轮廓当成形状</li>
-            <li>距离变换算出「哪里厚、哪里薄」</li>
-            <li>一张 128×128 平面网格按高度沿 Z 顶起</li>
-            <li>沿轮廓补一圈侧壁 → 有体积的封闭网格</li>
-            <li>标准材质 + 方向光 + 阴影 → 真实光照</li>
-          </ol>
-          <p class="p3-mini">点「🧱 线框」可以直接看到三角面，验证不是贴图假立体。</p>
+          <h3>模型来源</h3>
+          <p id="modelCredit" class="p3-source-credit"></p>
+          <a id="modelSource" class="p3-source-link" target="_blank" rel="noopener noreferrer">查看模型与来源 ↗</a>
+          <p id="modelLicense" class="p3-mini"></p>
         </div>
-
-        <p class="p3-caveat">⚠️ 这是<b>单面浮雕式 3D</b>：正面与侧面是真的立体几何，转到背面看到的是暗色底板，
-          不是每根手指都建模的完整手办。要 360° 无死角的模型，需要多角度素材或重新建模。</p>
+        <p id="missingModels" class="p3-caveat"></p>
       </aside>
     </div>
   </div>
 
-  <script src="vendor/three.min.js"></script>
+  <script type="importmap">{"imports":{"three":"./vendor/three/three.module.min.js"}}</script>
   <script src="js/data.js"></script>
-  <script src="js/3d-data.js"></script>
-  <script src="js/pet3d.js"></script>
+  <script src="js/3d-models.js?v=public-models-3"></script>
+  <script type="module" src="js/pet3d.js?v=public-models-3"></script>
 </body>
 </html>
