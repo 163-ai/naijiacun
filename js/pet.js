@@ -44,20 +44,35 @@
   }
 
   // ---------- 形象 ----------
-  // 优先用角色图（data.js 的 image 字段），否则用内置 SVG，再否则用首字圆牌
+  // 2.5D：用同一张原始 PNG 叠 4 层（1 层正面 + 3 层沿 Z 轴后退的暗层），
+  // 旋转时露出"厚度"，正面看仍是原图本身——不生成、不修改任何形象素材。
+  // SVG / emoji 兜底只叠一层，避免 SVG 内部 id 重复。
   function figureHTML(id) {
     var p = findPerson(id);
 
     if (p && p.image) {
-      return '<img class="pet-img" src="' + p.image + '" alt="' + (p.name || "") + '" draggable="false">';
+      var src = p.image;
+      var img = function (alt) {
+        return '<img class="pet-img" src="' + src + '" alt="' + alt + '" draggable="false">';
+      };
+      return '<div class="pet-depth" style="--pet-mask:url(\'' + src + '\')">' +
+        '<div class="pet-slab pet-slab--b3">' + img("") + '</div>' +
+        '<div class="pet-slab pet-slab--b2">' + img("") + '</div>' +
+        '<div class="pet-slab pet-slab--b1">' + img("") + '</div>' +
+        '<div class="pet-slab pet-slab--front">' + img(p.name || "") + '</div>' +
+        '<div class="pet-rim"></div>' +
+      '</div>';
     }
+
+    var art = "";
     var A = window.NaijiacunAvatars;
     if (A) {
       var s = A.svg(id);
-      if (s) return s;
-      if (p && p.name) return A.initial(p.name);
+      if (s) art = s;
+      else if (p && p.name) art = A.initial(p.name);
     }
-    return '<span class="pet-emoji">' + ((p && p.emoji) || "🙂") + "</span>";
+    if (!art) art = '<span class="pet-emoji">' + ((p && p.emoji) || "🙂") + "</span>";
+    return '<div class="pet-depth"><div class="pet-slab pet-slab--front">' + art + '</div></div>';
   }
 
   // ---------- 桌宠实例 ----------
@@ -83,10 +98,14 @@
     this.pointer = null;
     this.destroyed = false;
     this.pinned = false;
+    this.depth = true;
+    // 2.5D 视角：x/y 是当前角度，tx/ty 是目标角度，lift 是离地高度
+    this.gaze = { x: 0, y: 0, tx: 0, ty: 0, lift: 0 };
 
     this._build();
     this._place();
     this._bind();
+    this._bindGaze();
     this._tick();
 
     var self = this;
@@ -234,6 +253,48 @@
     this.el.addEventListener("pointercancel", this._up);
   };
 
+  // ---------- 2.5D 视角：指针在哪，它就朝哪边转 ----------
+  // 监听挂在 document 上（而不是宠物自身），所以鼠标在舞台任意位置都会跟随；
+  // 搬到置顶小窗后会重新绑定到小窗的 document。
+  Pet.prototype._bindGaze = function () {
+    var self = this;
+    this._gazeDoc = this.board.ownerDocument;
+
+    this._onGazeMove = function (e) {
+      if (self.destroyed || !self.depth) return;
+      var box = self.board.getBoundingClientRect();
+      var cx = self.x + self.size / 2;
+      var cy = self.y + self.size * 0.45;
+      var nx = clamp((e.clientX - box.left - cx) / (box.width || 320), -1, 1);
+      var ny = clamp((e.clientY - box.top - cy) / (box.height || 320), -1, 1);
+      self.gaze.tx = nx * 27;   // 左右最多转 27°
+      self.gaze.ty = -ny * 15;  // 上下最多转 15°
+    };
+
+    this._gazeDoc.addEventListener("pointermove", this._onGazeMove, { passive: true });
+  };
+
+  Pet.prototype._unbindGaze = function () {
+    if (this._gazeDoc && this._onGazeMove) {
+      this._gazeDoc.removeEventListener("pointermove", this._onGazeMove);
+    }
+    this._gazeDoc = null;
+  };
+
+  // 开关 2.5D（切回原来的平面观感）
+  Pet.prototype.setDepth = function (on) {
+    this.depth = !!on;
+    this.el.classList.toggle("is-flat", !on);
+    if (!on) {
+      this.gaze.tx = 0;
+      this.gaze.ty = 0;
+      this.bodyEl.style.setProperty("--rx", "0deg");
+      this.bodyEl.style.setProperty("--ry", "0deg");
+      this.bodyEl.style.setProperty("--lift", "0px");
+      this.bodyEl.style.setProperty("--tilt", "0deg");
+    }
+  };
+
   // ---------- 行为 ----------
   Pet.prototype.wake = function () {
     this.lastTouch = Date.now();
@@ -326,6 +387,23 @@
         self._sleep();
       }
 
+      // 2.5D：角度平滑插值 + 一点点自主摆动，让它不像贴图
+      if (self.depth) {
+        var t = now / 1000;
+        var g = self.gaze;
+        g.x += (g.tx + Math.sin(t * 0.7) * 2.2 - g.x) * 0.075;
+        g.y += (g.ty + Math.cos(t * 0.55) * 1.4 - g.y) * 0.075;
+        g.lift += ((self.state === "drag" ? 26 : 0) - g.lift) * 0.12;
+
+        var b = self.bodyEl.style;
+        b.setProperty("--ry", (g.x * self.facing).toFixed(2) + "deg");
+        b.setProperty("--rx", g.y.toFixed(2) + "deg");
+        b.setProperty("--lift", g.lift.toFixed(1) + "px");
+        b.setProperty("--tilt", (self.state === "walk" ? Math.sin(t * 9) * 3 : 0).toFixed(2) + "deg");
+        b.setProperty("--shadow-x", (-g.x * 0.45).toFixed(1) + "px");
+        b.setProperty("--shadow-scale", (1 + g.lift / 130).toFixed(3));
+      }
+
       self.frame = self.host.requestAnimationFrame(frame);
     }
 
@@ -390,10 +468,12 @@
   Pet.prototype.moveTo = function (host, board) {
     try { this.host.cancelAnimationFrame(this.frame); } catch (err) { /* 忽略 */ }
     this.host.removeEventListener("resize", this._resize);
+    this._unbindGaze();
 
     this.host = host;
     this.board = board;
     board.appendChild(this.el);
+    this._bindGaze();
 
     this.pinned = host !== window;
 
@@ -410,6 +490,7 @@
 
   Pet.prototype.destroy = function () {
     this.destroyed = true;
+    this._unbindGaze();
     clearTimeout(this.nextTimer);
     clearTimeout(this.bubbleTimer);
     try { this.host.cancelAnimationFrame(this.frame); } catch (err) { /* 忽略 */ }

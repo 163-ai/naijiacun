@@ -12,6 +12,7 @@
   var pinBtn = document.getElementById("pinBtn");
   var talkBtn = document.getElementById("talkBtn");
   var wanderBtn = document.getElementById("wanderBtn");
+  var depthBtn = document.getElementById("depthBtn");
   var sizeRange = document.getElementById("sizeRange");
 
   function setNote(msg, kind) {
@@ -97,6 +98,18 @@
 
   wanderBtn.addEventListener("click", function () {
     pet.wander();
+  });
+
+  // 2.5D 立体 / 平面切换（默认立体）
+  var depthOn = true;
+  depthBtn.addEventListener("click", function () {
+    depthOn = !depthOn;
+    pet.setDepth(depthOn);
+    depthBtn.setAttribute("aria-pressed", String(depthOn));
+    depthBtn.textContent = depthOn ? "🧊 立体感" : "▫️ 平面";
+    setNote(depthOn
+      ? "移动鼠标它会转头看你；拖起来会离地，影子跟着变。"
+      : "已切回平面模式，形象和原来完全一致。");
   });
 
   sizeRange.addEventListener("input", function () {

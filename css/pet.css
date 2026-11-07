@@ -1,10 +1,14 @@
 /* 奶家村 · 桌宠样式
  *
  * 结构：
- *   .pet                      定位容器（由 JS 设 transform）
+ *   .pet                      定位容器（由 JS 设 translate3d）
  *     .pet-inner              走路起伏 / 说话跳一下 / 被拖起来
- *       .pet-shadow           地面投影
- *       .pet-body             角色本体（朝向由 --facing 控制）
+ *       .pet-shadow           地面投影（跟随倾斜偏移）
+ *       .pet-body             朝向（--facing）、呼吸、2.5D 视角变量
+ *         .pet-depth          3D 变换层（rotateX/Y、离地高度）
+ *           .pet-slab--b1..b3  沿 Z 轴后退的暗层，旋转时露出"厚度"
+ *           .pet-slab--front   正面原图
+ *           .pet-rim           跟随原图 alpha 的高光/边缘光
  *     .pet-bubble             对话气泡
  *     .pet-zzz                瞌睡符号
  */
@@ -28,6 +32,7 @@
   width: 100%;
   height: 100%;
   transform-origin: 50% 92%;
+  transform-style: preserve-3d;
 }
 
 .pet-body {
@@ -35,6 +40,9 @@
   height: 100%;
   transform: scaleX(var(--facing, 1));
   transform-origin: 50% 92%;
+  transform-style: preserve-3d;
+  perspective: 720px;
+  perspective-origin: 50% 44%;
 }
 
 .pet-body svg,
@@ -48,6 +56,9 @@
   object-fit: contain;
   border-radius: 50%;
 }
+
+/* 立体模式保留角色本身的透明轮廓，不再裁成圆形 */
+.pet:not(.is-flat) .pet-body .pet-img { border-radius: 0; }
 
 .pet-body .pet-emoji {
   display: flex;
@@ -66,8 +77,80 @@
   height: 10%;
   border-radius: 50%;
   background: radial-gradient(ellipse at center, rgba(44, 44, 42, .20), rgba(44, 44, 42, 0) 72%);
+  transform: translateX(var(--shadow-x, 0px)) scale(var(--shadow-scale, 1));
   transition: opacity .3s;
 }
+
+/* ---------- 2.5D 立体层 ----------
+ * 只用 CSS 3D transform（不引 WebGL、不引任何库、不生成新形象）。
+ * 原始 PNG 复制 3 份沿 Z 轴后退并压暗，正面看仍是原图，
+ * 转头时露出侧面厚度；置顶小窗里同样能跑（纯 CSS，不受 rAF 节流影响）。 */
+.pet-depth {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+  transform: rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg))
+             rotateZ(var(--tilt, 0deg)) translateZ(var(--lift, 0px));
+  will-change: transform;
+}
+
+.pet-slab {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+}
+
+.pet-slab--front {
+  transform: translateZ(0);
+  filter: drop-shadow(0 6px 5px rgba(44, 44, 42, .18));
+}
+
+.pet-slab--b1 {
+  transform: translateZ(-6px) translateX(1px);
+  filter: brightness(.62) saturate(.82);
+  opacity: .9;
+}
+.pet-slab--b2 {
+  transform: translateZ(-12px) translateX(2px);
+  filter: brightness(.48) saturate(.72);
+  opacity: .8;
+}
+.pet-slab--b3 {
+  transform: translateZ(-18px) translateX(3px);
+  filter: brightness(.36) saturate(.6);
+  opacity: .7;
+}
+
+/* 高光用同一张图的 alpha 做遮罩，只落在角色身上，不会变成圆形光斑 */
+.pet-rim {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(circle at 30% 22%,
+              rgba(255, 255, 255, .62), rgba(255, 255, 255, .12) 38%,
+              rgba(255, 255, 255, 0) 62%);
+  mix-blend-mode: soft-light;
+  opacity: .85;
+  transform: translateZ(1px);
+  -webkit-mask-image: var(--pet-mask, none);
+  mask-image: var(--pet-mask, none);
+  -webkit-mask-size: contain;   mask-size: contain;
+  -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
+  -webkit-mask-position: center;  mask-position: center;
+}
+
+/* 拖起来时离地更高，影子随之放大 */
+.pet.is-drag .pet-shadow { opacity: .55; }
+
+/* 关掉立体感：回到原来的平面观感 */
+.pet.is-flat .pet-body { perspective: none; }
+.pet.is-flat .pet-depth { transform: none; }
+.pet.is-flat .pet-slab--b1,
+.pet.is-flat .pet-slab--b2,
+.pet.is-flat .pet-slab--b3,
+.pet.is-flat .pet-rim { display: none; }
+.pet.is-flat .pet-slab--front { filter: none; }
 
 /* ---------- 待机：轻轻呼吸 ---------- */
 .pet.is-idle .pet-body {
@@ -294,6 +377,14 @@ body.pet-page {
 .pet-chip .mini svg,
 .pet-chip .mini img { width: 100%; height: 100%; display: block; object-fit: cover; }
 
+/* 角色小头像只用正面那一层，别叠厚度（否则小图会发暗） */
+.pet-chip .mini .pet-slab--b1,
+.pet-chip .mini .pet-slab--b2,
+.pet-chip .mini .pet-slab--b3,
+.pet-chip .mini .pet-rim { display: none; }
+
+.pet-chip .mini .pet-depth { position: relative; width: 100%; height: 100%; transform: none; }
+
 .pet-toolbar {
   display: flex;
   align-items: center;
@@ -320,6 +411,12 @@ body.pet-page {
 }
 
 .pet-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+.pet-btn[aria-pressed="true"] {
+  border-color: var(--green, #0f6e56);
+  background: var(--green-soft, #e1f5ee);
+  color: var(--green, #0f6e56);
+}
 
 .pet-btn.primary {
   background: var(--green, #0f6e56);
@@ -349,6 +446,21 @@ body.pet-page {
   background-image: radial-gradient(rgba(44, 44, 42, .07) 1px, transparent 1px);
   background-size: 22px 22px;
   min-height: 340px;
+}
+
+/* 透视地面光晕：给平面舞台一个"有地板"的纵深参照 */
+.pet-stage::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 5%;
+  width: 66%;
+  height: 30%;
+  transform: translateX(-50%) perspective(420px) rotateX(68deg);
+  background: radial-gradient(ellipse at center,
+              rgba(255, 205, 120, .22), rgba(255, 205, 120, 0) 70%);
+  pointer-events: none;
+  z-index: 0;
 }
 
 .pet-note {
