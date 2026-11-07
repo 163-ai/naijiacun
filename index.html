@@ -33,12 +33,16 @@
           <option value="new">提名的在前</option>
         </select>
       </label>
-      <button id="randomBtn" class="btn ghost">🎁 拆个盲盒</button>
-      <a class="btn ghost" href="pet.html">🐾 桌宠模式</a>
-      <a class="btn ghost" href="chat.html">💬 和村民聊两句</a>
-      <a class="btn ghost" href="pet3d.html">🌀 3D 展台</a>
-      <button id="voiceBtn" class="btn ghost">🔑 语音设置</button>
-      <button id="addBtn" class="btn primary">➕ 提名新人</button>
+      <div class="tool-group" role="group" aria-label="玩法模式">
+        <button id="randomBtn" class="btn ghost" title="随机抽一位村民开箱">🎁 拆盲盒</button>
+        <a class="btn ghost" href="pet.html" title="把村民变成桌宠，浮在其他窗口上面">🐾 桌宠</a>
+        <a class="btn ghost" href="chat.html" title="挑一个村民直接开聊，回复会用他的音色念出来">💬 聊两句</a>
+        <a class="btn ghost" href="pet3d.html" title="WebGL 3D 网格展台，可 360° 拖拽">🌀 3D 展台</a>
+      </div>
+      <div class="tool-group tool-actions" role="group" aria-label="设置与贡献">
+        <button id="voiceBtn" class="btn ghost" title="配置朗读音色（Breeze Key 或浏览器语音）">🔑 语音</button>
+        <button id="addBtn" class="btn primary" title="提名一位新村民入住奶家村">➕ 提名新人</button>
+      </div>
     </div>
   </section>
 
