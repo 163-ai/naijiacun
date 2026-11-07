@@ -1,0 +1,52 @@
+name: 预生成语音
+
+# 在 GitHub 网页上点一下就能生成，不需要本地环境。
+# 使用前先在仓库 Settings → Secrets and variables → Actions 里添加：
+#   BREEZE_API_KEY   你的 Breeze Key
+#   BREEZE_VOICE_ID  要使用的音色 ID
+
+on:
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 强制重新生成全部音频
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  pregen:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v4
+
+      - name: 安装 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: 合成语音
+        env:
+          BREEZE_API_KEY: ${{ secrets.BREEZE_API_KEY }}
+          BREEZE_VOICE_ID: ${{ secrets.BREEZE_VOICE_ID }}
+        run: |
+          if [ "${{ inputs.force }}" = "true" ]; then
+            node scripts/pregen-audio.mjs --force
+          else
+            node scripts/pregen-audio.mjs
+          fi
+
+      - name: 提交生成的音频
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add audio
+          if git diff --staged --quiet; then
+            echo "没有新的音频，跳过提交"
+          else
+            git commit -m "chore: 更新预生成语音"
+            git push
+          fi
