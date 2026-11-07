@@ -270,6 +270,41 @@ body {
   color: var(--green);
 }
 
+.speak-btn {
+  margin-left: auto;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  border-radius: 50%;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--ink-2);
+}
+
+.speak-btn:hover { border-color: var(--ink-3); }
+
+.speak-btn.playing {
+  background: var(--green-soft);
+  border-color: var(--green);
+}
+
+.detail-cta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn.ghost { background: var(--bg); }
+
+.btn.ghost.playing {
+  background: var(--green-soft);
+  border-color: var(--green);
+  color: var(--green);
+}
+
 /* ---------- 弹窗 ---------- */
 .modal {
   position: fixed;

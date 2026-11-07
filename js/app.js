@@ -63,6 +63,26 @@
     return list;
   }
 
+  // ---------- 语音 ----------
+  function speechTextOf(p) {
+    if (!p) return "";
+    if (p.quote) return p.quote;
+    return (p.title ? p.title + "。" : "") + (p.desc || "");
+  }
+
+  function hasTTS() {
+    return typeof window.NaijiacunTTS !== "undefined";
+  }
+
+  function toggleSpeak(p) {
+    if (!hasTTS() || !p) return;
+    if (window.NaijiacunTTS.getCurrent() === p.id) {
+      window.NaijiacunTTS.stop();
+    } else {
+      window.NaijiacunTTS.speak(speechTextOf(p), p.id);
+    }
+  }
+
   // ---------- 统计 ----------
   function renderStats() {
     var people = allPeople();
@@ -142,6 +162,8 @@
             '<h3 class="card-name">' + escapeHTML(p.name) + '</h3>' +
             '<span class="card-cat">' + escapeHTML(p.category) + '</span>' +
           '</div>' +
+          '<button class="speak-btn" data-id="' + escapeHTML(p.id) + '"' +
+            ' aria-label="朗读" title="听 TA 说">🔊</button>' +
         '</div>' +
         '<p class="card-title">' + escapeHTML(p.title || "") + '</p>' +
         (p.quote ? '<p class="card-quote">“' + escapeHTML(p.quote) + '”</p>' : "") +
@@ -156,6 +178,10 @@
       card.querySelector(".vote").addEventListener("click", function (e) {
         e.stopPropagation();
         toggleVote(p.id);
+      });
+      card.querySelector(".speak-btn").addEventListener("click", function (e) {
+        e.stopPropagation();
+        toggleSpeak(p);
       });
       grid.appendChild(card);
     });
@@ -203,18 +229,25 @@
       '<div class="card-foot">' +
         '<span class="heat">🔥 热度 ' +
           formatHeat((people.heat || 0) + (votes[id] || 0)) + '</span>' +
-        '<button class="vote' + (isVoted ? " voted" : "") + '">' +
-          (isVoted ? "已顶 👍" : "顶一票 👍") +
-        '</button>' +
+        '<span class="detail-cta">' +
+          '<button class="btn ghost speak-detail">🔊 朗读</button>' +
+          '<button class="vote' + (isVoted ? " voted" : "") + '">' +
+            (isVoted ? "已顶 👍" : "顶一票 👍") +
+          '</button>' +
+        '</span>' +
       '</div>';
 
     document.querySelector("#modalBody .vote").addEventListener("click", function () {
       toggleVote(id);
     });
+    document.querySelector("#modalBody .speak-detail").addEventListener("click", function () {
+      toggleSpeak(people);
+    });
     document.getElementById("modal").classList.remove("hidden");
   }
 
   function closeModals() {
+    if (hasTTS()) window.NaijiacunTTS.stop();
     document.getElementById("modal").classList.add("hidden");
     document.getElementById("addModal").classList.add("hidden");
   }
@@ -293,4 +326,18 @@
   bindEvents();
   setupAddForm();
   renderAll();
+
+  // 语音播放状态与按钮联动
+  if (hasTTS()) {
+    window.NaijiacunTTS.onChange(function (id) {
+      document.querySelectorAll(".speak-btn").forEach(function (btn) {
+        btn.classList.toggle("playing", btn.dataset.id === id);
+        btn.textContent = btn.dataset.id === id ? "⏹" : "🔊";
+      });
+      document.querySelectorAll(".speak-detail").forEach(function (btn) {
+        btn.classList.toggle("playing", id !== null);
+        btn.textContent = id !== null ? "⏹ 停止" : "🔊 朗读";
+      });
+    });
+  }
 })();
