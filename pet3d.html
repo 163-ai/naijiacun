@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>3D 形象展台 · 奶家村</title>
   <link rel="stylesheet" href="css/style.css?v=village-1">
-  <link rel="stylesheet" href="css/pet3d.css?v=village-1">
+  <link rel="stylesheet" href="css/pet3d.css?v=loading-1">
   <link rel="stylesheet" href="css/village.css?v=village-1">
 </head>
 <body class="village-theme p3-page">
@@ -27,7 +27,14 @@
           <button class="p3-btn" id="sideBtn" data-view="side" aria-pressed="false">侧面</button>
           <button class="p3-btn" id="backBtn" data-view="back" aria-pressed="false">背面</button>
         </div>
-        <div id="loading" class="p3-loading" role="status">正在加载模型…</div>
+        <div id="loading" class="p3-loading" role="status" aria-live="polite">
+          <img id="modelPreview" class="p3-preview" alt="" hidden decoding="async" draggable="false">
+          <div class="p3-load-copy">
+            <strong id="loadLabel">正在加载模型…</strong>
+            <progress id="loadProgress" max="100" aria-label="模型下载进度"></progress>
+            <span id="loadDetail">模型准备好后，即可拖动旋转。</span>
+          </div>
+        </div>
         <div id="fallback" class="p3-fallback hidden" role="status"><p id="errorMessage"></p><button id="retryBtn" class="p3-btn">重新加载</button></div>
         <div id="bubble" class="p3-bubble hidden"></div>
         <div class="p3-hint">按住拖拽旋转 · 滚轮缩放 · 双击复位</div>
@@ -64,7 +71,7 @@
   <script type="importmap">{"imports":{"three":"./vendor/three/three.module.min.js"}}</script>
   <script src="js/data.js?v=lossless-1"></script>
   <script src="js/3d-models.js?v=lossless-1"></script>
-  <script type="module" src="js/pet3d.js?v=lossless-1"></script>
+  <script type="module" src="js/pet3d.js?v=loading-1"></script>
   <script src="js/village.js?v=village-1"></script>
   <script>
     window.addEventListener("load", function () {

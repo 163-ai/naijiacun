@@ -11,6 +11,10 @@ import { MeshoptDecoder } from "../vendor/meshopt/meshopt_decoder.module.js";
   var stage = document.getElementById("stage");
   var canvas = document.getElementById("gl");
   var loading = document.getElementById("loading");
+  var modelPreview = document.getElementById("modelPreview");
+  var loadLabel = document.getElementById("loadLabel");
+  var loadProgress = document.getElementById("loadProgress");
+  var loadDetail = document.getElementById("loadDetail");
   var fallback = document.getElementById("fallback");
   var note = document.getElementById("status");
   var bubble = document.getElementById("bubble");
@@ -65,6 +69,7 @@ import { MeshoptDecoder } from "../vendor/meshopt/meshopt_decoder.module.js";
   var loader = new GLTFLoader();
   loader.setMeshoptDecoder(MeshoptDecoder);
   var model = null, currentId = "", loadVersion = 0;
+  var modelCache = new Map(), pendingLoad = null;
   var yaw = 0, pitch = 0, velYaw = 0, velPitch = 0;
   var zoom = 1, fitDistance = 4.7;
   var dragging = false, lastX = 0, lastY = 0;
@@ -83,19 +88,26 @@ import { MeshoptDecoder } from "../vendor/meshopt/meshopt_decoder.module.js";
     bubble.classList.add("hidden");
   }
   function disposeModel(root) {
-    var geometries = new Set(), materials = new Set(), textures = new Set(), skeletons = new Set();
-    root.traverse(function (o) {
+    var geometries = new Set(), materials = new Set(), textures = new Set(), skeletons = new Set(), bitmaps = new Set();
+    function collect(o) {
       if (o.geometry) geometries.add(o.geometry);
       if (o.skeleton) skeletons.add(o.skeleton);
       if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(function (m) {
         materials.add(m);
         Object.keys(m).forEach(function (key) { if (m[key] && m[key].isTexture) textures.add(m[key]); });
       });
-    });
+    }
+    root.traverse(collect);
+    if (root.userData.resourceRoot) root.userData.resourceRoot.traverse(collect);
     geometries.forEach(function (g) { g.dispose(); });
     materials.forEach(function (m) { m.dispose(); });
-    textures.forEach(function (t) { t.dispose(); });
+    textures.forEach(function (t) {
+      var image = t.source && t.source.data;
+      if (typeof ImageBitmap !== "undefined" && image instanceof ImageBitmap) bitmaps.add(image);
+      t.dispose();
+    });
     skeletons.forEach(function (s) { s.dispose(); });
+    bitmaps.forEach(function (image) { image.close(); });
   }
   function applyWireframe() {
     if (!model) return;
@@ -173,16 +185,25 @@ import { MeshoptDecoder } from "../vendor/meshopt/meshopt_decoder.module.js";
   }
   async function setCharacter(id) {
     var entry = PACK[id];
-    if (!entry) return;
+    if (!entry || (currentId === id && (pendingLoad || model))) return;
     var version = ++loadVersion;
+    if (pendingLoad) pendingLoad.abort();
+    var controller = new AbortController();
+    pendingLoad = controller;
     currentId = id;
     stopAudio();
-    if (model) { scene.remove(model); disposeModel(model); model = null; }
+    if (model) { scene.remove(model); model = null; }
     fallback.classList.add("hidden");
+    loading.hidden = false;
     loading.classList.remove("hidden");
-    var person = byId(id);
-    loading.textContent = "正在加载" + (person ? person.name : id) + "…";
-    setStatus(loading.textContent);
+    var person = byId(id), name = person ? person.name : id;
+    var preview = person && (person.petImage || person.image);
+    modelPreview.hidden = !preview;
+    if (preview) { modelPreview.src = preview; modelPreview.alt = name; }
+    loadLabel.textContent = "正在下载" + name + "…";
+    loadProgress.removeAttribute("value");
+    loadDetail.textContent = "正在连接模型文件…";
+    setStatus(loadLabel.textContent);
     chipsBox.querySelectorAll(".p3-chip").forEach(function (el) {
       var active = el.dataset.id === id;
       el.classList.toggle("active", active);
@@ -192,17 +213,72 @@ import { MeshoptDecoder } from "../vendor/meshopt/meshopt_decoder.module.js";
     document.getElementById("talkBtn").disabled = !VOICES[id];
     updateSource(entry);
     try {
-      var gltf = await loader.loadAsync(entry.file);
-      if (version !== loadVersion) { disposeModel(gltf.scene); return; }
-      if (entry.node) {
-        var subject = gltf.scene.getObjectByName(entry.node);
-        if (!subject) { disposeModel(gltf.scene); throw new Error("模型中没有对应角色"); }
-        var character = new T.Group();
-        character.attach(subject);
-        gltf.scene = character;
+      var root = modelCache.get(id);
+      if (!root) {
+        var fileURL = new URL(entry.file, window.location.href);
+        var response = await fetch(fileURL.href, { signal: controller.signal });
+        if (!response.ok) throw new Error("HTTP " + response.status);
+        var encoding = response.headers.get("Content-Encoding");
+        var total = !encoding || encoding === "identity" ? Number(response.headers.get("Content-Length")) : 0;
+        var received = 0, lastProgress = -Infinity, chunks = [];
+        function progress(done) {
+          if (version !== loadVersion || controller.signal.aborted) return;
+          var now = performance.now();
+          if (!done && now - lastProgress < 250) return;
+          lastProgress = now;
+          var mb = function (bytes) { return (bytes / 1048576).toFixed(1) + " MB"; };
+          var percent = total > 0 ? Math.min(100, Math.floor(received / total * 100)) : null;
+          if (percent !== null) loadProgress.value = percent;
+          var detail = percent !== null ? percent + "% · " + mb(received) + " / " + mb(total) : "已下载 " + mb(received);
+          if (loadDetail.textContent !== detail) loadDetail.textContent = detail;
+        }
+        if (response.body) {
+          var reader = response.body.getReader();
+          try {
+            while (true) {
+              var chunk = await reader.read();
+              if (chunk.done) break;
+              chunks.push(chunk.value);
+              received += chunk.value.byteLength;
+              progress(false);
+            }
+          } finally { reader.releaseLock(); }
+        } else {
+          var bytes = new Uint8Array(await response.arrayBuffer());
+          chunks.push(bytes);
+          received = bytes.byteLength;
+        }
+        progress(true);
+        if (version !== loadVersion || controller.signal.aborted) return;
+        var buffer = new Uint8Array(received), offset = 0;
+        chunks.forEach(function (chunk) { buffer.set(chunk, offset); offset += chunk.byteLength; });
+        chunks = null;
+        loadLabel.textContent = "正在准备" + name + " 3D…";
+        loadProgress.removeAttribute("value");
+        loadDetail.textContent = "下载完成，正在解码和准备模型…";
+        setStatus(loadLabel.textContent);
+        var gltf = await loader.parseAsync(buffer.buffer, new URL(".", fileURL).href);
+        if (version !== loadVersion || controller.signal.aborted) { disposeModel(gltf.scene); return; }
+        var resources = gltf.scene;
+        if (entry.node) {
+          var subject = gltf.scene.getObjectByName(entry.node);
+          if (!subject) { disposeModel(resources); throw new Error("模型中没有对应角色"); }
+          var character = new T.Group();
+          character.attach(subject);
+          gltf.scene = character;
+        }
+        try { root = normalizeModel(gltf.scene, entry); }
+        catch (e) { disposeModel(gltf.scene); if (resources !== gltf.scene) disposeModel(resources); throw e; }
+        root.userData.resourceRoot = resources;
       }
-      try { model = normalizeModel(gltf.scene, entry); }
-      catch (e) { disposeModel(gltf.scene); throw e; }
+      modelCache.delete(id);
+      modelCache.set(id, root);
+      if (modelCache.size > 2) {
+        var oldest = modelCache.keys().next().value;
+        disposeModel(modelCache.get(oldest));
+        modelCache.delete(oldest);
+      }
+      model = root;
       scene.add(model);
       yaw = pitch = velYaw = velPitch = 0;
       document.querySelectorAll("[data-view]").forEach(function (el) {
@@ -212,11 +288,14 @@ import { MeshoptDecoder } from "../vendor/meshopt/meshopt_decoder.module.js";
       target.set(0, model.position.y, 0);
       fitCamera();
       applyWireframe();
+      loading.hidden = true;
       loading.classList.add("hidden");
-      setStatus((person ? person.name : id) + " · 完整模型已加载 · 拖动旋转查看");
+      setStatus(name + " · 完整模型已加载 · 拖动旋转查看");
     } catch (e) {
-      if (version !== loadVersion) return;
-      showError((person ? person.name : id) + "模型加载失败，可以重试或选择其他角色。");
+      if (version !== loadVersion || controller.signal.aborted || e.name === "AbortError") return;
+      showError(name + "模型加载失败，可以重试或选择其他角色。");
+    } finally {
+      if (pendingLoad === controller) pendingLoad = null;
     }
   }
   retry.onclick = function () { setCharacter(currentId); };
@@ -282,7 +361,7 @@ import { MeshoptDecoder } from "../vendor/meshopt/meshopt_decoder.module.js";
     try {
       pipWindow = await window.documentPictureInPicture.requestWindow({ width: 420, height: 460 });
       pipWindow.document.body.style.cssText = "margin:0;background:#faf7f2;overflow:hidden";
-      ["css/style.css", "css/pet3d.css"].forEach(function (href) {
+      ["css/style.css?v=village-1", "css/pet3d.css?v=loading-1"].forEach(function (href) {
         var link = pipWindow.document.createElement("link");
         link.rel = "stylesheet";
         link.href = new URL(href, window.location.href).href;
@@ -345,7 +424,20 @@ import { MeshoptDecoder } from "../vendor/meshopt/meshopt_decoder.module.js";
     document.getElementById("pinBtn").disabled = true;
     document.getElementById("pinBtn").title = "当前浏览器不支持置顶小窗";
   }
-  window.addEventListener("pagehide", function () { ++loadVersion; stopAudio(); });
+  window.addEventListener("pagehide", function (e) {
+    ++loadVersion;
+    if (pendingLoad) { pendingLoad.abort(); pendingLoad = null; }
+    stopAudio();
+    if (!e.persisted) {
+      if (model) scene.remove(model);
+      model = null;
+      modelCache.forEach(disposeModel);
+      modelCache.clear();
+    }
+  });
+  window.addEventListener("pageshow", function () {
+    if (!model && !pendingLoad && currentId) setCharacter(currentId);
+  });
 
   var lastFrame = performance.now();
   function loop(now) {
