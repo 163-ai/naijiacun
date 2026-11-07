@@ -13,32 +13,48 @@
 - **提名新人**：任何人都可以提名新的村民加入图鉴（保存在浏览器本地）
 - **语音朗读**：点卡片右上角 🔊 听 TA 说金句，详情页可朗读整段介绍
 
-## 语音功能
+## 语音功能（BYOK：访客自带 Key）
 
 默认使用**浏览器内置语音**（`speechSynthesis`），零成本、无需 Key，打开就能用。不同人物会根据 id 生成稳定的语速/音调差异。
 
-### 接入 Breeze TTS（音色库 / 声音克隆）
+访客想用真实音色时，点页面上的 **🔑 语音设置**，填自己的 Breeze API Key 即可。站长不承担任何费用，也不持有别人的密钥。
 
-前端代码是公开的，**绝不能把 API Key 写进 `js/tts.js`**。两条可行路线：
+### 为什么必须有代理
 
-| 方案 | 做法 | 适用 |
-|---|---|---|
-| 服务端代理 | 部署 `server/tts-worker.js` 到 Cloudflare Worker，Key 存在 Worker 环境变量里，前端只调代理 | 需要"点一下就合成"的实时体验 |
-| 预生成音频 | 本地跑 Breeze 批量合成，把 mp3 放进 `audio/` 目录，前端直接播放 | 朗读内容固定（金句、介绍），零运行时成本、最稳 |
+Breeze 的 API **没有开放 CORS**（实测 `OPTIONS /v1/voices` 返回 405 且无 `Access-Control-Allow-Origin`），浏览器无法直接调用。因此需要一个「只转发、不存 Key」的边缘函数：
 
-切换方式：编辑 `js/tts.js` 顶部的 `CONFIG`：
-
-```js
-var CONFIG = {
-  provider: "breeze",                                  // 从 browser 改成 breeze
-  endpoint: "https://你的worker地址/api/tts",
-  voices: { "shougeng": "breeze_voice_id_xxx" },        // 人物 id → 音色 ID
-  defaultVoiceId: "breeze_voice_id_default"
-};
+```
+访客浏览器                你的 Worker                   Breeze
+   │  x-breeze-key: brz_xx    │                            │
+   ├─────────────────────────►│  xi-api-key: brz_xx        │
+   │                          ├───────────────────────────►│
+   │      audio/mpeg          │        audio/mpeg          │
+   │◄─────────────────────────┤◄───────────────────────────┤
 ```
 
-### 合规提醒
+Worker 代码在 `server/tts-worker.js`，提供了三个路径：
 
+| 路径 | 作用 |
+|---|---|
+| `POST /api/tts` | 转发合成请求，返回 mp3 |
+| `GET /api/check` | 用访客的 Key 校验有效性并返回剩余额度 |
+| `GET /api/voices` | 拉取该 Key 账号下的音色列表 |
+
+### 部署步骤
+
+```bash
+npm i -g wrangler
+wrangler init naijiacun-tts          # 选 Worker，纯 JS
+# 把 server/tts-worker.js 的内容粘进 src/index.js
+wrangler deploy
+```
+
+把部署得到的地址填到 `js/tts.js` 的 `DEFAULT_TTS_ENDPOINT`（或 `js/app.js` 里的同名常量），访客就只需要填 Key 了。
+
+### 安全与合规
+
+- Key 只存在访客自己的 `localStorage` / `sessionStorage`，页面不发送到除代理以外的任何地方。
+- 建议提示访客：为这个站点**单独创建一个 Key 并设置额度上限**（Breeze 支持 per-key credit limit），用完即删。
 - 克隆真人声音（尤其公众人物）需要本人授权，未经同意切勿用于对外公开的站点。
 - 生成内容建议在页面标注"AI 合成语音"，遵循深度合成相关规定。
 

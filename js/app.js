@@ -250,6 +250,7 @@
     if (hasTTS()) window.NaijiacunTTS.stop();
     document.getElementById("modal").classList.add("hidden");
     document.getElementById("addModal").classList.add("hidden");
+    document.getElementById("voiceModal").classList.add("hidden");
   }
 
   // ---------- 提名新人 ----------
@@ -278,6 +279,154 @@
       closeModals();
       renderAll();
       openDetail(person.id);
+    });
+  }
+
+  // ---------- 语音设置（BYOK：访客自带 Key） ----------
+  var TTS_STORE = "naijacun_tts";
+
+  // 站长部署好自己的透传代理后，把地址填在这里，访客只需填 Key
+  var DEFAULT_TTS_ENDPOINT = "";
+
+  function showToast(msg) {
+    var el = document.getElementById("toast");
+    if (!el) return;
+    el.textContent = msg;
+    el.classList.remove("hidden");
+    clearTimeout(showToast.timer);
+    showToast.timer = setTimeout(function () { el.classList.add("hidden"); }, 3600);
+  }
+  window.showTTSNotice = showToast;
+
+  function readTTSStore() {
+    try {
+      var raw = localStorage.getItem(TTS_STORE) || sessionStorage.getItem(TTS_STORE);
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function applyTTSConfig(cfg) {
+    if (!hasTTS() || !cfg) return;
+    var t = window.NaijiacunTTS.config;
+    t.endpoint = cfg.endpoint || DEFAULT_TTS_ENDPOINT;
+    t.apiKey = cfg.key || "";
+    t.defaultVoiceId = cfg.voiceId || "";
+    t.provider = cfg.key && t.endpoint ? "breeze" : "browser";
+  }
+
+  function saveTTSConfig(cfg, remember) {
+    var payload = JSON.stringify(cfg);
+    try {
+      localStorage.removeItem(TTS_STORE);
+      sessionStorage.removeItem(TTS_STORE);
+      if (remember) localStorage.setItem(TTS_STORE, payload);
+      else sessionStorage.setItem(TTS_STORE, payload);
+    } catch (e) { /* 隐私模式下可能写入失败 */ }
+    applyTTSConfig(cfg);
+  }
+
+  function setVoiceStatus(msg, kind) {
+    var el = document.getElementById("voiceStatus");
+    el.textContent = msg || "";
+    el.className = "status-line" + (kind ? " " + kind : "");
+  }
+
+  function fillVoiceSelect(list, selected) {
+    var sel = document.querySelector('#voiceForm select[name="voice"]');
+    var keep = '<option value="">不指定（用浏览器语音）</option>';
+    sel.innerHTML = keep + (list || []).map(function (v) {
+      return '<option value="' + escapeHTML(v.id) + '">' +
+        escapeHTML(v.name) + (v.category ? " · " + escapeHTML(v.category) : "") +
+        '</option>';
+    }).join("");
+    if (selected) sel.value = selected;
+  }
+
+  function openVoiceModal() {
+    var cfg = readTTSStore() || {};
+    var t = hasTTS() ? window.NaijiacunTTS.config : {};
+    document.querySelector('#voiceForm input[name="key"]').value = cfg.key || "";
+    document.querySelector('#voiceForm input[name="endpoint"]').value =
+      cfg.endpoint || DEFAULT_TTS_ENDPOINT || t.endpoint || "";
+    document.querySelector('#voiceForm input[name="remember"]').checked = !!cfg.key;
+    fillVoiceSelect(null, cfg.voiceId || "");
+    setVoiceStatus("");
+    document.getElementById("voiceModal").classList.remove("hidden");
+  }
+
+  function testVoiceKey() {
+    if (!hasTTS()) return;
+    var endpoint = document.querySelector('#voiceForm input[name="endpoint"]').value.trim();
+    var key = document.querySelector('#voiceForm input[name="key"]').value.trim();
+
+    if (!key) return setVoiceStatus("请先填入 Breeze API Key", "err");
+    if (!endpoint) return setVoiceStatus("请填入代理地址（Breeze 未开放跨域，必须有代理）", "err");
+
+    setVoiceStatus("正在验证…");
+    window.NaijiacunTTS.checkKey(endpoint, key)
+      .then(function (data) {
+        var k = (data && data.api_key) || {};
+        var left = k.credit_remaining;
+        setVoiceStatus(
+          "Key 有效" +
+          (k.prefix ? "（" + k.prefix + "…）" : "") +
+          (typeof left === "number" ? " · 剩余额度 " + left : "") +
+          "，正在加载音色…",
+          "ok"
+        );
+        return window.NaijiacunTTS.listVoices(endpoint, key);
+      })
+      .then(function (list) {
+        fillVoiceSelect(list);
+        setVoiceStatus("连接成功，共 " + list.length + " 个音色可选", "ok");
+      })
+      .catch(function (err) {
+        setVoiceStatus(err.message || "验证失败", "err");
+      });
+  }
+
+  function setupVoiceSettings() {
+    document.getElementById("voiceBtn").addEventListener("click", openVoiceModal);
+    document.getElementById("testKeyBtn").addEventListener("click", testVoiceKey);
+
+    document.getElementById("clearKeyBtn").addEventListener("click", function () {
+      try {
+        localStorage.removeItem(TTS_STORE);
+        sessionStorage.removeItem(TTS_STORE);
+      } catch (e) { /* 忽略 */ }
+      if (hasTTS()) {
+        window.NaijiacunTTS.config.apiKey = "";
+        window.NaijiacunTTS.config.provider = "browser";
+      }
+      document.querySelector('#voiceForm input[name="key"]').value = "";
+      fillVoiceSelect(null, "");
+      setVoiceStatus("已清除本机保存的 Key", "ok");
+      showToast("已清除，改用浏览器语音");
+    });
+
+    document.getElementById("voiceForm").addEventListener("submit", function (e) {
+      e.preventDefault();
+      var key = e.target.key.value.trim();
+      var endpoint = e.target.endpoint.value.trim();
+      var voiceId = e.target.voice.value;
+      var remember = e.target.remember.checked;
+
+      if (!key) {
+        saveTTSConfig({}, remember);
+        setVoiceStatus("未填写 Key，已切换为浏览器语音", "ok");
+        return;
+      }
+      saveTTSConfig({ key: key, endpoint: endpoint, voiceId: voiceId }, remember);
+      setVoiceStatus(
+        hasTTS() && window.NaijiacunTTS.canUseBreeze()
+          ? "已启用，点卡片上的 🔊 试试"
+          : "已保存，但代理地址为空，暂时仍用浏览器语音",
+        "ok"
+      );
+      showToast("语音设置已保存");
+      setTimeout(closeModals, 600);
     });
   }
 
@@ -325,6 +474,8 @@
   // ---------- 启动 ----------
   bindEvents();
   setupAddForm();
+  setupVoiceSettings();
+  applyTTSConfig(readTTSStore());
   renderAll();
 
   // 语音播放状态与按钮联动
