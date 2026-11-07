@@ -51,6 +51,29 @@ wrangler deploy
 
 把部署得到的地址填到 `js/tts.js` 的 `DEFAULT_TTS_ENDPOINT`（或 `js/app.js` 里的同名常量），访客就只需要填 Key 了。
 
+### 可选：预生成音频（连代理都不用）
+
+用你自己的 Key 跑一次脚本，把每位人物的金句合成为 mp3 存进 `audio/`，之后**访客连 Key 都不用填**，点开就能听真音色，且零额度消耗。
+
+本地运行：
+
+```bash
+BREEZE_API_KEY=brz_xxx BREEZE_VOICE_ID=voc_xxx node scripts/pregen-audio.mjs
+# 可选参数：--force 全部重生成 / --only=shougeng 只生成一位 / --limit=3
+```
+
+或者在 GitHub 上点一下：仓库 **Actions → 预生成语音 → Run workflow**。使用前先到 Settings → Secrets and variables → Actions 添加 `BREEZE_API_KEY` 和 `BREEZE_VOICE_ID`，生成完会自动提交。
+
+播放优先级（`js/tts.js` 里实现）：
+
+```
+访客填了自己的 Key  →  实时调用 Breeze（可换音色、可读长文本）
+否则有预生成音频    →  播放 audio/{id}.mp3（秒开、免费）
+否则               →  浏览器内置语音（永远可用）
+```
+
+文本不一致时不会误播（例如预生成的是金句、你想读整段介绍），会自动降级到下一档。
+
 ### 安全与合规
 
 - Key 只存在访客自己的 `localStorage` / `sessionStorage`，页面不发送到除代理以外的任何地方。

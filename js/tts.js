@@ -22,6 +22,7 @@
   var audioEl = null;
   var currentId = null;
   var listeners = [];
+  var localMap = {};   // 人物 id → { file, text }，来自 audio/manifest.json
 
   function hash(str) {
     var h = 0;
@@ -161,12 +162,52 @@
     }
   }
 
+  // ---------- 预生成音频（站长用 scripts/pregen-audio.mjs 生成） ----------
+  function loadLocalManifest() {
+    return fetch("audio/manifest.json", { cache: "no-cache" })
+      .then(function (res) {
+        return res.ok ? res.json() : {};
+      })
+      .then(function (data) {
+        localMap = data || {};
+        return localMap;
+      })
+      .catch(function () {
+        localMap = {};
+        return localMap;
+      });
+  }
+
+  function playLocal(text, id) {
+    var entry = localMap[id];
+    if (!entry || !entry.file) return false;
+
+    // 只有请求的文本与预生成时一致，才用本地文件，避免读错内容
+    if (entry.text && String(entry.text).trim() !== String(text).trim()) return false;
+
+    currentId = id;
+    emit();
+
+    audioEl = new Audio(entry.file);
+    audioEl.onended = function () { currentId = null; emit(); };
+    audioEl.onerror = function () { currentId = null; emit(); };
+    audioEl.play().catch(function () {
+      currentId = null;
+      emit();
+    });
+    return true;
+  }
+
   function speak(text, id) {
     stop();
     if (!text) return;
+
+    // 优先级：访客自己的 Key → 站长预生成的真音色 → 浏览器语音
     if (canUseBreeze()) return speakBreeze(text, id);
+    if (playLocal(text, id)) return;
+
     if (CONFIG.provider === "breeze") {
-      notify("未填写 API Key，暂时使用浏览器语音");
+      notify("未填写 API Key，先用浏览器语音顶上");
     }
     return speakBrowser(text, id);
   }
@@ -211,7 +252,12 @@
     checkKey: checkKey,
     listVoices: listVoices,
     canUseBreeze: canUseBreeze,
+    loadLocalManifest: loadLocalManifest,
+    hasLocal: function (id) { return !!(localMap[id] && localMap[id].file); },
     config: CONFIG,
     getCurrent: function () { return currentId; }
   };
+
+  // 启动时静默加载预生成音频清单（不存在就静默跳过）
+  loadLocalManifest();
 })();
