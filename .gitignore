@@ -14,3 +14,7 @@ desktop.ini
 
 # 本地工作区数据
 .workbuddy/
+
+# 参考音频（可能涉及他人声音权益，不进版本库）
+voices/*
+!voices/README.md

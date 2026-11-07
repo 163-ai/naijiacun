@@ -83,11 +83,40 @@ BREEZE_API_KEY=brz_xxx BREEZE_VOICE_ID=voc_xxx node scripts/pregen-audio.mjs
 
 文本不一致时不会误播（例如预生成的是金句、你想读整段介绍），会自动降级到下一档。
 
+### 每个角色一个专属音色（克隆 / 声音设计）
+
+`js/data.js` 末尾的 `CHARACTER_VOICES` 保存"角色 → 音色"的绑定：
+
+```js
+const CHARACTER_VOICES = {
+  nailong: { voiceId: "", style: "软萌童声，圆润，语速偏慢，句尾带笑" },
+  ...
+};
+```
+
+- `voiceId` 有值 → 点 🔊 就用这个音色（优先于访客选的默认音色）
+- `voiceId` 为空 → 用访客在设置里选的默认音色；连默认都没有则退回浏览器语音
+- `style` 是听感描述，用于在授权音色库里挑接近的，或做「声音设计」生成全新音色
+
+**克隆流程**（把自己的参考音频变成每个角色的固定音色）：
+
+```bash
+# 1. 参考音频放进 voices/，文件名 = 角色 id，例如 voices/nailong.mp3（10~30 秒干净人声）
+# 2. 运行
+TTS_ENDPOINT=https://你的worker地址 BREEZE_API_KEY=brz_xxx node scripts/clone-voices.mjs
+# --only=nailong 只处理一位；--dry-run 只看计划不调用接口
+```
+
+脚本调用代理的 `/api/clone` → Breeze 的 `POST /v1/voices/add`，拿到 `voice_id` 后**自动写回 `js/data.js`**，重跑会跳过已成功的。
+
+`voices/` 目录默认被 `.gitignore` 排除，参考音频不会推到公开仓库。
+
 ### 安全与合规
 
 - Key 只存在访客自己的 `localStorage` / `sessionStorage`，页面不发送到除代理以外的任何地方。
 - 建议提示访客：为这个站点**单独创建一个 Key 并设置额度上限**（Breeze 支持 per-key credit limit），用完即删。
-- 克隆真人声音（尤其公众人物）需要本人授权，未经同意切勿用于对外公开的站点。
+- 克隆真人声音（尤其配音演员、公众人物）需要本人授权。《民法典》第 1023 条把声音按肖像权保护，《深度合成管理规定》要求编辑生物识别信息取得**单独同意**。
+- 非商业用途（比赛、课程作业、个人演示）风险显著低于商用，但"公开可访问"仍属于公开传播，标注清楚来源与"AI 合成"字样仍然是必要的。
 - 生成内容建议在页面标注"AI 合成语音"，遵循深度合成相关规定。
 
 ## 预览方式
@@ -107,11 +136,17 @@ npx serve .
 ## 项目结构
 
 ```
-├── index.html      # 页面结构
-├── css/style.css   # 样式
-└── js/
-    ├── data.js     # 人物数据（想增删人物直接改这里）
-    └── app.js      # 交互逻辑
+├── index.html                # 页面结构
+├── css/style.css             # 样式
+├── js/
+│   ├── data.js               # 角色数据 + 音色绑定（想增删角色直接改这里）
+│   ├── tts.js                # 语音适配层（Key / 预生成 / 浏览器 三档降级）
+│   └── app.js                # 交互逻辑
+├── scripts/
+│   ├── pregen-audio.mjs      # 批量预生成 mp3
+│   └── clone-voices.mjs      # 克隆音色并回写 voiceId
+├── server/tts-worker.js      # Cloudflare Worker 透传代理（不存任何密钥）
+└── voices/                   # 参考音频（默认不进版本库，见 voices/README.md）
 ```
 
 ## 数据说明

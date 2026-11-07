@@ -11,19 +11,19 @@
 //
 // 注意：Breeze 未开放 CORS，所以这一步无法省略；但代理里没有任何 secret。
 
-const ALLOWED_ORIGINS = [
-  "https://163-ai.github.io",
-  "http://localhost:8080",
-  "http://127.0.0.1:8080",
-  "http://localhost:5500",
-  "http://127.0.0.1:5500"
+// 允许的来源：形如 https://xxx.github.io、https://xxx.workbuddy.link，以及本地调试
+// 代理本身不存任何密钥，放宽来源不会泄露什么；如想收紧，把 PATTERNS 改成精确域名即可。
+const ORIGIN_PATTERNS = [
+  /^https:\/\/[\w-]+\.github\.io$/,
+  /^https:\/\/[\w-]+\.workbuddy\.link$/,
+  /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/
 ];
 
 const API_BASE = "https://api.breeze.blue/v1";
 const MODEL_ID = "breeze-tts-2";
 
 function corsHeaders(origin) {
-  const allow = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  const allow = ORIGIN_PATTERNS.some((re) => re.test(origin)) ? origin : "null";
   return {
     "access-control-allow-origin": allow,
     "access-control-allow-methods": "GET, POST, OPTIONS",
@@ -93,6 +93,31 @@ export default {
           voice_settings: { guidance_scale: 4.0 }
         })
       };
+    } else if (url.pathname === "/api/clone") {
+      if (request.method !== "POST") {
+        return json({ ok: false, code: "BAD_METHOD", detail: "请用 POST" }, 405, origin);
+      }
+      let form;
+      try {
+        form = await request.formData();
+      } catch (e) {
+        return json({ ok: false, code: "BAD_FORM", detail: "请用 multipart/form-data 上传" }, 400, origin);
+      }
+      const file = form.get("file");
+      if (!file || typeof file === "string") {
+        return json({ ok: false, code: "MISSING_FILE", detail: "缺少参考音频 file 字段" }, 400, origin);
+      }
+      if (file.size > 8 * 1024 * 1024) {
+        return json({ ok: false, code: "FILE_TOO_LARGE", detail: "参考音频请控制在 8MB 以内" }, 413, origin);
+      }
+      const upForm = new FormData();
+      upForm.append("name", String(form.get("name") || "naijiacun-voice").slice(0, 60));
+      if (form.get("description")) {
+        upForm.append("description", String(form.get("description")).slice(0, 300));
+      }
+      upForm.append("files", file, file.name || "sample.mp3");
+      target = API_BASE + "/voices/add";
+      init = { method: "POST", headers: upstreamHeaders, body: upForm };
     } else {
       return json({ ok: false, code: "NOT_FOUND", detail: "未知路径" }, 404, origin);
     }

@@ -89,3 +89,21 @@ const PEOPLE = [
     origin: "真实动物，无卡通 IP 归属"
   }
 ];
+
+// 每个角色的音色绑定
+//
+//   voiceId  绑定到该角色的 Breeze 音色 ID。留空 = 用访客在「语音设置」里选的默认音色。
+//            跑 `node scripts/clone-voices.mjs` 会自动把克隆得到的 voice_id 写回这里。
+//   style    音色描述。没有 voiceId 时用于「声音设计」生成新音色，
+//            也可以照着这个描述在授权音色库里挑一个接近的。
+//
+// 说明：这里描述的是"听感"（音高、语速、气质），不指向任何具体的人。
+// 若要克隆真实配音演员的声音，需先取得本人书面授权。
+const CHARACTER_VOICES = {
+  nailong:    { voiceId: "", style: "软萌童声，圆润，语速偏慢，句尾带笑" },
+  naiwa:      { voiceId: "", style: "夸张的尖细男声，爱笑，语速快" },
+  baobaolong: { voiceId: "", style: "低沉粗声，火爆脾气，语速快，句尾下压" },
+  xiaoqi:     { voiceId: "", style: "清亮少年音，机灵，语速中等" },
+  niulai:     { voiceId: "", style: "憨厚中年男声，北方口音，语速慢，带笑意" },
+  capybara:   { voiceId: "", style: "慵懒低音，语速极慢，带气声" }
+};

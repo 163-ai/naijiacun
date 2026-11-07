@@ -179,8 +179,22 @@
     return "合成失败（HTTP " + status + "）";
   }
 
+  // 人物 → 音色：优先用数据文件里的绑定，其次 CONFIG.voices，最后用默认音色
+  function voiceFor(id) {
+    var map = (typeof window !== "undefined" && window.CHARACTER_VOICES) ||
+              (typeof CHARACTER_VOICES !== "undefined" ? CHARACTER_VOICES : null);
+    if (map && map[id] && map[id].voiceId) return map[id].voiceId;
+    return CONFIG.voices[id] || CONFIG.defaultVoiceId || "";
+  }
+
+  function styleFor(id) {
+    var map = (typeof window !== "undefined" && window.CHARACTER_VOICES) ||
+              (typeof CHARACTER_VOICES !== "undefined" ? CHARACTER_VOICES : null);
+    return (map && map[id] && map[id].style) || "";
+  }
+
   function speakBreeze(text, id) {
-    var voiceId = CONFIG.voices[id] || CONFIG.defaultVoiceId;
+    var voiceId = voiceFor(id);
     if (!voiceId) {
       notify("还没有选择音色，先用浏览器语音顶上");
       return speakBrowser(text, id);
@@ -340,6 +354,8 @@
       return v ? { name: v.name, uri: v.voiceURI, lang: v.lang } : null;
     },
     canUseBreeze: canUseBreeze,
+    voiceFor: voiceFor,
+    styleFor: styleFor,
     loadLocalManifest: loadLocalManifest,
     hasLocal: function (id) { return !!(localMap[id] && localMap[id].file); },
     config: CONFIG,
