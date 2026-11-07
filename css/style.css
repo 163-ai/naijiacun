@@ -159,6 +159,14 @@ body {
 
 .btn:hover { border-color: var(--ink-3); }
 
+/* 用 <a> 当按钮时对齐一致 */
+a.btn {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .btn.primary {
   background: var(--green);
   border-color: var(--green);
