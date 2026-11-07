@@ -10,6 +10,7 @@
 //   name     名称
 //   image    形象图路径，例如 "assets/characters/nailong.png"。留空则用内置 SVG 形象。
 //            图片放哪个目录、用哪张，由你自己决定；本站不内置任何官方素材。
+//   petImage 桌宠透明全身图；留空时继续使用 image。
 //   emoji    最后的兜底，仅在既没有 image 也没有内置形象时使用
 //   category 分类
 //   title    一句话称号
@@ -24,7 +25,8 @@ const PEOPLE = [
     id: "nailong",
     name: "奶龙",
     emoji: "🐲",
-    image: "assets/characters/nailong.png",
+    image: "assets/characters/3d/nailong-avatar.png",
+    petImage: "assets/characters/3d/nailong-pet.png",
     clip: "assets/audio/nailong.mp3",
     category: "官方IP",
     title: "黄色大肚子的呆萌小恐龙",
@@ -38,7 +40,8 @@ const PEOPLE = [
     id: "naiwa",
     name: "奶蛙",
     emoji: "🐸",
-    image: "assets/characters/naiwa.png",
+    image: "assets/characters/3d/naiwa-avatar.png",
+    petImage: "assets/characters/3d/naiwa-pet.png",
     clip: "assets/audio/naiwa.mp3",
     category: "抽象迷因",
     title: "笑到停不下来的黄色抽象蛙",
@@ -52,7 +55,8 @@ const PEOPLE = [
     id: "baobaolong",
     name: "暴暴龙",
     emoji: "🦖",
-    image: "assets/characters/baobaolong.png",
+    image: "assets/characters/3d/baobaolong-avatar.png",
+    petImage: "assets/characters/3d/baobaolong-pet.png",
     clip: "assets/audio/baobaolong.mp3",
     category: "官方IP",
     title: "奶龙的对手，脾气不太好",
@@ -66,7 +70,8 @@ const PEOPLE = [
     id: "xiaoqi",
     name: "小七",
     emoji: "🧒",
-    image: "assets/characters/xiaoqi.png",
+    image: "assets/characters/3d/xiaoqi-avatar.png",
+    petImage: "assets/characters/3d/xiaoqi-pet.png",
     clip: "assets/audio/xiaoqi.mp3",
     category: "官方IP",
     title: "带着神奇发明的搭档",
@@ -80,7 +85,8 @@ const PEOPLE = [
     id: "niulai",
     name: "牛来",
     emoji: "🐮",
-    image: "assets/characters/niulai.png",
+    image: "assets/characters/3d/niulai-avatar.png",
+    petImage: "assets/characters/3d/niulai-pet.png",
     clip: "assets/audio/niulai.mp3",
     category: "抽象迷因",
     title: "黄色抽象宇宙的另一位成员",
@@ -94,7 +100,8 @@ const PEOPLE = [
     id: "capybara",
     name: "卡皮巴拉",
     emoji: "🦫",
-    image: "assets/characters/capybara.png",
+    image: "assets/characters/3d/capybara-avatar.png",
+    petImage: "assets/characters/3d/capybara-pet.png",
     clip: "assets/audio/capybara.mp3",
     category: "动物顶流",
     title: "情绪稳定到没有天敌",
@@ -108,7 +115,8 @@ const PEOPLE = [
     id: "naicha",
     name: "奶察",
     emoji: "👮",
-    image: "assets/characters/naicha.png",
+    image: "assets/characters/3d/naicha-avatar.png",
+    petImage: "assets/characters/3d/naicha-pet.png",
     clip: "assets/audio/naicha.mp3",
     category: "抽象迷因",
     title: "戴着警帽的黄色抽象搭子",
@@ -116,13 +124,14 @@ const PEOPLE = [
     quote: "嘎嘎滴辣虾。",
     desc: "网友给奶蛙加上警帽、制服等元素形成的二创变体，常作为小剧场中的执法角色。这里使用社区公开的奶察表情图，搭配同人格斗项目收录的「嘎嘎滴辣虾」梗语音；不是官方设定或官方配音。",
     tags: ["奶蛙衍生", "警帽", "奶察", "梗语音"],
-    origin: "社区二创，图片与音频权利归各自权利人所有，开放再分发许可未核实。图片收录：https://github.com/fisher-byte/NaiwaHub；音频及对应清单：https://github.com/yaohuicong/naiwa-fight"
+    origin: "社区二创，形象与音频权利归各自权利人所有。本次图片由用户提供的3D模型渲染；音频及对应清单：https://github.com/yaohuicong/naiwa-fight"
   },
   {
     id: "naidan",
     name: "奶蛋",
     emoji: "🥚",
-    image: "assets/characters/naidan.png",
+    image: "assets/characters/3d/naidan-avatar.png",
+    petImage: "assets/characters/3d/naidan-pet.png",
     clip: "assets/audio/naidan.mp3",
     category: "抽象迷因",
     title: "圆滚滚的黄色蛋形小伙伴",
@@ -130,13 +139,14 @@ const PEOPLE = [
     quote: "因为我只是一只奶蛋。",
     desc: "奶蛙相关二创里的蛋形小伙伴，以圆润的黄色身体、绿色圆眼和小巧表情为辨识点。除了站姿和大笑，也常被放进睡觉、干饭、节日等日常场景。原声按钮播放公开二创视频中奶蛋开口的「安迪」短片段，与上方表情配文分别收录。",
     tags: ["奶蛙衍生", "蛋形", "圆滚滚", "表情包"],
-    origin: "社区二创，图片与音频权利归各自权利人所有，开放再分发许可未核实。图片：https://naiwahub.com/zh/series/nai-dan；音频截自奶史_《选择奶蛙还是奶蛋？》6.860–7.940 秒，切片来源：https://github.com/sdjasj/naiwa-arcade"
+    origin: "社区二创，形象与音频权利归各自权利人所有。本次图片由用户提供的3D模型渲染；音频截自奶史_《选择奶蛙还是奶蛋？》6.860–7.940 秒，切片来源：https://github.com/sdjasj/naiwa-arcade"
   },
   {
     id: "feidudu",
     name: "肥嘟嘟袋鼠",
     emoji: "🦘",
-    image: "assets/characters/feidudu.png",
+    image: "assets/characters/3d/feidudu-avatar.png",
+    petImage: "assets/characters/3d/feidudu-pet.png",
     clip: "assets/audio/feidudu.mp3",
     category: "抽象迷因",
     title: "你的胆子真是肥嘟嘟",
@@ -144,7 +154,7 @@ const PEOPLE = [
     quote: "你的胆子真是肥嘟嘟。",
     desc: "与奶蛙一起流传的黄色抽象迷因，辨识特征是长耳朵、大鼻子和圆滚滚的身体。代表片段配上「你的胆子真是肥嘟嘟」一句，常被用来做夸张反应。这里使用社区公开项目里的配套头像与原视频裁切配音，归入黄色抽象宇宙。",
     tags: ["黄色抽象宇宙", "长耳", "肥嘟嘟", "梗语音"],
-    origin: "社区二创，图片与音频权利归各自权利人所有，开放再分发许可未核实。配套素材与处理说明：https://github.com/XIANG5556/fat-dudu-effect-extension"
+    origin: "社区二创，形象与音频权利归各自权利人所有。本次图片由用户提供的3D模型渲染；原声音轨及处理说明：https://github.com/XIANG5556/fat-dudu-effect-extension"
   },
   {
     id: "xiaocao",

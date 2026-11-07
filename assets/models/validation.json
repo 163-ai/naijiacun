@@ -2,86 +2,509 @@
   "models": [
     {
       "id": "nailong",
+      "name": "奶龙",
+      "inputFile": "奶龙.glb",
+      "inputBytes": 41700076,
+      "inputSha256": "b375a6d8369243abbb7a21cef13d33f70feb42307e7fdb44af0f7e89a4c4fa95",
+      "selection": "左侧完整正面人物，保留原黄色印字服装",
       "file": "assets/models/nailong.glb",
-      "bytes": 1822964,
-      "sha256": "a5e1867385cf29d40c3a976cf16b8e6d8b3f23f59bd6f31f8e79017fe5ab7ac5",
-      "source": "https://raw.githubusercontent.com/ericshang98/cowcoming/cd1d7774658d2eb9f8aab8bf341165fbfb2d1716/public/characters/nailong/v1/model.glb",
-      "conversion": "Unchanged downloaded GLB bytes",
+      "bytes": 12532072,
+      "sha256": "1075dcd200377cdabf921423d2b44a0fd3791f97962f222cc319e2c60e7c4ea8",
       "meshes": 1,
-      "triangles": 49726,
-      "animations": [
-        "bow",
-        "idle",
-        "look",
-        "nod",
-        "reflect",
-        "tilt",
-        "wave"
+      "vertices": 67530,
+      "triangles": 99999,
+      "images": [
+        {
+          "mimeType": "image/png",
+          "bytes": 2237866,
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "mimeType": "image/png",
+          "bytes": 3908757,
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "mimeType": "image/png",
+          "bytes": 3022248,
+          "width": 2048,
+          "height": 2048
+        }
       ],
-      "extensionsUsed": [],
+      "extensionsUsed": [
+        "KHR_materials_specular"
+      ],
       "extensionsRequired": [],
       "externalResources": [],
-      "asset": {
-        "generator": "Khronos glTF Blender I/O v5.2.40",
-        "version": "2.0"
-      }
+      "orientation": "Y-up, front +Z, feet at 0, height 2.2",
+      "renders": [
+        {
+          "file": "assets/characters/3d/nailong-avatar.png",
+          "bytes": 187530,
+          "sha256": "98547d92cf0c2dc2eeac698611ae392c499f9bf0cf881025d8a33c147d56ab23",
+          "width": 512,
+          "height": 512
+        },
+        {
+          "file": "assets/characters/3d/nailong-pet.png",
+          "bytes": 472440,
+          "sha256": "580fa1478914ba1c0c526207b9f949acb61012cde18bf763ddc7ce70ce65a4f3",
+          "width": 720,
+          "height": 900
+        }
+      ]
     },
     {
       "id": "naiwa",
+      "name": "奶娃 / 奶蛙",
+      "inputFile": "奶娃.glb",
+      "inputBytes": 74751696,
+      "inputSha256": "aff0dbe5a341cca166eff00ca41fef3eb1724e4b05875ceba605c1670535f933",
+      "selection": "三个独立人物中保留中间白肚皮正面人物",
       "file": "assets/models/naiwa.glb",
-      "bytes": 3397852,
-      "sha256": "a55c91173eb683cfd8a2b3dc27776e5ab9f0962db9d627c9af46b32d65854107",
-      "source": "https://raw.githubusercontent.com/bigdiu/naiwa-nailoong-blender-model/82bbeba708861ed55b65372bf561f73ee68cde88/nailong_colored.blend",
-      "conversion": "Original Blender geometry and material colours exported to GLB",
+      "bytes": 13594700,
+      "sha256": "51c3995829afbe50e37a4c63c5b4fa8b802dcadde129191c6af559d9c5d9f6d5",
       "meshes": 1,
-      "triangles": 67960,
-      "animations": [],
-      "extensionsUsed": [],
+      "vertices": 73093,
+      "triangles": 99999,
+      "images": [
+        {
+          "mimeType": "image/png",
+          "bytes": 2146805,
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "mimeType": "image/png",
+          "bytes": 4841392,
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "mimeType": "image/png",
+          "bytes": 3065288,
+          "width": 2048,
+          "height": 2048
+        }
+      ],
+      "extensionsUsed": [
+        "KHR_materials_specular"
+      ],
       "extensionsRequired": [],
       "externalResources": [],
-      "asset": {
-        "copyright": "WeDai / bigdiu. Learning and practice, non-commercial use. Retain author credit and source; character rights belong to their respective owners.",
-        "generator": "Khronos glTF Blender I/O v5.2.41",
-        "version": "2.0"
-      }
+      "orientation": "Y-up, front +Z, feet at 0, height 2.2",
+      "renders": [
+        {
+          "file": "assets/characters/3d/naiwa-avatar.png",
+          "bytes": 175602,
+          "sha256": "d9d758318c83080ad2b41d9f8feac57c82a9e04f10ec1087de952c67e82a5df4",
+          "width": 512,
+          "height": 512
+        },
+        {
+          "file": "assets/characters/3d/naiwa-pet.png",
+          "bytes": 349033,
+          "sha256": "7c72131ea35ff322793df00ed75976e4cd4d770b267ba5c40883647b1be58a64",
+          "width": 720,
+          "height": 900
+        }
+      ]
+    },
+    {
+      "id": "baobaolong",
+      "name": "暴暴龙",
+      "inputFile": "爆爆龙.glb",
+      "inputBytes": 43358392,
+      "inputSha256": "e1550d0124e35875f9a86a558b89d905c9dc81b8e3a1542c488a84c2eb1e7612",
+      "selection": "保留原单角色与蛋壳造型",
+      "file": "assets/models/baobaolong.glb",
+      "bytes": 8869860,
+      "sha256": "a654c010917c95ea58db5a0c544aceb05ec0bd68d33bf4d874e135aa62cb0a19",
+      "meshes": 1,
+      "vertices": 65568,
+      "triangles": 100000,
+      "images": [
+        {
+          "mimeType": "image/png",
+          "bytes": 542797,
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "mimeType": "image/png",
+          "bytes": 4281307,
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "mimeType": "image/png",
+          "bytes": 745693,
+          "width": 1024,
+          "height": 1024
+        }
+      ],
+      "extensionsUsed": [
+        "KHR_materials_specular"
+      ],
+      "extensionsRequired": [],
+      "externalResources": [],
+      "orientation": "Y-up, front +Z, feet at 0, height 2.2",
+      "renders": [
+        {
+          "file": "assets/characters/3d/baobaolong-avatar.png",
+          "bytes": 231742,
+          "sha256": "da26dea6b483be4c2306a4b28144c42c4c5fbe090161bc7d306c18eacc644ce3",
+          "width": 512,
+          "height": 512
+        },
+        {
+          "file": "assets/characters/3d/baobaolong-pet.png",
+          "bytes": 385126,
+          "sha256": "6a7282b429b73d0aedf00edc2d9e20b7e38869a5792c5f46106b3e8668ecff99",
+          "width": 720,
+          "height": 900
+        }
+      ]
+    },
+    {
+      "id": "xiaoqi",
+      "name": "小七",
+      "inputFile": "小七.glb",
+      "inputBytes": 40288348,
+      "inputSha256": "a55abdd433857fb14370365393786867c866a15993e5c89968baf44969252f53",
+      "selection": "保留原单角色与红色上衣",
+      "file": "assets/models/xiaoqi.glb",
+      "bytes": 8770052,
+      "sha256": "be825f525ee8217e3cdf56644526930accd9ebe4e83ed9b357c31dd935372050",
+      "meshes": 1,
+      "vertices": 69365,
+      "triangles": 100000,
+      "images": [
+        {
+          "mimeType": "image/png",
+          "bytes": 440162,
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "mimeType": "image/png",
+          "bytes": 3989769,
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "mimeType": "image/png",
+          "bytes": 918563,
+          "width": 1024,
+          "height": 1024
+        }
+      ],
+      "extensionsUsed": [
+        "KHR_materials_specular"
+      ],
+      "extensionsRequired": [],
+      "externalResources": [],
+      "orientation": "Y-up, front +Z, feet at 0, height 2.2",
+      "renders": [
+        {
+          "file": "assets/characters/3d/xiaoqi-avatar.png",
+          "bytes": 135434,
+          "sha256": "b0e630b16488f50e0277fc1b1b086afa4b5e6ab7ad65f4616092725db40599f2",
+          "width": 512,
+          "height": 512
+        },
+        {
+          "file": "assets/characters/3d/xiaoqi-pet.png",
+          "bytes": 243064,
+          "sha256": "177f02e5788f33b8d49baddee8f34db0b4247b8f290726eb2a1963ed35674024",
+          "width": 720,
+          "height": 900
+        }
+      ]
     },
     {
       "id": "niulai",
+      "name": "牛来",
+      "inputFile": "牛来.glb",
+      "inputBytes": 79717208,
+      "inputSha256": "982971230579a526a11df373ba2cef2b173384e9eacb19dcc17865170ff5bd29",
+      "selection": "三个独立人物中保留最左完整正面人物",
       "file": "assets/models/niulai.glb",
-      "bytes": 3563108,
-      "sha256": "7ccc6f74babe638f6c7fd67f2e4abd4dad1c683461dfb6091a35a4fa45c9389a",
-      "source": "https://raw.githubusercontent.com/askuy/niulai-site/d2488fb9b2a42f2183bb84752925dd0c8107b752/assets/niulai.glb",
-      "conversion": "Unchanged downloaded GLB bytes",
-      "meshes": 175,
-      "triangles": 159260,
-      "animations": [
-        "NIU LAI",
-        "NIU LAI head",
-        "NIU LAI jaw volume",
-        "NIU LAI lips",
-        "NIU LAI lower jaw teeth",
-        "NIU LAI tongue",
-        "NIU LAI mouth cavity",
-        "NIU LAI upper teeth",
-        "MAMA head",
-        "MAMA jaw volume",
-        "MAMA lips",
-        "MAMA lower jaw teeth",
-        "MAMA tongue",
-        "MAMA mouth cavity",
-        "MAMA upper teeth",
-        "Snake sway"
+      "bytes": 9910092,
+      "sha256": "5340cc3020ac164ee4fb29d06d9a5fc1b135d4683f0b2815eab938d8af80abfa",
+      "meshes": 1,
+      "vertices": 63182,
+      "triangles": 100000,
+      "images": [
+        {
+          "mimeType": "image/png",
+          "bytes": 1083933,
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "mimeType": "image/png",
+          "bytes": 5307403,
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "mimeType": "image/png",
+          "bytes": 895060,
+          "width": 1024,
+          "height": 1024
+        }
       ],
-      "extensionsUsed": [],
+      "extensionsUsed": [
+        "KHR_materials_specular"
+      ],
       "extensionsRequired": [],
       "externalResources": [],
-      "asset": {
-        "generator": "Khronos glTF Blender I/O v4.5.51",
-        "version": "2.0"
-      },
-      "displayNode": "NIU_LAI",
-      "displayMeshes": 52,
-      "displayTriangles": 61656
+      "orientation": "Y-up, front +Z, feet at 0, height 2.2",
+      "renders": [
+        {
+          "file": "assets/characters/3d/niulai-avatar.png",
+          "bytes": 197558,
+          "sha256": "4a0bdbbed743c11391dff1a53fef1553ba6d5128cbdfe59aa4e1a80cca440d40",
+          "width": 512,
+          "height": 512
+        },
+        {
+          "file": "assets/characters/3d/niulai-pet.png",
+          "bytes": 432051,
+          "sha256": "aa8aa61452f208b001d04dd6fb784a5d59288546d3fd7925ebd662e274572c52",
+          "width": 720,
+          "height": 900
+        }
+      ],
+      "sourceLimitations": "所选正面人物的源几何无明显长尾；未拼接其他人物或补造部件。"
+    },
+    {
+      "id": "capybara",
+      "name": "卡皮巴拉",
+      "inputFile": "卡皮巴拉.glb",
+      "inputBytes": 42348596,
+      "inputSha256": "86bf4ca45f3e3c93fc9ab442c008e01172d5335d64d18ae4570de3789d460744",
+      "selection": "保留原泡澡水豚与红碗",
+      "file": "assets/models/capybara.glb",
+      "bytes": 12493892,
+      "sha256": "bd314b8301fe4c4ed8abe0d8bb47712279589c48d02164d212a02c2dfa7c18a5",
+      "meshes": 1,
+      "vertices": 74543,
+      "triangles": 99999,
+      "images": [
+        {
+          "mimeType": "image/png",
+          "bytes": 2313883,
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "mimeType": "image/png",
+          "bytes": 4292193,
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "mimeType": "image/png",
+          "bytes": 2300532,
+          "width": 2048,
+          "height": 2048
+        }
+      ],
+      "extensionsUsed": [
+        "KHR_materials_specular"
+      ],
+      "extensionsRequired": [],
+      "externalResources": [],
+      "orientation": "Y-up, front +Z, feet at 0, height 2.2",
+      "renders": [
+        {
+          "file": "assets/characters/3d/capybara-avatar.png",
+          "bytes": 260314,
+          "sha256": "54e4f88bcecbb69fd38ce5ee21ee51e17b188f47c7085acb90f4256960f89717",
+          "width": 512,
+          "height": 512
+        },
+        {
+          "file": "assets/characters/3d/capybara-pet.png",
+          "bytes": 494747,
+          "sha256": "7eba26bce551735b2a81f27cea445e511f9043fd07c5eff98403e92b70dc148d",
+          "width": 720,
+          "height": 900
+        }
+      ]
+    },
+    {
+      "id": "naicha",
+      "name": "奶察",
+      "inputFile": "奶察.glb",
+      "inputBytes": 10456340,
+      "inputSha256": "d199263f6604f4d46aa19767ef21ce5bd93eecb8eef6f589411996d2a3b7f4aa",
+      "selection": "三个视图人物中保留左侧完整正面人物及制服配饰",
+      "file": "assets/models/naicha.glb",
+      "bytes": 9604216,
+      "sha256": "1b1615f36f8bc5af9342a7489c19708a3f17d918f5da7b4a6a95feb1c9fa0091",
+      "meshes": 1,
+      "vertices": 10982,
+      "triangles": 17326,
+      "images": [
+        {
+          "mimeType": "image/png",
+          "bytes": 2079449,
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "mimeType": "image/png",
+          "bytes": 4257158,
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "mimeType": "image/png",
+          "bytes": 2809997,
+          "width": 2048,
+          "height": 2048
+        }
+      ],
+      "extensionsUsed": [
+        "KHR_materials_specular"
+      ],
+      "extensionsRequired": [],
+      "externalResources": [],
+      "orientation": "Y-up, front +Z, feet at 0, height 2.2",
+      "renders": [
+        {
+          "file": "assets/characters/3d/naicha-avatar.png",
+          "bytes": 243487,
+          "sha256": "372a2ead88be78e6c04a2ccaefe788d437a24bbd3a86203b55702fee33275ce5",
+          "width": 512,
+          "height": 512
+        },
+        {
+          "file": "assets/characters/3d/naicha-pet.png",
+          "bytes": 482640,
+          "sha256": "a1d4dfc5322283f8d828c4c0de78998ea303d3ed5f8fa85ecf46caa2483c080b",
+          "width": 720,
+          "height": 900
+        }
+      ]
+    },
+    {
+      "id": "naidan",
+      "name": "奶蛋",
+      "inputFile": "奶蛋.glb",
+      "inputBytes": 36558988,
+      "inputSha256": "d41886ed708e88bfaa9889d64481e9cd848e2cff2663f6938d0e399391d057d3",
+      "selection": "保留原金色蛋形与无四肢造型",
+      "file": "assets/models/naidan.glb",
+      "bytes": 9575812,
+      "sha256": "78df41a9e4b5dafbf4052b2f9ca90e2f13cd21568d972785e614fa140f159eaa",
+      "meshes": 1,
+      "vertices": 65378,
+      "triangles": 99999,
+      "images": [
+        {
+          "mimeType": "image/png",
+          "bytes": 1687722,
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "mimeType": "image/png",
+          "bytes": 3277144,
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "mimeType": "image/png",
+          "bytes": 1916943,
+          "width": 2048,
+          "height": 2048
+        }
+      ],
+      "extensionsUsed": [
+        "KHR_materials_specular"
+      ],
+      "extensionsRequired": [],
+      "externalResources": [],
+      "orientation": "Y-up, front +Z, feet at 0, height 2.2",
+      "renders": [
+        {
+          "file": "assets/characters/3d/naidan-avatar.png",
+          "bytes": 218275,
+          "sha256": "79622c0950d0bf7b2807b193e115745fd3f3a82e8d6cd377a80c59fcc49a737e",
+          "width": 512,
+          "height": 512
+        },
+        {
+          "file": "assets/characters/3d/naidan-pet.png",
+          "bytes": 420492,
+          "sha256": "470c12aace0c1b3e529192ac7c0836a4d2307ec26947db217736ba0b0f5bd6d4",
+          "width": 720,
+          "height": 900
+        }
+      ]
+    },
+    {
+      "id": "feidudu",
+      "name": "肥嘟嘟袋鼠",
+      "inputFile": "肥嘟嘟袋鼠.glb",
+      "inputBytes": 68237464,
+      "inputSha256": "eedf9bf2128fa6672c2f9804aa2a8d283d221eda7723a35e15451eeb456b247c",
+      "selection": "从大头像及三只视图人物中仅保留完整正面坐姿小袋鼠",
+      "file": "assets/models/feidudu.glb",
+      "bytes": 10923904,
+      "sha256": "1ef6ea3258397ceaf80530c38528b71880e4d70d88b3561d1759a6249b3cbdc6",
+      "meshes": 1,
+      "vertices": 59531,
+      "triangles": 100000,
+      "images": [
+        {
+          "mimeType": "image/png",
+          "bytes": 1471991,
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "mimeType": "image/png",
+          "bytes": 3923454,
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "mimeType": "image/png",
+          "bytes": 3021549,
+          "width": 2048,
+          "height": 2048
+        }
+      ],
+      "extensionsUsed": [
+        "KHR_materials_specular"
+      ],
+      "extensionsRequired": [],
+      "externalResources": [],
+      "orientation": "Y-up, front +Z, feet at 0, height 2.2",
+      "renders": [
+        {
+          "file": "assets/characters/3d/feidudu-avatar.png",
+          "bytes": 133860,
+          "sha256": "0e1239ded6492cd1d958adaf09120a30e22be5f443bbf25bdaaa4d9839b60dca",
+          "width": 512,
+          "height": 512
+        },
+        {
+          "file": "assets/characters/3d/feidudu-pet.png",
+          "bytes": 339244,
+          "sha256": "1d3fc31e47c055ec4fadf8f2d96a9a4e52733ac8d3ca8d45df472ba0fe8025d0",
+          "width": 720,
+          "height": 900
+        }
+      ],
+      "sourceLimitations": "所选正面人物的源几何无明显长尾；未拼接其他人物或补造部件。"
     }
   ]
 }

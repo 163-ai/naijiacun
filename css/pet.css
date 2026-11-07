@@ -56,6 +56,7 @@
   object-fit: contain;
   border-radius: 50%;
 }
+.pet-body .pet-img.pet-img--full { border-radius: 0; }
 
 /* 立体模式保留角色本身的透明轮廓，不再裁成圆形 */
 .pet:not(.is-flat) .pet-body .pet-img { border-radius: 0; }

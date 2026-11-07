@@ -139,6 +139,7 @@
       <label>一句话称号<input name="title" maxlength="30" placeholder="例如：黄色大肚子的呆萌小恐龙"></label>
       <label>热梗 / 名场面<input name="quote" maxlength="80" placeholder="例如：duang~duang~ 的大肚子"></label>
       <label>介绍<textarea name="desc" rows="3" maxlength="200" placeholder="用一两句中性的话介绍这个形象"></textarea></label>
+      <p class="hint tiny">提交后会进入管理员的审核队列，通过后所有访客都能看到。</p>
       <button type="submit" class="btn primary wide">入住奶家村</button>
     </form>
   </div>
@@ -205,7 +206,7 @@
   <div class="modal-mask" data-close></div>
   <div class="modal-card">
     <button class="modal-close" data-close aria-label="关闭">✕</button>
-    <h2 class="modal-title" id="adminTitle">🔒 管理 · 删除村民</h2>
+    <h2 class="modal-title" id="adminTitle">🔒 管理 · 审核 / 删除</h2>
 
     <div id="adminLocked">
       <p class="hint">
@@ -235,6 +236,11 @@
 
     <div id="adminPanel" class="hidden">
       <p class="hint tiny" id="adminWho"></p>
+      <div id="pendingSection" class="hidden">
+        <h3 class="admin-sub">📥 待审提名 <button type="button" id="pendingRefresh" class="btn ghost tiny-btn">刷新</button></h3>
+        <div id="pendingList" class="admin-list"></div>
+      </div>
+      <h3 class="admin-sub">村里现有成员</h3>
       <div id="adminList" class="admin-list"></div>
       <div class="settings-actions">
         <button type="button" id="adminOut" class="btn ghost">退出管理</button>
@@ -243,7 +249,8 @@
   </div>
 </div>
 
-<script src="js/data.js"></script>
+<script src="js/config.js"></script>
+<script src="js/data.js?v=user-models-9"></script>
 <script src="js/avatars.js"></script>
 <script src="js/tts.js"></script>
 <script src="js/app.js"></script>

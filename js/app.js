@@ -468,24 +468,63 @@
       var name = form.name.value.trim();
       if (!name) return;
       var emoji = form.emoji.value.trim() || "🙂";
-      var extra = getExtra();
       var person = {
-        id: "local-" + Date.now(),
         name: name,
         emoji: emoji,
         category: form.category.value,
         title: form.title.value.trim() || "新来的村民",
-        heat: 100 + extra.length,
         quote: form.quote.value.trim(),
-        desc: form.desc.value.trim() || "这位村民由你在本地提名，介绍待补充。",
-        tags: ["本地提名"]
+        desc: form.desc.value.trim() || "这位村民由观众提名，介绍待补充。"
       };
-      extra.push(person);
-      writeJSON(EXTRA_KEY, extra);
-      form.reset();
-      closeModals();
-      renderAll();
-      openDetail(person.id);
+
+      var api = (window.NAIJIACUN_CONFIG && window.NAIJIACUN_CONFIG.apiBase) || "";
+      var submitBtn = form.querySelector("button[type='submit']");
+      submitBtn.disabled = true;
+
+      function finishLocal() {
+        // 回退：网络提名不可用时存本机（仅提名者自己可见）
+        var extra = getExtra();
+        var local = {
+          id: "local-" + Date.now(),
+          name: person.name,
+          emoji: person.emoji,
+          category: person.category,
+          title: person.title,
+          heat: 100 + extra.length,
+          quote: person.quote,
+          desc: person.desc,
+          tags: ["本地提名"]
+        };
+        extra.push(local);
+        writeJSON(EXTRA_KEY, extra);
+        form.reset();
+        submitBtn.disabled = false;
+        closeModals();
+        renderAll();
+        openDetail(local.id);
+        showToast("网络提名暂不可用，先存在了你本机（仅自己可见）");
+      }
+
+      if (!api) { finishLocal(); return; }
+
+      fetch(api.replace(/\/+$/, "") + "/api/nominate", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(person)
+      }).then(function (res) {
+        return res.json().catch(function () { return {}; }).then(function (data) {
+          return { ok: res.ok, data: data };
+        });
+      }).then(function (r) {
+        submitBtn.disabled = false;
+        if (r.ok && r.data && r.data.ok) {
+          form.reset();
+          closeModals();
+          showToast(r.data.detail || "提名已提交，等待管理员审核");
+        } else {
+          showToast((r.data && r.data.detail) || "提交失败，请稍后再试");
+        }
+      }).catch(finishLocal);
     });
   }
 
