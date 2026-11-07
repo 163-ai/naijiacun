@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>形象总表 · 奶家村</title>
+<meta name="description" content="奶家村全部角色的形象、分类、热梗与音色设定一览表。">
+<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/gallery.css">
+</head>
+<body class="gallery-page">
+
+<div class="g-wrap">
+
+  <div class="g-head">
+    <a class="g-back" href="index.html">← 回到图鉴</a>
+    <h1>形象总表</h1>
+  </div>
+  <p class="g-sub">
+    全部角色一眼看完。形象列是站内自绘的原创矢量图形，不使用任何官方美术素材。
+    点击「导出 CSV」可以拿到表格数据，点击「打印 / 存 PDF」可以直接存档。
+  </p>
+
+  <div class="g-tools">
+    <button class="g-btn" id="csvBtn">⬇ 导出 CSV</button>
+    <button class="g-btn" id="printBtn">🖨 打印 / 存 PDF</button>
+    <button class="g-btn" id="jumpBtn">🐾 去桌宠模式</button>
+  </div>
+
+  <div class="g-table-wrap">
+    <table class="g-table">
+      <thead>
+        <tr>
+          <th class="g-idx">#</th>
+          <th>形象</th>
+          <th>名称 / ID</th>
+          <th>分类</th>
+          <th>一句话称号</th>
+          <th>热梗</th>
+          <th>音色设定</th>
+          <th>权利归属</th>
+        </tr>
+      </thead>
+      <tbody id="gBody"></tbody>
+    </table>
+  </div>
+
+  <p class="g-foot" id="gFoot"></p>
+
+</div>
+
+<script src="js/data.js"></script>
+<script src="js/avatars.js"></script>
+<script src="js/gallery.js"></script>
+</body>
+</html>
