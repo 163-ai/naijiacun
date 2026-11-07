@@ -12,13 +12,20 @@
   "use strict";
 
   var CONFIG = {
-    provider: "browser",   // "browser" | "breeze"
+    provider: "browser",   // "browser" | "breeze" | "siliconflow"
     endpoint: "",          // 站长部署的透传代理地址，例如 https://naijiacun-tts.xxx.workers.dev
-    apiKey: "",            // 访客自己填的 Key（brz_ 开头）
+    apiKey: "",            // 访客自己填的 Breeze Key（brz_ 开头）
+    sfKey: "",             // 访客自己填的硅基流动 Key（sk- 开头）
+    sfBase: "https://api.siliconflow.cn/v1",
+    sfModel: "FunAudioLLM/CosyVoice2-0.5B",   // 角色没写 voiceModel 时的默认模型
     voices: {},            // 人物 id → 音色 id
     defaultVoiceId: "",    // 默认音色 id
     browserVoice: ""       // 浏览器音色（voiceURI），空 = 自动优选
   };
+
+  // 音色 id 形如 speech:名字:模型:uuid（硅基流动）或 voc_xxx（Breeze）。
+  // 用前缀区分服务商，前端 data.js 里照常只写 voiceId，不用额外配置。
+  var SF_PREFIX = /^speech:/;
 
   // 音色优选策略：优先自然音/在线音色，避开老式机械音
   var PREFER = [/Natural/i, /Online/i, /Xiaoxiao/i, /Yunxi/i, /Yunyang/i,
@@ -169,7 +176,25 @@
   }
 
   function canUseBreeze() {
-    return CONFIG.provider === "breeze" && CONFIG.endpoint && CONFIG.apiKey;
+    return CONFIG.provider !== "browser" && CONFIG.endpoint && CONFIG.apiKey;
+  }
+
+  function canUseSF() {
+    // 访客自带 sk- Key 直连；没带就借站长的 Worker 转发（Key 在服务端）
+    return !!(CONFIG.sfKey || CONFIG.endpoint);
+  }
+
+  // 某个音色属于哪家：硅基流动（speech: 前缀）还是 Breeze（其余）
+  function voiceKind(voiceId) {
+    if (!voiceId) return "";
+    return SF_PREFIX.test(voiceId) ? "siliconflow" : "breeze";
+  }
+
+  function voiceModelFor(id) {
+    var map = (typeof window !== "undefined" && window.CHARACTER_VOICES) ||
+              (typeof CHARACTER_VOICES !== "undefined" ? CHARACTER_VOICES : null);
+    var p = (map && id && map[id]) || null;
+    return (p && p.voiceModel) || CONFIG.sfModel;
   }
 
   function speakBrowser(text, id) {
@@ -227,8 +252,8 @@
   function describeError(status, payload) {
     if (status === 401) return "API Key 无效或已被禁用，请检查后重新填写";
     if (status === 402) return "这个 Key 的额度已用完";
-    if (status === 403) return "这个 Key 没有访问该音色的权限";
-    if (status === 404) return "音色 ID 不存在，请先到 Breeze 控制台复制正确的 voice_id";
+    if (status === 403) return "Key 没有权限（硅基流动返回 403 通常是账号还没实名认证）";
+    if (status === 404) return "音色 ID 不存在，请检查 voiceId 是否复制完整";
     if (status === 429) return "请求太频繁，稍等一下再试";
     if (payload && payload.detail) return String(payload.detail).slice(0, 160);
     return "合成失败（HTTP " + status + "）";
@@ -248,6 +273,54 @@
     return (map && map[id] && map[id].style) || "";
   }
 
+  // 代理地址可能带查询串（例如 ?sharecode=xxx），路径要插在查询串前面
+  function endpointURL(path) {
+    var base = String(CONFIG.endpoint || "").trim().replace(/\/+$/, "");
+    var q = base.indexOf("?");
+    if (q === -1) return base + path;
+    return base.slice(0, q) + path + base.slice(q);
+  }
+
+  // 云端返回的都是成品音频：出错时后端会回 JSON，正常时是二进制
+  function readAudio(res) {
+    var type = res.headers.get("content-type") || "";
+    if (!res.ok || type.indexOf("application/json") !== -1) {
+      return res.json()
+        .catch(function () { return {}; })
+        .then(function (payload) {
+          throw new Error(describeError(res.status, payload));
+        });
+    }
+    return res.blob();
+  }
+
+  function playBlob(blob, id) {
+    var url = URL.createObjectURL(blob);
+    audioEl = applyTempo(new Audio(url), id);
+    audioEl.onended = function () {
+      URL.revokeObjectURL(url);
+      currentId = null;
+      emit();
+    };
+    audioEl.onerror = function () {
+      notify("音频播放失败，请重试");
+      currentId = null;
+      emit();
+    };
+    return audioEl.play().catch(function () {
+      notify("浏览器拦截了自动播放，请再点一次");
+      currentId = null;
+      emit();
+    });
+  }
+
+  function failBack(text, id, err) {
+    notify(err.message || "语音合成失败");
+    currentId = null;
+    emit();
+    speakBrowser(text, id);
+  }
+
   function speakBreeze(text, id) {
     var voiceId = voiceFor(id);
     if (!voiceId) {
@@ -258,7 +331,7 @@
     currentId = id;
     emit();
 
-    return fetch(CONFIG.endpoint.replace(/\/$/, "") + "/api/tts", {
+    return fetch(endpointURL("/api/tts"), {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -266,42 +339,49 @@
       },
       body: JSON.stringify({ text: text, voiceId: voiceId })
     })
-      .then(function (res) {
-        var type = res.headers.get("content-type") || "";
-        if (!res.ok || type.indexOf("application/json") !== -1) {
-          return res.json()
-            .catch(function () { return {}; })
-            .then(function (payload) {
-              throw new Error(describeError(res.status, payload));
-            });
-        }
-        return res.blob();
-      })
-      .then(function (blob) {
-        var url = URL.createObjectURL(blob);
-        audioEl = applyTempo(new Audio(url), id);
-        audioEl.onended = function () {
-          URL.revokeObjectURL(url);
-          currentId = null;
-          emit();
-        };
-        audioEl.onerror = function () {
-          notify("音频播放失败，请重试");
-          currentId = null;
-          emit();
-        };
-        return audioEl.play().catch(function () {
-          notify("浏览器拦截了自动播放，请再点一次");
-          currentId = null;
-          emit();
-        });
-      })
-      .catch(function (err) {
-        notify(err.message || "语音合成失败");
-        currentId = null;
-        emit();
-        speakBrowser(text, id);
+      .then(readAudio)
+      .then(function (blob) { return playBlob(blob, id); })
+      .catch(function (err) { failBack(text, id, err); });
+  }
+
+  // 硅基流动：访客自带 Key 时浏览器直连（它开放 CORS）；
+  // 没自带就把请求丢给 Worker，用站长存在环境变量里的 Key，按 IP 限量。
+  function speakSF(text, id) {
+    var voiceId = voiceFor(id);
+    if (!voiceId) {
+      notify("还没有选择音色，先用浏览器语音顶上");
+      return speakBrowser(text, id);
+    }
+
+    currentId = id;
+    emit();
+
+    var model = voiceModelFor(id);
+    var url, headers, body;
+
+    if (CONFIG.sfKey) {
+      url = CONFIG.sfBase.replace(/\/$/, "") + "/audio/speech";
+      headers = {
+        "content-type": "application/json",
+        authorization: "Bearer " + CONFIG.sfKey
+      };
+      body = JSON.stringify({
+        model: model,
+        input: String(text).slice(0, 600),
+        voice: voiceId,
+        response_format: "mp3",
+        speed: 1
       });
+    } else {
+      url = endpointURL("/api/sf-tts");
+      headers = { "content-type": "application/json" };
+      body = JSON.stringify({ text: String(text).slice(0, 600), voiceId: voiceId, modelId: model });
+    }
+
+    return fetch(url, { method: "POST", headers: headers, body: body })
+      .then(readAudio)
+      .then(function (blob) { return playBlob(blob, id); })
+      .catch(function (err) { failBack(text, id, err); });
   }
 
   function notify(msg) {
@@ -385,17 +465,23 @@
     stop();
     if (!text) return;
 
-    // 优先级：访客自己的 Key → 站长预生成的真音色 → 浏览器语音
-    if (canUseBreeze()) return speakBreeze(text, id);
+    // 优先级：预生成 mp3（同句同音色，免费秒开）→ 云端实时合成 → 浏览器语音
+    // 云端这一步：访客自带 Key 优先，没带就借站长代理；音色是 speech: 开头走硅基流动，其余走 Breeze
     if (playLocal(text, id)) return;
 
-    if (CONFIG.provider === "breeze") {
-      notify("未填写 API Key，先用浏览器语音顶上");
+    var kind = voiceKind(voiceFor(id));
+    if (kind === "siliconflow" && canUseSF()) return speakSF(text, id);
+    if (kind !== "siliconflow" && canUseBreeze()) return speakBreeze(text, id);
+
+    if (CONFIG.provider !== "browser") {
+      notify(kind === "siliconflow"
+        ? "未填写硅基流动 Key，先用浏览器语音顶上"
+        : "未填写 Breeze Key 或代理地址，先用浏览器语音顶上");
     }
     return speakBrowser(text, id);
   }
 
-  // 校验 Key：走代理的 /api/check（内部调用 /v1/api-keys/current）
+  // 校验 Key：Breeze 走代理的 /api/check（内部调用 /v1/api-keys/current）
   function checkKey(endpoint, key) {
     return fetch(endpoint.replace(/\/$/, "") + "/api/check", {
       headers: { "x-breeze-key": key }
@@ -405,6 +491,33 @@
           throw new Error(describeError(res.status, data));
         }
         return data;
+      });
+    });
+  }
+
+  // 硅基流动没有专门的「验 Key」接口，用音色列表接口顺带验一次
+  function checkSFKey(key) {
+    return fetch(CONFIG.sfBase.replace(/\/$/, "") + "/audio/voice/list", {
+      headers: { authorization: "Bearer " + key }
+    }).then(function (res) {
+      return res.json()
+        .catch(function () { return {}; })
+        .then(function (data) {
+          if (!res.ok) throw new Error(describeError(res.status, data));
+          return data || {};
+        });
+    });
+  }
+
+  function listSFVoices(key) {
+    return checkSFKey(key).then(function (data) {
+      var arr = data.result || data.results || data.data || data.voices || [];
+      return arr.map(function (v) {
+        return {
+          id: v.uri || v.id,
+          name: v.customName || v.name || v.title || "未命名音色",
+          category: "硅基流动"
+        };
       });
     });
   }
@@ -433,7 +546,11 @@
     stop: stop,
     onChange: onChange,
     checkKey: checkKey,
+    checkSFKey: checkSFKey,
     listVoices: listVoices,
+    listSFVoices: listSFVoices,
+    canUseSF: canUseSF,
+    voiceKind: voiceKind,
     listBrowserVoices: listBrowserVoices,
     previewVoice: previewVoice,
     setBrowserVoice: function (uri) { CONFIG.browserVoice = uri || ""; },

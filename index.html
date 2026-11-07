@@ -149,19 +149,25 @@
   <div class="modal-mask" data-close></div>
   <div class="modal-card">
     <button class="modal-close" data-close aria-label="关闭">✕</button>
-    <h2 class="modal-title">语音设置 · 用你自己的 Breeze Key</h2>
+    <h2 class="modal-title">语音设置</h2>
     <p class="hint">
-      Key 只保存在你自己的浏览器里，本站不上传、不记录。建议在 Breeze 控制台单独创建一个 Key，
-      并给它设置额度上限，避免被滥用。
+      <b>不填也能听。</b>站点自带的转发服务会在服务端用自己的额度帮你合成，每人每天有上限。
+      填上自己的 Key 就没有上限了 —— Key 只保存在你自己的浏览器里，本站不上传、不记录。
     </p>
     <form id="voiceForm" class="add-form">
-      <label>Breeze API Key
-        <input name="key" type="password" placeholder="brz_xxxxxxxxxxxxxxxx" autocomplete="off" spellcheck="false">
+      <label>语音服务
+        <select name="provider">
+          <option value="siliconflow">硅基流动（sk- 开头）</option>
+          <option value="breeze">Breeze（brz_ 开头，已停用）</option>
+        </select>
       </label>
-      <label>代理地址（站长已内置时可留空）
+      <label>API Key（可留空）
+        <input name="key" type="password" placeholder="sk-xxxxxxxxxxxxxxxx" autocomplete="off" spellcheck="false">
+      </label>
+      <label>转发地址（站长已内置，一般不用改）
         <input name="endpoint" placeholder="https://你的worker.workers.dev" autocomplete="off">
       </label>
-      <label>Breeze 音色（填了 Key 才生效）
+      <label>音色（填了 Key 才生效）
         <select name="voice">
           <option value="">不指定（用浏览器语音）</option>
         </select>

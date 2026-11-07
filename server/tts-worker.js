@@ -22,6 +22,18 @@ const ORIGIN_PATTERNS = [
 const API_BASE = "https://api.breeze.blue/v1";
 const MODEL_ID = "breeze-tts-2";
 
+// 硅基流动（主用）：音色 id 是 speech: 开头的那种。开放跨域，浏览器本可直连，
+// 但那样必须把 Key 暴露在页面里，所以访客没自带 Key 时统一走这里，Key 放环境变量。
+//   wrangler secret put SF_KEY          ← 硅基流动 Key（sk- 开头）
+//   wrangler secret put SF_DAILY_LIMIT  ← 每个 IP 每天免费额度，默认 120 条
+// 想真正限流请在 wrangler.toml 里绑一个 KV：
+//   [[kv_namespaces]]
+//   binding = "RATE"
+//   id = "xxxx"
+// 没绑 KV 时退化成「单实例内存计数」，重启即清零，只能挡住一时的高频刷。
+const SF_API = "https://api.siliconflow.cn/v1";
+const SF_DEFAULT_MODEL = "FunAudioLLM/CosyVoice2-0.5B";
+
 // 聊天接口的上游（OpenAI 兼容）。默认走智谱 GLM-4-Flash（永久免费）。
 // 部署时用环境变量覆盖，不要把 Key 写进代码：
 //   wrangler secret put LLM_KEY      ← 你自己申请的大模型 Key
@@ -38,7 +50,7 @@ function corsHeaders(origin) {
   return {
     "access-control-allow-origin": allow,
     "access-control-allow-methods": "GET, POST, OPTIONS",
-    "access-control-allow-headers": "content-type, x-breeze-key, x-llm-key",
+    "access-control-allow-headers": "content-type, x-breeze-key, x-sf-key, x-llm-key",
     "access-control-max-age": "86400",
     vary: "origin"
   };
@@ -128,6 +140,98 @@ async function handleChat(request, env, origin) {
   });
 }
 
+// ---------- 硅基流动合成 ----------
+// 访客自带 x-sf-key 就用访客的（不计数）；没带就用站长 Key，按 IP 计数。
+const memQuota = new Map();
+
+async function bumpQuota(env, ip, limit) {
+  const day = new Date().toISOString().slice(0, 10);
+  const key = "q:" + ip + ":" + day;
+
+  if (env && env.RATE) {
+    const used = Number((await env.RATE.get(key)) || 0);
+    if (used >= limit) return false;
+    await env.RATE.put(key, String(used + 1), { expirationTtl: 90000 });
+    return true;
+  }
+
+  const used = memQuota.get(key) || 0;
+  if (used >= limit) return false;
+  memQuota.set(key, used + 1);
+  return true;
+}
+
+async function handleSFTTS(request, env, origin) {
+  if (request.method !== "POST") {
+    return json({ ok: false, code: "BAD_METHOD", detail: "请用 POST" }, 405, origin);
+  }
+
+  let body;
+  try {
+    body = await request.json();
+  } catch (e) {
+    return json({ ok: false, code: "BAD_JSON", detail: "请求体不是合法 JSON" }, 400, origin);
+  }
+
+  const text = String(body.text || "").slice(0, 600);
+  const voice = String(body.voiceId || "");
+  if (!text || !voice) {
+    return json({ ok: false, code: "MISSING_PARAM", detail: "text 与 voiceId 必填" }, 400, origin);
+  }
+
+  const visitorKey = request.headers.get("x-sf-key") || "";
+  const key = visitorKey || (env && env.SF_KEY) || "";
+  if (!key) {
+    return json({
+      ok: false,
+      code: "NO_KEY",
+      detail: "既没有 x-sf-key，也没有配置 SF_KEY 环境变量"
+    }, 401, origin);
+  }
+
+  if (!visitorKey) {
+    const limit = Number((env && env.SF_DAILY_LIMIT) || 120);
+    const ip = request.headers.get("cf-connecting-ip") || "unknown";
+    const ok = await bumpQuota(env, ip, limit);
+    if (!ok) {
+      return json({
+        ok: false,
+        code: "QUOTA",
+        detail: "今天的免费额度用完了，明天再来，或在语音设置里填自己的 Key"
+      }, 429, origin);
+    }
+  }
+
+  const upstream = await fetch(SF_API + "/audio/speech", {
+    method: "POST",
+    headers: { authorization: "Bearer " + key, "content-type": "application/json" },
+    body: JSON.stringify({
+      model: body.modelId || SF_DEFAULT_MODEL,
+      input: text,
+      voice: voice,
+      response_format: "mp3",
+      speed: 1
+    })
+  });
+
+  if (!upstream.ok) {
+    let detail = "";
+    try {
+      detail = await upstream.text();
+    } catch (e) { /* 忽略 */ }
+    return json({ ok: false, code: "UPSTREAM_ERROR", status: upstream.status, detail: detail.slice(0, 400) },
+      upstream.status === 429 ? 429 : 502, origin);
+  }
+
+  return new Response(upstream.body, {
+    headers: {
+      ...corsHeaders(origin),
+      "content-type": "audio/mpeg",
+      "cache-control": "no-store"
+    }
+  });
+}
+
 export default {
   async fetch(request, env) {
     const origin = request.headers.get("origin") || "";
@@ -141,6 +245,11 @@ export default {
     // 聊天转发：Key 优先用访客自带的 x-llm-key，其次用 Worker 环境变量 LLM_KEY
     if (url.pathname === "/api/chat") {
       return handleChat(request, env, origin);
+    }
+
+    // 硅基流动合成：不需要 x-breeze-key，用自己的那套 Key 逻辑
+    if (url.pathname === "/api/sf-tts") {
+      return handleSFTTS(request, env, origin);
     }
 
     const key = request.headers.get("x-breeze-key") || "";

@@ -492,8 +492,9 @@
   // ---------- 语音设置（BYOK：访客自带 Key） ----------
   var TTS_STORE = "naijacun_tts";
 
-  // 站长部署好自己的透传代理后，把地址填在这里，访客只需填 Key
-  var DEFAULT_TTS_ENDPOINT = "";
+  // 站长部署好的透传代理（和 chat.html 用的是同一个服务，路径换成 /api/sf-tts）。
+  // 有了它，访客什么都不填也能听到真人音色，额度由站长那把 Key 承担并按 IP 限流。
+  var DEFAULT_TTS_ENDPOINT = "https://naijiacun-chat.app.workbuddy.host/?sharecode=LJAS5NSXQO";
 
   function showToast(msg) {
     var el = document.getElementById("toast");
@@ -514,14 +515,43 @@
     }
   }
 
+  // 老的配置里只有一个 key（那时只有 Breeze），这里统一成两家分开存
+  function normalizeTTS(raw) {
+    var cfg = raw || {};
+    return {
+      provider: cfg.provider || (cfg.sfKey ? "siliconflow" : "breeze"),
+      breezeKey: cfg.breezeKey || cfg.key || "",
+      sfKey: cfg.sfKey || "",
+      endpoint: cfg.endpoint || "",
+      voiceId: cfg.voiceId || "",
+      browserVoice: cfg.browserVoice || ""
+    };
+  }
+
+  function currentProvider() {
+    var sel = document.querySelector('#voiceForm select[name="provider"]');
+    return sel ? sel.value : "breeze";
+  }
+
+  // 切换服务商时，把对应那家的 Key 填回输入框，避免互相覆盖
+  function syncKeyField(cfg) {
+    var input = document.querySelector('#voiceForm input[name="key"]');
+    if (!input) return;
+    var p = currentProvider();
+    input.value = p === "siliconflow" ? cfg.sfKey : cfg.breezeKey;
+    input.placeholder = p === "siliconflow" ? "sk-xxxxxxxxxxxxxxxx" : "brz_xxxxxxxxxxxxxxxx";
+  }
+
   function applyTTSConfig(cfg) {
     if (!hasTTS() || !cfg) return;
     var t = window.NaijiacunTTS.config;
     t.endpoint = cfg.endpoint || DEFAULT_TTS_ENDPOINT;
-    t.apiKey = cfg.key || "";
+    t.apiKey = cfg.breezeKey || "";
+    t.sfKey = cfg.sfKey || "";
     t.defaultVoiceId = cfg.voiceId || "";
     t.browserVoice = cfg.browserVoice || "";
-    t.provider = cfg.key && t.endpoint ? "breeze" : "browser";
+    // 具体某个角色走哪家，由 voiceId 前缀决定（speech: → 硅基流动，voc_ → Breeze）
+    t.provider = (cfg.breezeKey || cfg.sfKey) ? (cfg.provider || "breeze") : "browser";
   }
 
   function saveTTSConfig(cfg, remember) {
@@ -588,9 +618,11 @@
   }
 
   function openVoiceModal() {
-    var cfg = readTTSStore() || {};
+    var cfg = normalizeTTS(readTTSStore());
     var t = hasTTS() ? window.NaijiacunTTS.config : {};
-    document.querySelector('#voiceForm input[name="key"]').value = cfg.key || "";
+    var selP = document.querySelector('#voiceForm select[name="provider"]');
+    if (selP) selP.value = cfg.provider;
+    syncKeyField(cfg);
     document.querySelector('#voiceForm input[name="endpoint"]').value =
       cfg.endpoint || DEFAULT_TTS_ENDPOINT || t.endpoint || "";
     document.querySelector('#voiceForm input[name="remember"]').checked = true;
@@ -602,13 +634,31 @@
 
   function testVoiceKey() {
     if (!hasTTS()) return;
+    var provider = currentProvider();
     var endpoint = document.querySelector('#voiceForm input[name="endpoint"]').value.trim();
     var key = document.querySelector('#voiceForm input[name="key"]').value.trim();
+    var label = provider === "siliconflow" ? "硅基流动" : "Breeze";
 
-    if (!key) return setVoiceStatus("请先填入 Breeze API Key", "err");
-    if (!endpoint) return setVoiceStatus("请填入代理地址（Breeze 未开放跨域，必须有代理）", "err");
+    if (!key) return setVoiceStatus("请先填入 " + label + " 的 API Key", "err");
 
     setVoiceStatus("正在验证…");
+
+    if (provider === "siliconflow") {
+      // 硅基流动开放跨域，浏览器直连即可，不需要代理
+      window.NaijiacunTTS.checkSFKey(key)
+        .then(function () { return window.NaijiacunTTS.listSFVoices(key); })
+        .then(function (list) {
+          fillVoiceSelect(list);
+          setVoiceStatus("Key 有效，账号下有 " + list.length + " 个自定义音色", "ok");
+        })
+        .catch(function (err) {
+          setVoiceStatus(err.message || "验证失败", "err");
+        });
+      return;
+    }
+
+    if (!endpoint) return setVoiceStatus("Breeze 未开放跨域，必须填代理地址", "err");
+
     window.NaijiacunTTS.checkKey(endpoint, key)
       .then(function (data) {
         var k = (data && data.api_key) || {};
@@ -634,6 +684,16 @@
   function setupVoiceSettings() {
     document.getElementById("voiceBtn").addEventListener("click", openVoiceModal);
     document.getElementById("testKeyBtn").addEventListener("click", testVoiceKey);
+
+    // 换服务商时切回那家已经存过的 Key，别让两家的 Key 互相覆盖
+    var providerSel = document.querySelector('#voiceForm select[name="provider"]');
+    if (providerSel) {
+      providerSel.addEventListener("change", function () {
+        syncKeyField(normalizeTTS(readTTSStore()));
+        fillVoiceSelect(null, "");
+        setVoiceStatus("");
+      });
+    }
 
     // 试听当前选中的浏览器音色
     var previewBtn = document.getElementById("previewVoiceBtn");
@@ -664,6 +724,7 @@
       } catch (e) { /* 忽略 */ }
       if (hasTTS()) {
         window.NaijiacunTTS.config.apiKey = "";
+        window.NaijiacunTTS.config.sfKey = "";
         window.NaijiacunTTS.config.provider = "browser";
       }
       document.querySelector('#voiceForm input[name="key"]').value = "";
@@ -674,23 +735,34 @@
 
     document.getElementById("voiceForm").addEventListener("submit", function (e) {
       e.preventDefault();
+      var provider = currentProvider();
       var key = e.target.key.value.trim();
       var endpoint = e.target.endpoint.value.trim();
       var voiceId = e.target.voice.value;
       var browserVoice = e.target.browserVoice ? e.target.browserVoice.value : "";
       var remember = e.target.remember.checked;
 
-      if (!key) {
-        saveTTSConfig({ browserVoice: browserVoice }, remember);
+      var cfg = normalizeTTS(readTTSStore());
+      cfg.provider = provider;
+      cfg.endpoint = endpoint;
+      cfg.voiceId = voiceId;
+      cfg.browserVoice = browserVoice;
+      if (provider === "siliconflow") cfg.sfKey = key;
+      else cfg.breezeKey = key;
+
+      if (!cfg.sfKey && !cfg.breezeKey) {
+        saveTTSConfig(cfg, remember);
         setVoiceStatus("未填 Key，已记住浏览器音色", "ok");
         showToast("已切换为浏览器语音");
         return;
       }
-      saveTTSConfig({ key: key, endpoint: endpoint, voiceId: voiceId, browserVoice: browserVoice }, remember);
+
+      saveTTSConfig(cfg, remember);
+      var ready = provider === "siliconflow"
+        ? (hasTTS() && window.NaijiacunTTS.canUseSF())
+        : (hasTTS() && window.NaijiacunTTS.canUseBreeze());
       setVoiceStatus(
-        hasTTS() && window.NaijiacunTTS.canUseBreeze()
-          ? "已启用，点卡片上的 🔊 试试"
-          : "已保存，但代理地址为空，暂时仍用浏览器语音",
+        ready ? "已启用，点卡片上的 🔊 试试" : "已保存，但代理地址为空，暂时仍用浏览器语音",
         "ok"
       );
       showToast("语音设置已保存");

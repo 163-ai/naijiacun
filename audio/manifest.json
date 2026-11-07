@@ -2,57 +2,65 @@
   "nailong": {
     "file": "audio/nailong.mp3",
     "text": "duang~duang~ 的大肚子，和一双童真的圆眼睛。",
-    "voice_id": "voc_d3c9d5yh6m6v",
-    "model": "breeze-tts-2",
-    "bytes": 71712,
-    "generatedAt": "2026-11-07T06:58:08.821Z"
+    "voice_id": "speech:naijiacun-nailong:dbngt9c50mis739nafs0:tahmjlkkamjvesbrwzxr",
+    "model": "FunAudioLLM/CosyVoice2-0.5B",
+    "bytes": 102655,
+    "generatedAt": "2026-11-07T12:06:35.013Z"
   },
   "naiwa": {
     "file": "audio/naiwa.mp3",
     "text": "点一下就狂笑，笑起来停不下来。",
-    "voice_id": "voc_kjt4wqrndgf6",
-    "model": "breeze-tts-2",
-    "bytes": 35136,
-    "generatedAt": "2026-11-07T10:23:12.590Z"
+    "voice_id": "speech:naijiacun-naiwa:dbngt9c50mis739nafs0:iiqpxehecbjlvehiqgoz",
+    "model": "FunAudioLLM/CosyVoice2-0.5B",
+    "bytes": 106495,
+    "generatedAt": "2026-11-07T12:06:39.207Z"
   },
   "baobaolong": {
     "file": "audio/baobaolong.mp3",
     "text": "一山不容二龙，除非一起吃饭。",
-    "voice_id": "voc_2h2sbun8qvbk",
-    "model": "breeze-tts-2",
-    "bytes": 37152,
-    "generatedAt": "2026-11-07T06:25:22.896Z"
+    "voice_id": "speech:naijiacun-baobaolong:dbngt9c50mis739nafs0:ebqauxjsbdxsblvlxkxr",
+    "model": "FunAudioLLM/CosyVoice2-0.5B",
+    "bytes": 51583,
+    "generatedAt": "2026-11-07T12:06:42.550Z"
   },
   "xiaoqi": {
     "file": "audio/xiaoqi.mp3",
     "text": "冒险的起点，总是从一件奇怪的发明开始。",
-    "voice_id": "voc_qgpw3eqg6ku7",
-    "model": "breeze-tts-2",
-    "bytes": 53568,
-    "generatedAt": "2026-11-07T06:25:28.398Z"
+    "voice_id": "speech:naijiacun-xiaoqi:dbngt9c50mis739nafs0:hidylqamtruxbanpqasj",
+    "model": "FunAudioLLM/CosyVoice2-0.5B",
+    "bytes": 51967,
+    "generatedAt": "2026-11-07T12:06:45.966Z"
   },
   "niulai": {
     "file": "audio/niulai.mp3",
     "text": "同一批 AI 畸变图里，长出来的另一个物种。",
-    "voice_id": "voc_vztvmkcwynj9",
-    "model": "breeze-tts-2",
-    "bytes": 63072,
-    "generatedAt": "2026-11-07T06:25:32.040Z"
+    "voice_id": "speech:naijiacun-niulai:dbngt9c50mis739nafs0:myjbgdyzutixuvmdtplz",
+    "model": "FunAudioLLM/CosyVoice2-0.5B",
+    "bytes": 107263,
+    "generatedAt": "2026-11-07T12:06:47.919Z"
   },
   "capybara": {
     "file": "audio/capybara.mp3",
     "text": "别人在卷，它在泡澡。",
-    "voice_id": "voc_reys5un5t4ed",
-    "model": "breeze-tts-2",
-    "bytes": 25632,
-    "generatedAt": "2026-11-07T06:28:07.837Z"
+    "voice_id": "speech:naijiacun-capybara:dbngt9c50mis739nafs0:fmlwcunolrdfhvqdxqts",
+    "model": "FunAudioLLM/CosyVoice2-0.5B",
+    "bytes": 38143,
+    "generatedAt": "2026-11-07T12:06:49.365Z"
   },
   "xiaocao": {
     "file": "audio/xiaocao.mp3",
     "text": "太棒了！你今天也很棒！",
-    "voice_id": "voc_u3nxkd5578wc",
-    "model": "breeze-tts-2",
-    "bytes": 29376,
-    "generatedAt": "2026-11-07T11:19:12.092Z"
+    "voice_id": "speech:naijiacun-xiaocao:dbngt9c50mis739nafs0:gqofveeyihnwzgsauoly",
+    "model": "FunAudioLLM/CosyVoice2-0.5B",
+    "bytes": 32767,
+    "generatedAt": "2026-11-07T12:06:54.068Z"
+  },
+  "feidudu": {
+    "file": "audio/feidudu.mp3",
+    "text": "你的胆子真是肥嘟嘟。",
+    "voice_id": "speech:naijiacun-feidudu:dbngt9c50mis739nafs0:poxyuqbbstadwcmkidhf",
+    "model": "FunAudioLLM/CosyVoice2-0.5B",
+    "bytes": 46207,
+    "generatedAt": "2026-11-07T12:06:51.597Z"
   }
 }

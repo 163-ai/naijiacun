@@ -22,16 +22,22 @@ const API = "https://api.breeze.blue/v1";
 const MODEL = "breeze-tts-2";
 const OUTPUT_FORMAT = "mp3_24000_96";
 
+// 硅基流动：音色 id 是 speech: 开头的那种
+const SF_API = "https://api.siliconflow.cn/v1";
+const SF_DEFAULT_MODEL = "FunAudioLLM/CosyVoice2-0.5B";
+
 const args = process.argv.slice(2);
 const FORCE = args.includes("--force");
 const ONLY = (args.find((a) => a.startsWith("--only=")) || "").split("=")[1] || "";
+const ONLY_LIST = ONLY ? ONLY.split(",").map((s) => s.trim()).filter(Boolean) : [];
 const LIMIT = Number((args.find((a) => a.startsWith("--limit=")) || "").split("=")[1] || 0);
 
 const KEY = process.env.BREEZE_API_KEY || "";
+const SF_KEY = process.env.SILICONFLOW_API_KEY || "";
 const FALLBACK_VOICE = process.env.BREEZE_VOICE_ID || "";
 
-if (!KEY) {
-  console.error("缺少环境变量 BREEZE_API_KEY");
+if (!KEY && !SF_KEY) {
+  console.error("缺少环境变量：至少要给 BREEZE_API_KEY 或 SILICONFLOW_API_KEY 其中一个");
   process.exit(1);
 }
 
@@ -95,10 +101,41 @@ async function synthesize(text, voiceId) {
   return Buffer.from(await res.arrayBuffer());
 }
 
+async function synthesizeSF(text, voiceId, model) {
+  if (!SF_KEY) throw new Error("这个角色用的是硅基流动音色，但没设 SILICONFLOW_API_KEY");
+  const res = await fetch(SF_API + "/audio/speech", {
+    method: "POST",
+    headers: {
+      authorization: "Bearer " + SF_KEY,
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      model: model || SF_DEFAULT_MODEL,
+      input: text,
+      voice: voiceId,
+      response_format: "mp3",
+      speed: 1
+    })
+  });
+
+  if (!res.ok) {
+    let detail = "";
+    try {
+      detail = await res.text();
+    } catch (e) { /* 忽略 */ }
+    throw new Error("HTTP " + res.status + " " + detail.slice(0, 200));
+  }
+  return Buffer.from(await res.arrayBuffer());
+}
+
+function isSFVoice(voiceId) {
+  return /^speech:/.test(String(voiceId || ""));
+}
+
 async function main() {
   fs.mkdirSync(AUDIO_DIR, { recursive: true });
   const { PEOPLE, CHARACTER_VOICES } = loadPeople();
-  const people = PEOPLE.filter((p) => !ONLY || p.id === ONLY);
+  const people = PEOPLE.filter((p) => !ONLY_LIST.length || ONLY_LIST.includes(p.id));
   const manifest = readManifest();
 
   console.log("待处理：" + people.length + " 位（音色按角色分别取用）");
@@ -136,13 +173,19 @@ async function main() {
     }
 
     try {
-      const buf = await synthesize(text, voiceId);
+      const sf = isSFVoice(voiceId);
+      const model = sf
+        ? (CHARACTER_VOICES[p.id] && CHARACTER_VOICES[p.id].voiceModel) || SF_DEFAULT_MODEL
+        : MODEL;
+      const buf = sf
+        ? await synthesizeSF(text, voiceId, model)
+        : await synthesize(text, voiceId);
       fs.writeFileSync(filePath, buf);
       manifest[p.id] = {
         file: "audio/" + fileName,
         text,
         voice_id: voiceId,
-        model: MODEL,
+        model,
         bytes: buf.length,
         generatedAt: new Date().toISOString()
       };

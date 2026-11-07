@@ -85,43 +85,44 @@ wrangler secret put LLM_MODEL   # 可选，默认 deepseek-chat
 
 部署后聊天页「接入方式」选「走我的代理」，接口地址填 Worker 根地址。代理按 OpenAI 兼容格式原样转发，支持流式输出，不存储任何对话内容。
 
-## 语音功能（BYOK：访客自带 Key）
+## 语音功能
 
-默认使用**浏览器内置语音**（`speechSynthesis`），零成本、无需 Key。会自动优选自然音色（Xiaoxiao、Yunxi 等），避开老式机械音；也可以在 🔑 语音设置里手动选音色并试听。
+八个角色的音色**全部在硅基流动（SiliconFlow）**，用 `FunAudioLLM/CosyVoice2-0.5B` 零样本克隆，
+音色 id 形如 `speech:naijiacun-小草:xxx:yyy`，写在 `js/data.js` 的 `CHARACTER_VOICES` 里。
 
-访客想用真实音色时，点页面上的 **🔑 语音设置**，填自己的 Breeze API Key 即可。站长不承担任何费用，也不持有别人的密钥。
+访客分三种情况，都不需要装任何东西：
 
-### 为什么必须有代理
+| 访客 | 会听到什么 |
+|---|---|
+| 什么都不填 | 站点自带转发服务用站长的额度合成（每人每天有上限） |
+| 在 🔑 语音设置里填自己的 sk- Key | 无限量，直接浏览器直连硅基流动 |
+| 上面都不通 | 退回 `audio/` 里预生成的金句 mp3，再不行用浏览器内置语音 |
 
-Breeze 的 API **没有开放 CORS**（实测 `OPTIONS /v1/voices` 返回 405 且无 `Access-Control-Allow-Origin`），浏览器无法直接调用。因此需要一个「只转发、不存 Key」的边缘函数：
+三家音色不能混用：音色 id 属于某一家平台，另一家的 Key 取不到它。所以本站只认硅基流动一家。
 
-```
-访客浏览器                你的 Worker                   Breeze
-   │  x-breeze-key: brz_xx    │                            │
-   ├─────────────────────────►│  xi-api-key: brz_xx        │
-   │                          ├───────────────────────────►│
-   │      audio/mpeg          │        audio/mpeg          │
-   │◄─────────────────────────┤◄───────────────────────────┤
-```
+### 为什么要有转发服务
 
-Worker 代码在 `server/tts-worker.js`，提供了三个路径：
+硅基流动开放了 CORS，浏览器本可直连，但那样必须把 Key 写进前端（右键源码就能看到）。
+所以访客没自带 Key 时，请求走 `server/tts-worker.js`（或 `naijiacun-chat-proxy`）转发一层，
+Key 留在服务端，并按 IP 限制每日条数，费用可控。
+
+> 注意：`*.workers.dev` 在国内被 DNS 污染，Cloudflare 那条路只适合有自有域名的场景。
+> 现在实际用的是 WorkBuddy 托管的 `naijiacun-chat.app.workbuddy.host`（和聊天代理同一个服务）。
+
+### 代理接口一览
+
+两个地方都实现了同一套接口：`server/tts-worker.js`（Cloudflare Worker，需要有自有域名）
+和 `~/WorkBuddy/naijiacun-chat-proxy/server.js`（WorkBuddy 托管，线上正在用这个）。
 
 | 路径 | 作用 |
 |---|---|
-| `POST /api/tts` | 转发合成请求，返回 mp3 |
-| `GET /api/check` | 用访客的 Key 校验有效性并返回剩余额度 |
-| `GET /api/voices` | 拉取该 Key 账号下的音色列表 |
+| `POST /api/sf-tts` | 硅基流动合成。访客带了 `x-sf-key` 就用访客的，否则用服务端 `SF_KEY` 并按 IP 每日限量 |
+| `POST /api/tts` | 旧：Breeze 转发，保留兼容 |
+| `GET /api/check` | 旧：用访客的 Breeze Key 校验并返回额度 |
+| `GET /api/voices` | 旧：拉取 Breeze 账号下的音色列表 |
 
-### 部署步骤
-
-```bash
-npm i -g wrangler
-wrangler init naijiacun-tts          # 选 Worker，纯 JS
-# 把 server/tts-worker.js 的内容粘进 src/index.js
-wrangler deploy
-```
-
-把部署得到的地址填到 `js/tts.js` 的 `DEFAULT_TTS_ENDPOINT`（或 `js/app.js` 里的同名常量），访客就只需要填 Key 了。
+服务端 Key 放环境变量 `SF_KEY`（WorkBuddy 代理里写在 `server.js` 顶部，那个目录在仓库之外，
+不要复制进来）；每日上限 `SF_DAILY_LIMIT`，默认 120 条。
 
 ### 可选：预生成音频（连代理都不用）
 
@@ -130,16 +131,17 @@ wrangler deploy
 本地运行：
 
 ```bash
-BREEZE_API_KEY=brz_xxx BREEZE_VOICE_ID=voc_xxx node scripts/pregen-audio.mjs
-# 可选参数：--force 全部重生成 / --only=shougeng 只生成一位 / --limit=3
+SILICONFLOW_API_KEY=sk-xxx node scripts/pregen-audio.mjs --force
+# 可选参数：--only=xiaocao,feidudu 只生成几位 / --limit=3 只跑前三位
 ```
 
-或者在 GitHub 上点一下：仓库 **Actions → 预生成语音 → Run workflow**。使用前先到 Settings → Secrets and variables → Actions 添加 `BREEZE_API_KEY` 和 `BREEZE_VOICE_ID`，生成完会自动提交。
+或者在 GitHub 上点一下：仓库 **Actions → 预生成语音 → Run workflow**。使用前先到 Settings → Secrets and variables → Actions 添加 `SILICONFLOW_API_KEY`，生成完会自动提交。
 
 播放优先级（`js/tts.js` 里实现）：
 
 ```
-访客填了自己的 Key  →  实时调用 Breeze（可换音色、可读长文本）
+访客填了自己的 Key  →  实时调用硅基流动（可换音色、可读长文本）
+否则有服务站点的代理 →  Worker/代理转发，用站长的额度（按 IP 限量）
 否则有预生成音频    →  播放 audio/{id}.mp3（秒开、免费）
 否则               →  浏览器内置语音（永远可用）
 ```
@@ -147,6 +149,19 @@ BREEZE_API_KEY=brz_xxx BREEZE_VOICE_ID=voc_xxx node scripts/pregen-audio.mjs
 文本不一致时不会误播（例如预生成的是金句、你想读整段介绍），会自动降级到下一档。
 
 ### 每个角色一个专属音色
+
+现在的做法是**克隆真人素材**到硅基流动：把参考音频（5–30 秒、单人说话）和它的逐字文本
+一起上传，拿回 `speech:` 开头的音色 id。
+
+```bash
+SILICONFLOW_API_KEY=sk-xxx node scripts/clone-siliconflow.mjs --only=xiaocao
+SILICONFLOW_API_KEY=sk-xxx node scripts/clone-siliconflow.mjs --list    # 看已上传的
+```
+
+参考音频和对应文本统一放在 `voices/reference-texts.json`——**文本必须和音频逐字一致**，
+否则克隆会跑偏，所以换素材时一定要重新转写一遍。
+
+下面这段是早期用 Breeze 的「声音设计」路线，保留备查：
 
 `js/data.js` 末尾的 `CHARACTER_VOICES` 保存"角色 → 音色"的绑定：
 

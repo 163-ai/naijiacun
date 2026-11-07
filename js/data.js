@@ -179,46 +179,60 @@ const PEOPLE = [
 // 若要克隆真实配音演员的声音，需先取得本人书面授权。
 const CHARACTER_VOICES = {
   nailong: {
-    voiceId: "voc_d3c9d5yh6m6v",
+    voiceId: "speech:naijiacun-nailong:dbngt9c50mis739nafs0:tahmjlkkamjvesbrwzxr",
+    voiceModel: "FunAudioLLM/CosyVoice2-0.5B",
     style: "软萌的小童声，圆润鼻音，语速偏慢，句尾带笑，像在撒娇",
     gender: "female", age: "child", tone: ["gentle", "playful"], accent: null,
     rate: 0.9, pitch: 1.4
   },
   naiwa: {
-    voiceId: "voc_kjt4wqrndgf6",
+    voiceId: "speech:naijiacun-naiwa:dbngt9c50mis739nafs0:iiqpxehecbjlvehiqgoz",
+    voiceModel: "FunAudioLLM/CosyVoice2-0.5B",
     style: "清亮稚嫩的童声嗓音，咬字软糯、句尾轻轻收住；克隆自《一百分的家》开头 15 秒的说话声",
     gender: "male", age: "young", tone: ["playful", "energetic"], accent: null,
     rate: 1.0, pitch: 1.0, tempo: 0.9
   },
   baobaolong: {
-    voiceId: "voc_2h2sbun8qvbk",
+    voiceId: "speech:naijiacun-baobaolong:dbngt9c50mis739nafs0:ebqauxjsbdxsblvlxkxr",
+    voiceModel: "FunAudioLLM/CosyVoice2-0.5B",
     style: "低沉粗哑的男声，火爆脾气，语速快，句尾下压，像在吼人",
     gender: "male", age: "young", tone: ["energetic", "authoritative"], accent: null,
     rate: 1.1, pitch: 0.7
   },
   xiaoqi: {
-    voiceId: "voc_qgpw3eqg6ku7",
+    voiceId: "speech:naijiacun-xiaoqi:dbngt9c50mis739nafs0:hidylqamtruxbanpqasj",
+    voiceModel: "FunAudioLLM/CosyVoice2-0.5B",
     style: "清亮的少年音，机灵跳脱，语速中等，偶尔上扬",
     gender: "male", age: "young", tone: ["bright", "friendly"], accent: null,
     rate: 1.02, pitch: 1.15
   },
   niulai: {
-    voiceId: "voc_vztvmkcwynj9",
+    voiceId: "speech:naijiacun-niulai:dbngt9c50mis739nafs0:myjbgdyzutixuvmdtplz",
+    voiceModel: "FunAudioLLM/CosyVoice2-0.5B",
     style: "憨厚的中年男声，北方口音，语速慢，带笑意，像邻居大叔聊天",
     gender: "male", age: "middle_aged", tone: ["warm", "sincere"], accent: "mandarin_henan",
     rate: 0.88, pitch: 0.85
   },
   capybara: {
-    voiceId: "voc_reys5un5t4ed",
+    voiceId: "speech:naijiacun-capybara:dbngt9c50mis739nafs0:fmlwcunolrdfhvqdxqts",
+    voiceModel: "FunAudioLLM/CosyVoice2-0.5B",
     style: "慵懒的低音，语速极慢，气声多，听起来永远不着急",
     gender: "male", age: "middle_aged", tone: ["calm", "measured"], accent: null,
     rate: 0.78, pitch: 0.8
   },
   xiaocao: {
-    voiceId: "voc_u3nxkd5578wc",
+    voiceId: "speech:naijiacun-xiaocao:dbngt9c50mis739nafs0:gqofveeyihnwzgsauoly",
+    voiceModel: "FunAudioLLM/CosyVoice2-0.5B",
     style: "清亮甜软、反应轻快的普通话少女音",
     gender: "female", age: "young", tone: ["bright", "energetic"], accent: null,
     rate: 1.05, pitch: 1.05
+  },
+  feidudu: {
+    voiceId: "speech:naijiacun-feidudu:dbngt9c50mis739nafs0:poxyuqbbstadwcmkidhf",
+    voiceModel: "FunAudioLLM/CosyVoice2-0.5B",
+    style: "偏低的年轻男声，音色厚实带鼻音，语速快，重音夸张上挑，尾音拖一点，像在起哄看热闹",
+    gender: "male", age: "young", tone: ["playful", "energetic"], accent: null,
+    rate: 1.05, pitch: 0.88
   }
 };
 
