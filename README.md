@@ -171,6 +171,9 @@ BREEZE_API_KEY=brz_xxx node scripts/pregen-audio.mjs
 详细步骤写在 [CONTRIBUTING.md](CONTRIBUTING.md)，里面有加角色要填的字段、图片放哪、以及会被打回的情况。
 仓库里还放了 Issue 与 PR 模板，别人一进来就知道该填什么。
 
+**刚被加进来、本地什么都没有的人看这里 → [ONBOARDING.md](ONBOARDING.md)**
+从接受邀请、`git clone` 把仓库拉到本地、本地预览、到第一次提交推送，完整走一遍；也提供了「什么都不装、直接用浏览器改」的零门槛路线。
+
 > 站内的「➕ 提名」按钮只写浏览器本地存储，别人看不到；要真正收集投稿，走 Issue 表单，或者接一个后端（云数据库）。
 
 ## 预览方式
