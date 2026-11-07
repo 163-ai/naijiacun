@@ -50,10 +50,10 @@
   function figureHTML(id) {
     var p = findPerson(id);
 
-    if (p && p.image) {
-      var src = new URL(p.image, document.baseURI).href;
+    if (p && (p.petImage || p.image)) {
+      var src = new URL(p.petImage || p.image, document.baseURI).href;
       var img = function (alt) {
-        return '<img class="pet-img" src="' + src + '" alt="' + alt + '" draggable="false">';
+        return '<img class="pet-img' + (p.petImage ? ' pet-img--full' : '') + '" src="' + src + '" alt="' + alt + '" draggable="false">';
       };
       return '<div class="pet-depth" style="--pet-mask:url(\'' + src + '\')">' +
         '<div class="pet-slab pet-slab--b3">' + img("") + '</div>' +
