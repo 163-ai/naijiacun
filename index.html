@@ -106,11 +106,23 @@
       <label>代理地址（站长已内置时可留空）
         <input name="endpoint" placeholder="https://你的worker.workers.dev" autocomplete="off">
       </label>
-      <label>默认音色
+      <label>Breeze 音色（填了 Key 才生效）
         <select name="voice">
           <option value="">不指定（用浏览器语音）</option>
         </select>
       </label>
+      <div class="browser-voice">
+        <label>浏览器音色（没填 Key 时用它）
+          <select name="browserVoice">
+            <option value="">自动挑选（推荐）</option>
+          </select>
+        </label>
+        <button type="button" id="previewVoiceBtn" class="btn ghost small">▶ 试听</button>
+      </div>
+      <p class="hint tiny" id="browserVoiceHint">
+        音色列表来自你当前的浏览器。Edge 一般自带「Xiaoxiao / Yunxi」等自然音，
+        Chrome 可能只有一两个机械音 —— 想听真音色请用 Breeze Key。
+      </p>
       <label class="checkbox">
         <input type="checkbox" name="remember" checked>
         记住在这台设备上（不勾选则关闭页面后失效）

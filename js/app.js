@@ -313,6 +313,7 @@
     t.endpoint = cfg.endpoint || DEFAULT_TTS_ENDPOINT;
     t.apiKey = cfg.key || "";
     t.defaultVoiceId = cfg.voiceId || "";
+    t.browserVoice = cfg.browserVoice || "";
     t.provider = cfg.key && t.endpoint ? "breeze" : "browser";
   }
 
@@ -344,14 +345,50 @@
     if (selected) sel.value = selected;
   }
 
+  // 浏览器自带的音色列表（不同浏览器差别很大）
+  function fillBrowserVoiceSelect(selected) {
+    if (!hasTTS()) return;
+    var sel = document.querySelector('#voiceForm select[name="browserVoice"]');
+    if (!sel) return;
+    var list = window.NaijiacunTTS.listBrowserVoices() || [];
+    var hint = document.getElementById("browserVoiceHint");
+
+    if (!list.length) {
+      sel.innerHTML = '<option value="">当前浏览器没有可用的中文音色</option>';
+      if (hint) {
+        hint.textContent = "当前浏览器没有检测到中文音色，朗读可能不发声。" +
+          "建议改用 Edge 打开，或在系统里安装中文语音包。";
+      }
+      return;
+    }
+
+    sel.innerHTML = '<option value="">自动挑选（推荐）</option>' + list.map(function (v) {
+      var tag = v.local === false ? " · 在线" : "";
+      return '<option value="' + escapeHTML(v.uri) + '">' + escapeHTML(v.name) + tag + '</option>';
+    }).join("");
+
+    if (selected) {
+      var hit = list.some(function (v) { return v.uri === selected || v.name === selected; });
+      sel.value = hit ? selected : "";
+    }
+
+    if (hint) {
+      var auto = window.NaijiacunTTS.pickBrowserVoice();
+      hint.textContent = "检测到 " + list.length + " 个中文音色" +
+        (auto ? "，自动挑选的是「" + auto.name + "」" : "") +
+        "。换浏览器会影响可用音色：Edge 一般自带自然音，Chrome 往往只有机械音。";
+    }
+  }
+
   function openVoiceModal() {
     var cfg = readTTSStore() || {};
     var t = hasTTS() ? window.NaijiacunTTS.config : {};
     document.querySelector('#voiceForm input[name="key"]').value = cfg.key || "";
     document.querySelector('#voiceForm input[name="endpoint"]').value =
       cfg.endpoint || DEFAULT_TTS_ENDPOINT || t.endpoint || "";
-    document.querySelector('#voiceForm input[name="remember"]').checked = !!cfg.key;
+    document.querySelector('#voiceForm input[name="remember"]').checked = true;
     fillVoiceSelect(null, cfg.voiceId || "");
+    fillBrowserVoiceSelect(cfg.browserVoice || "");
     setVoiceStatus("");
     document.getElementById("voiceModal").classList.remove("hidden");
   }
@@ -391,6 +428,28 @@
     document.getElementById("voiceBtn").addEventListener("click", openVoiceModal);
     document.getElementById("testKeyBtn").addEventListener("click", testVoiceKey);
 
+    // 试听当前选中的浏览器音色
+    var previewBtn = document.getElementById("previewVoiceBtn");
+    if (previewBtn) {
+      previewBtn.addEventListener("click", function () {
+        if (!hasTTS()) return;
+        var sel = document.querySelector('#voiceForm select[name="browserVoice"]');
+        var uri = sel ? sel.value : "";
+        window.NaijiacunTTS.previewVoice("你好呀，我是奶家村的新村民。欢迎来串门。", uri);
+      });
+    }
+
+    // 浏览器音色是异步加载的，加载完刷新下拉框
+    if ("speechSynthesis" in window) {
+      window.speechSynthesis.addEventListener("voiceschanged", function () {
+        var modal = document.getElementById("voiceModal");
+        if (modal && !modal.classList.contains("hidden")) {
+          var sel = document.querySelector('#voiceForm select[name="browserVoice"]');
+          fillBrowserVoiceSelect(sel ? sel.value : "");
+        }
+      });
+    }
+
     document.getElementById("clearKeyBtn").addEventListener("click", function () {
       try {
         localStorage.removeItem(TTS_STORE);
@@ -411,14 +470,16 @@
       var key = e.target.key.value.trim();
       var endpoint = e.target.endpoint.value.trim();
       var voiceId = e.target.voice.value;
+      var browserVoice = e.target.browserVoice ? e.target.browserVoice.value : "";
       var remember = e.target.remember.checked;
 
       if (!key) {
-        saveTTSConfig({}, remember);
-        setVoiceStatus("未填写 Key，已切换为浏览器语音", "ok");
+        saveTTSConfig({ browserVoice: browserVoice }, remember);
+        setVoiceStatus("未填 Key，已记住浏览器音色", "ok");
+        showToast("已切换为浏览器语音");
         return;
       }
-      saveTTSConfig({ key: key, endpoint: endpoint, voiceId: voiceId }, remember);
+      saveTTSConfig({ key: key, endpoint: endpoint, voiceId: voiceId, browserVoice: browserVoice }, remember);
       setVoiceStatus(
         hasTTS() && window.NaijiacunTTS.canUseBreeze()
           ? "已启用，点卡片上的 🔊 试试"

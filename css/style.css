@@ -440,6 +440,29 @@ body {
   margin: 0 0 16px;
 }
 
+.hint.tiny {
+  font-size: 11.5px;
+  line-height: 1.6;
+  padding: 8px 10px;
+  margin: -4px 0 12px;
+  background: transparent;
+  border-style: dashed;
+}
+
+.browser-voice {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+.browser-voice label { flex: 1; }
+
+.btn.small {
+  padding: 9px 12px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
 .add-form label.checkbox {
   display: flex;
   align-items: center;
