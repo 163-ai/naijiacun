@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>奶家村 · 网络热门人物图鉴</title>
+<meta name="description" content="一个关于网络热门人物的互动网站：搜索、投票、随机抽取，还可以提名你心中的村友。">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="hero">
+  <div class="container">
+    <p class="hero-badge">🌾 村口广播</p>
+    <h1>奶家村</h1>
+    <p class="hero-sub">一个关于网络热门人物的互动网站 —— 收录那些陪伴过我们时间线的面孔</p>
+    <div class="stats" id="stats"></div>
+  </div>
+</header>
+
+<main class="container">
+
+  <section class="controls">
+    <div class="search-row">
+      <input id="search" type="search" placeholder="搜索人物、称号或关键词…" autocomplete="off">
+    </div>
+    <div class="chips" id="chips"></div>
+    <div class="toolbar">
+      <label class="sort-label">排序
+        <select id="sort">
+          <option value="heat">按热度</option>
+          <option value="name">按名字</option>
+          <option value="new">提名的在前</option>
+        </select>
+      </label>
+      <button id="randomBtn" class="btn ghost">🎲 随机抽一位</button>
+      <button id="addBtn" class="btn primary">➕ 提名新人</button>
+    </div>
+  </section>
+
+  <section id="grid" class="grid" aria-live="polite"></section>
+  <p id="empty" class="empty hidden">村里暂时没有这个人，要不要提名一下？</p>
+
+</main>
+
+<footer class="footer">
+  <div class="container">
+    <p>奶家村 · 数据与介绍仅供娱乐参考，示例内容已尽量保持中性客观。</p>
+    <p>维护者 <a href="https://github.com/163-ai" target="_blank" rel="noopener">163-ai</a> · 源码开源，欢迎在 GitHub 提 Issue 或 PR。</p>
+  </div>
+</footer>
+
+<!-- 人物详情弹窗 -->
+<div id="modal" class="modal hidden" role="dialog" aria-modal="true">
+  <div class="modal-mask" data-close></div>
+  <div class="modal-card">
+    <button class="modal-close" data-close aria-label="关闭">✕</button>
+    <div id="modalBody"></div>
+  </div>
+</div>
+
+<!-- 提名新人弹窗 -->
+<div id="addModal" class="modal hidden" role="dialog" aria-modal="true">
+  <div class="modal-mask" data-close></div>
+  <div class="modal-card">
+    <button class="modal-close" data-close aria-label="关闭">✕</button>
+    <h2 class="modal-title">提名一位新村民</h2>
+    <form id="addForm" class="add-form">
+      <label>名字 *<input name="name" required maxlength="20" placeholder="例如：某某某"></label>
+      <div class="form-row">
+        <label>头像 Emoji<input name="emoji" maxlength="4" placeholder="🙂"></label>
+        <label>类别
+          <select name="category">
+            <option>搞笑</option>
+            <option>美食</option>
+            <option>生活</option>
+            <option>科技</option>
+            <option>知识</option>
+            <option>手工</option>
+          </select>
+        </label>
+      </div>
+      <label>一句话称号<input name="title" maxlength="30" placeholder="例如：无用发明家"></label>
+      <label>名场面 / 金句<input name="quote" maxlength="80" placeholder="例如：真香！"></label>
+      <label>介绍<textarea name="desc" rows="3" maxlength="200" placeholder="用一两句中性的话介绍这位人物"></textarea></label>
+      <button type="submit" class="btn primary wide">入住奶家村</button>
+    </form>
+  </div>
+</div>
+
+<script src="js/data.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
