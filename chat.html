@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>和村民聊两句 · 奶家村</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/chat.css">
+</head>
+<body>
+  <div class="ch-wrap">
+    <header class="ch-head">
+      <a class="ch-back" href="index.html">← 回图鉴</a>
+      <h1>💬 和村民聊两句</h1>
+      <p>挑一个村民，直接开聊。回复会用他的音色念出来（没配语音 Key 时用浏览器语音顶上）。
+        对话只存在你这台设备的浏览器里，不上传服务器。
+        <b>角色语气是网友二创的玩梗版，不代表官方设定。</b></p>
+    </header>
+
+    <div class="ch-main">
+      <aside class="ch-rail">
+        <h2>选个村民</h2>
+        <div id="charRail" class="ch-rail-list"></div>
+      </aside>
+
+      <section class="ch-panel">
+        <div class="ch-bar">
+          <img id="chAvatar" class="ch-avatar" alt="">
+          <div class="ch-who">
+            <strong id="chName">奶龙</strong>
+            <span id="chDesc">黄色大肚子的呆萌小恐龙</span>
+          </div>
+          <div class="ch-actions">
+            <button id="speakBtn" class="ch-tool on" type="button" aria-pressed="true" title="收到回复后自动朗读">🔊 朗读</button>
+            <button id="clearBtn" class="ch-tool" type="button" title="清空这个角色的聊天记录">🧹 清空</button>
+            <button id="cfgBtn" class="ch-tool" type="button" title="配置大模型接口与语音">⚙️ 设置</button>
+          </div>
+        </div>
+
+        <div id="msgList" class="ch-msgs" role="log" aria-live="polite"></div>
+
+        <div id="openers" class="ch-openers"></div>
+
+        <form id="composer" class="ch-composer">
+          <textarea id="input" rows="1" maxlength="500" placeholder="说点什么…（Enter 发送，Shift + Enter 换行）"></textarea>
+          <button id="sendBtn" type="submit">发送</button>
+        </form>
+        <p id="chStatus" class="ch-status">准备中…</p>
+      </section>
+    </div>
+  </div>
+
+  <dialog id="cfgDlg" class="ch-dlg">
+    <form method="dialog" class="ch-dlg-inner">
+      <h2>设置</h2>
+
+      <fieldset>
+        <legend>① 对话用的模型</legend>
+        <label class="ch-field">
+          <span>服务商</span>
+          <select id="presetSel"></select>
+        </label>
+        <label class="ch-field">
+          <span>接入方式</span>
+          <select id="modeSel">
+            <option value="direct">浏览器直连（需要服务商支持跨域）</option>
+            <option value="proxy">走我的代理（Cloudflare Worker，推荐）</option>
+          </select>
+        </label>
+        <label class="ch-field">
+          <span>接口地址</span>
+          <input id="baseInput" type="text" spellcheck="false" placeholder="https://api.deepseek.com/v1">
+        </label>
+        <label class="ch-field">
+          <span>模型名</span>
+          <input id="modelInput" type="text" spellcheck="false" placeholder="deepseek-chat">
+        </label>
+        <label class="ch-field">
+          <span>API Key</span>
+          <input id="keyInput" type="password" spellcheck="false" autocomplete="off" placeholder="sk-…">
+        </label>
+        <p class="ch-hint">Key 只存在你自己的浏览器里。选「走我的代理」时，把上面地址填成你的 Worker 根地址
+          （形如 <code>https://naijiacun-tts.xxx.workers.dev</code>），Key 可以交给 Worker 环境变量保管。</p>
+      </fieldset>
+
+      <fieldset>
+        <legend>② 语音（可选，填了才用真音色）</legend>
+        <label class="ch-field">
+          <span>语音代理地址</span>
+          <input id="ttsBase" type="text" spellcheck="false" placeholder="https://naijiacun-tts.xxx.workers.dev">
+        </label>
+        <label class="ch-field">
+          <span>Breeze Key</span>
+          <input id="ttsKey" type="password" spellcheck="false" autocomplete="off" placeholder="brz_…">
+        </label>
+        <p class="ch-hint">和主站「语音设置」共用同一份配置，这里填过，图鉴页和桌宠也能用。</p>
+      </fieldset>
+
+      <div class="ch-dlg-foot">
+        <span id="dlgStatus" class="ch-dlg-status"></span>
+        <button value="close" class="ch-tool">关闭</button>
+        <button id="saveBtn" value="save" class="ch-tool primary">保存</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="js/data.js"></script>
+  <script src="js/tts.js"></script>
+  <script src="js/chat.js"></script>
+</body>
+</html>

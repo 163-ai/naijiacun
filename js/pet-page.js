@@ -154,4 +154,99 @@
           "。这种小窗需要浏览器支持，并且必须在点击后立刻触发。", "warn");
       });
   });
+
+  // ---------- 和桌宠聊天 ----------
+  // 逻辑都在 js/chat.js（window.NaijiacunChat），这里只负责把回复画到
+  // 日志里，并且让它从宠物头顶的气泡说出来。
+  var chatForm = document.getElementById("chatForm");
+  var chatInput = document.getElementById("chatInput");
+  var chatLog = document.getElementById("chatLog");
+  var chatSend = document.getElementById("chatSend");
+  var Chat = window.NaijiacunChat;
+  var chatting = false;
+
+  function addLine(role, text, err) {
+    var row = document.createElement("div");
+    row.className = "pet-chat-row " + role + (err ? " err" : "");
+    var b = document.createElement("span");
+    b.className = "pet-chat-bubble";
+    b.textContent = text;
+    row.appendChild(b);
+    chatLog.appendChild(row);
+    while (chatLog.children.length > 24) chatLog.removeChild(chatLog.firstChild);
+    chatLog.scrollTop = chatLog.scrollHeight;
+    return b;
+  }
+
+  function refreshChatHint() {
+    if (!Chat) {
+      chatInput.disabled = true;
+      chatInput.placeholder = "聊天脚本没加载成功";
+      return;
+    }
+    var on = Chat.isConfigured();
+    chatInput.placeholder = on
+      ? "跟" + (pet.name || "它") + "说句话…（Enter 发送）"
+      : "还没配大模型 Key，先用内置话术聊（点右边 ⚙️ 配置）";
+  }
+
+  if (Chat) {
+    Chat.bootTTS();
+    refreshChatHint();
+
+    // 切角色时更新输入提示
+    var origSet = pet.setCharacter.bind(pet);
+    pet.setCharacter = function (id) {
+      origSet(id);
+      refreshChatHint();
+    };
+
+    chatForm.addEventListener("submit", function (e) {
+      e.preventDefault();
+      var text = (chatInput.value || "").trim();
+      if (!text || chatting) return;
+
+      chatting = true;
+      chatSend.disabled = true;
+      chatInput.value = "";
+
+      var id = pet.id;
+      addLine("me", text);
+      Chat.pushLog(id, "user", text);
+      var hist = Chat.historyOf(id).slice(0, -1);
+
+      var bubble = addLine("bot", "…");
+      pet.bubbleEl.textContent = "…";
+      pet.bubbleEl.classList.add("show");
+
+      Chat.ask(id, text, {
+        history: hist,
+        onDelta: function (partial) {
+          bubble.textContent = partial;
+          chatLog.scrollTop = chatLog.scrollHeight;
+          // 让宠物边说边显示，先不朗读，等整句出来再念
+          pet.bubbleEl.textContent = partial;
+          pet.bubbleEl.classList.add("show");
+        }
+      }).then(function (reply) {
+        bubble.textContent = reply;
+        Chat.pushLog(id, "assistant", reply);
+        chatLog.scrollTop = chatLog.scrollHeight;
+        // 整句说完再朗读，气泡也跟着停留一会儿
+        pet.say(reply);
+      }).catch(function (err) {
+        var msg = (err && err.message) || "请求失败";
+        bubble.textContent = msg;
+        bubble.parentNode.className = "pet-chat-row bot err";
+        pet.say("唔…好像出问题了", { speak: false });
+      }).then(function () {
+        chatting = false;
+        chatSend.disabled = false;
+        chatInput.focus();
+        chatLog.scrollTop = chatLog.scrollHeight;
+      });
+    });
+  } else {
+    refreshChatHint();
+  }
 })();

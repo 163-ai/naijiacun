@@ -31,11 +31,23 @@
 
 <div class="pet-stage" id="petStage"></div>
 
+<!-- 和桌宠聊天：回复直接弹在它头上，同时用它的音色念出来 -->
+<div class="pet-chat" id="petChat">
+  <div class="pet-chat-log" id="chatLog" aria-live="polite"></div>
+  <form class="pet-chat-form" id="chatForm">
+    <input id="chatInput" type="text" maxlength="300" autocomplete="off"
+           placeholder="跟它说句话…（Enter 发送）">
+    <button type="submit" id="chatSend">发送</button>
+    <a class="pet-chat-cfg" href="chat.html" title="配置大模型接口">⚙️</a>
+  </form>
+</div>
+
 <p class="pet-note" id="petNote">点一下它试试。</p>
 
 <script src="js/data.js"></script>
 <script src="js/avatars.js"></script>
 <script src="js/tts.js"></script>
+<script src="js/chat.js"></script>
 <script src="js/pet.js"></script>
 <script src="js/pet-page.js"></script>
 </body>

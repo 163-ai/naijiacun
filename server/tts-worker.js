@@ -22,12 +22,19 @@ const ORIGIN_PATTERNS = [
 const API_BASE = "https://api.breeze.blue/v1";
 const MODEL_ID = "breeze-tts-2";
 
+// 聊天接口的上游（OpenAI 兼容）。部署时可以用环境变量覆盖：
+//   wrangler secret put LLM_KEY      ← 你自己申请的大模型 Key，不写进代码
+//   wrangler secret put LLM_BASE     ← 例如 https://api.deepseek.com/v1
+//   wrangler secret put LLM_MODEL    ← 例如 deepseek-chat
+const LLM_BASE = "https://api.deepseek.com/v1";
+const LLM_MODEL = "deepseek-chat";
+
 function corsHeaders(origin) {
   const allow = ORIGIN_PATTERNS.some((re) => re.test(origin)) ? origin : "null";
   return {
     "access-control-allow-origin": allow,
     "access-control-allow-methods": "GET, POST, OPTIONS",
-    "access-control-allow-headers": "content-type, x-breeze-key",
+    "access-control-allow-headers": "content-type, x-breeze-key, x-llm-key",
     "access-control-max-age": "86400",
     vary: "origin"
   };
@@ -40,12 +47,96 @@ function json(data, status, origin) {
   });
 }
 
+// ---------- 聊天转发（OpenAI 兼容） ----------
+// 只做「拼 Key + 转发」，支持流式（SSE）原样透传，不记录对话内容。
+async function handleChat(request, env, origin) {
+  if (request.method !== "POST") {
+    return json({ ok: false, code: "BAD_METHOD", detail: "请用 POST" }, 405, origin);
+  }
+
+  const key = request.headers.get("x-llm-key") || (env && env.LLM_KEY) || "";
+  if (!key) {
+    return json({
+      ok: false,
+      code: "NO_KEY",
+      detail: "缺少 x-llm-key，且 Worker 没有配置 LLM_KEY 环境变量"
+    }, 401, origin);
+  }
+
+  let body;
+  try {
+    body = await request.json();
+  } catch (e) {
+    return json({ ok: false, code: "BAD_JSON", detail: "请求体不是合法 JSON" }, 400, origin);
+  }
+
+  const base = String((env && env.LLM_BASE) || LLM_BASE).replace(/\/+$/, "");
+  const model = body.model || (env && env.LLM_MODEL) || LLM_MODEL;
+  const stream = !!body.stream;
+
+  const messages = Array.isArray(body.messages)
+    ? body.messages.slice(-20).map((m) => ({
+        role: m && m.role === "assistant" ? "assistant" : (m && m.role === "system" ? "system" : "user"),
+        content: String((m && m.content) || "").slice(0, 2000)
+      }))
+    : [];
+
+  if (!messages.length) {
+    return json({ ok: false, code: "NO_MESSAGE", detail: "messages 不能为空" }, 400, origin);
+  }
+
+  const upstream = await fetch(base + "/chat/completions", {
+    method: "POST",
+    headers: {
+      authorization: "Bearer " + key,
+      "content-type": "application/json",
+      accept: stream ? "text/event-stream" : "application/json"
+    },
+    body: JSON.stringify({
+      model: model,
+      messages: messages,
+      temperature: typeof body.temperature === "number" ? body.temperature : 0.85,
+      max_tokens: Math.min(Number(body.max_tokens) || 220, 512),
+      stream: stream
+    })
+  });
+
+  if (!upstream.ok) {
+    let detail = "";
+    try {
+      detail = await upstream.text();
+    } catch (e) { /* 忽略 */ }
+    return json({
+      ok: false,
+      code: "UPSTREAM_ERROR",
+      status: upstream.status,
+      detail: detail.slice(0, 400)
+    }, upstream.status === 429 ? 429 : 502, origin);
+  }
+
+  return new Response(upstream.body, {
+    headers: {
+      ...corsHeaders(origin),
+      "content-type": upstream.headers.get("content-type") ||
+        (stream ? "text/event-stream" : "application/json"),
+      "cache-control": "no-store"
+    }
+  });
+}
+
 export default {
-  async fetch(request) {
+  async fetch(request, env) {
     const origin = request.headers.get("origin") || "";
 
     if (request.method === "OPTIONS") {
       return new Response(null, { headers: corsHeaders(origin) });
+    }
+
+    const url = new URL(request.url);
+
+    // 聊天转发：Key 优先用访客自带的 x-llm-key，其次用 Worker 环境变量 LLM_KEY
+    if (url.pathname === "/api/chat") {
+      return handleChat(request, env, origin);
     }
 
     const key = request.headers.get("x-breeze-key") || "";
@@ -53,7 +144,6 @@ export default {
       return json({ ok: false, code: "NO_KEY", detail: "缺少 x-breeze-key 请求头" }, 401, origin);
     }
 
-    const url = new URL(request.url);
     const upstreamHeaders = { "xi-api-key": key };
     let target = "";
     let init = { method: "GET", headers: upstreamHeaders };

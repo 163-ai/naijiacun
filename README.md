@@ -23,6 +23,7 @@
 - **语音朗读**：点卡片右上角 🔊 用角色音色朗读热梗，🎵 播放该角色自带的原声片段，详情页可朗读整段介绍
 - **桌宠模式**：`pet.html` 里角色会自己走动、打瞌睡、被拖动、点一下说话；带 2.5D 立体感和「置顶小窗」（Edge / Chrome 116+），能浮在其他窗口上面
 - **3D 形象展台**：`pet3d.html` 里是真正的 WebGL 网格，可拖拽 360° 旋转、看厚度、切三角线框；形象仍然用原图，没有重新绘制
+- **和村民聊两句**：`chat.html` 挑一个角色像微信一样一问一答；桌宠模式下也能直接在底部输入框里跟它说话，回复会弹在宠物头上并用它的音色念出来。接大模型 API（OpenAI 兼容接口），没配 Key 时用内置话术兜底；对话只存在本地浏览器
 
 ## 桌宠模式怎么用
 
@@ -71,6 +72,27 @@ python scripts/gen-3d-assets.py
 依赖 Pillow + numpy。奶蛙和牛来原本是带复杂背景的裁切图，脚本里用 `POLY` 轮廓 + 颜色抑制 + `EXCLUDE` 定点清除做抠背景；换素材后这两处参数可能要跟着调。
 
 ⚠️ 这是**单面浮雕式 3D**：正面和侧面是真实几何，背面是暗色底板，不是每根手指都建模的手办。要 360° 无死角的完整模型，需要多角度素材或重新建模。
+
+## 和村民聊两句（角色聊天）
+
+入口：图鉴页「💬 和村民聊两句」，或直接开 `chat.html`；桌宠页底部也有一个输入条，回复直接从宠物头顶的气泡说出来。
+
+- 每个角色有一份「网友二创玩梗版」的人设（`js/data.js` 里的 `CHAT_PERSONA`），只描述语气习惯，不编造官方剧情。
+- 回复来自任意 **OpenAI 兼容**的大模型接口：点聊天页右上角「⚙️ 设置」，选服务商（DeepSeek / 通义 / 智谱 / 硅基流动 / Kimi / OpenAI）、填 Key 即可。
+- **Key 只存在访客自己的浏览器里**。想不让 Key 出现在浏览器，就选「走我的代理」并部署 `server/tts-worker.js`（见下），然后把 Worker 地址填进「接口地址」。
+- **没配 Key 也能玩**：每个角色内置了几句兜底话术，页面不会报错白屏。
+- 朗读走主站同一套语音系统：填了 Breeze Key 用克隆音色，没填用浏览器语音。
+- 对话记录只保存在本地 `localStorage`，每个角色独立，可一键清空。
+
+### Worker 部署补充（聊天转发）
+
+```bash
+wrangler secret put LLM_KEY     # 你的大模型 Key（可选：不配则要求访客自带）
+wrangler secret put LLM_BASE    # 可选，默认 https://api.deepseek.com/v1
+wrangler secret put LLM_MODEL   # 可选，默认 deepseek-chat
+```
+
+部署后聊天页「接入方式」选「走我的代理」，接口地址填 Worker 根地址。代理按 OpenAI 兼容格式原样转发，支持流式输出，不存储任何对话内容。
 
 ## 语音功能（BYOK：访客自带 Key）
 
@@ -232,18 +254,21 @@ npx serve .
 
 ```
 ├── index.html                # 页面结构
+├── chat.html                 # 和村民聊两句（角色聊天页）
 ├── css/style.css             # 样式
+├── css/chat.css              # 聊天页样式
 ├── js/
-│   ├── data.js               # 角色数据 + 音色绑定（想增删角色直接改这里）
+│   ├── data.js               # 角色数据 + 音色绑定 + 聊天人设（想增删角色直接改这里）
 │   ├── avatars.js            # 内置原创 SVG 形象（没有图片时的默认头像）
 │   ├── tts.js                # 语音适配层（Key / 预生成 / 浏览器 三档降级）
+│   ├── chat.js               # 聊天引擎 + 聊天页（桌宠页复用同一个引擎）
 │   └── app.js                # 交互逻辑
 ├── assets/characters/        # 放你自己的角色形象图（见目录内 README）
 ├── scripts/
 │   ├── pregen-audio.mjs      # 批量预生成 mp3
 │   ├── design-voices.mjs     # 按文字描述生成音色并回写
 │   └── clone-voices.mjs      # 克隆音色并回写 voiceId
-├── server/tts-worker.js      # Cloudflare Worker 透传代理（不存任何密钥）
+├── server/tts-worker.js      # Cloudflare Worker 透传代理（TTS + 聊天，不存任何密钥）
 └── voices/                   # 参考音频（默认不进版本库，见 voices/README.md）
 ```
 
