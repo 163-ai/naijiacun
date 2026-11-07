@@ -1,0 +1,84 @@
+name: 提名一个新角色
+description: 想往奶家村加一位新村民？填这个表就行，不需要会写代码。
+title: "[新角色] "
+labels: ["新角色"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        填完提交即可，维护者会整理成数据合进站点。
+        如果只想聊聊，随便写几句也行，不用每项都填满。
+  - type: input
+    id: name
+    attributes:
+      label: 角色名称
+      placeholder: 例如：奶龙
+    validations:
+      required: true
+  - type: dropdown
+    id: category
+    attributes:
+      label: 分类
+      options:
+        - 官方IP
+        - 抽象迷因
+        - 动物顶流
+        - 其他（在下面说明）
+    validations:
+      required: true
+  - type: input
+    id: title
+    attributes:
+      label: 一句话称号
+      placeholder: 例如：黄色大肚子的呆萌小恐龙
+    validations:
+      required: true
+  - type: input
+    id: quote
+    attributes:
+      label: 最有名的热梗
+      description: 写网络上流传的说法，不要写成官方台词。
+      placeholder: 例如：duang~duang~ 的大肚子
+    validations:
+      required: true
+  - type: textarea
+    id: desc
+    attributes:
+      label: 简介
+      description: 两三句话：它是什么、怎么火起来的、有什么代表作。保持中性描述。
+      placeholder: 2020 年上线，原本是……后来因为……在短视频平台走红。
+    validations:
+      required: true
+  - type: input
+    id: origin
+    attributes:
+      label: 来源与权利归属
+      description: 著作权归谁所有？如果是网友二创，写清楚源自哪里。
+      placeholder: 例如：著作权归某某公司所有 / 网友二创，无官方运营方
+    validations:
+      required: true
+  - type: textarea
+    id: links
+    attributes:
+      label: 参考链接
+      description: 至少给一条能证明它"火过"的链接（新闻、百科、平台话题页都行）。
+      placeholder: |
+        https://...
+    validations:
+      required: false
+  - type: textarea
+    id: image
+    attributes:
+      label: 形象图（可选）
+      description: 如果你有可用授权的形象图，可以直接拖进这个输入框上传；没有也没关系，站点会用内置形象。
+    validations:
+      required: false
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: 提交前确认
+      options:
+        - label: 我提交的图片/音频有使用授权，或本身就是我自己做的
+          required: true
+        - label: 简介是中性描述，没有贬损、引战或未经证实的说法
+          required: true
