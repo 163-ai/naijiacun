@@ -29,9 +29,9 @@
 
 ## 当前九位 3D 渲染形象
 
-`3d/<id>-avatar.png` 是从用户提供、已筛选的模型渲染的图鉴近景头像；`3d/<id>-pet.png` 是同一模型的透明全身图。`js/data.js` 使用 `image` 引用头像，使用可选的 `petImage` 引用桌宠图。桌宠未配置 `petImage` 时回退到 `image`。
+`3d/<id>-avatar.webp` 是从用户提供、已筛选的模型渲染的图鉴近景头像；`3d/<id>-pet.webp` 是同一模型的透明全身图。图片从原 PNG 精确无损编码，尺寸与解码后的 RGBA 像素保持一致，原 PNG 留作源记录和旧链接兼容。`js/data.js` 使用 `image` 引用头像，使用可选的 `petImage` 引用桌宠图。桌宠未配置 `petImage` 时回退到 `image`。
 
-原声、聊天人设、角色 ID 保持不变；小草继续使用原有图片。模型来源与处理记录见 [模型来源](../models/SOURCES.md)。
+原声、聊天人设、角色 ID 保持不变；小草使用原有图片的无损 WebP 版本。模型来源与处理记录见 [模型来源](../models/SOURCES.md)。
 
 ## 建议的图片规格
 

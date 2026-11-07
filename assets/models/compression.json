@@ -1,0 +1,16 @@
+{
+  "models": {
+    "beforeBytes": 96274600,
+    "afterBytes": 54972620,
+    "count": 9,
+    "textureRgbaExact": true,
+    "decodedGeometryBytesExact": true
+  },
+  "characterImages": {
+    "beforeBytes": 5652778,
+    "afterBytes": 2529922,
+    "count": 19,
+    "rgbaExact": true
+  },
+  "decoderBytes": 32483
+}

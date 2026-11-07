@@ -12,7 +12,7 @@ window.N3D_MODELS = {};
   ["feidudu", "肥嘟嘟袋鼠"]
 ].forEach(function (item) {
   window.N3D_MODELS[item[0]] = {
-    file: "assets/models/" + item[0] + ".glb?v=user-models-9",
+    file: "assets/models/" + item[0] + ".glb?v=lossless-1",
     source: "https://github.com/163-ai/naijiacun/blob/main/assets/models/SOURCES.md#" + item[0],
     credit: "用户提供 · " + item[1] + " 3D 模型",
     license: "用户提供用于本项目展示；角色形象权利归相应权利人。"

@@ -379,7 +379,8 @@
 
     if (role !== "user") {
       var img = document.createElement("img");
-      img.src = "assets/characters/" + currentId + ".png";
+      var person = LIST.find(function (p) { return p.id === currentId; });
+      img.src = (person && person.image) || ("assets/characters/" + currentId + ".png");
       img.alt = "";
       row.appendChild(img);
     }
@@ -405,7 +406,8 @@
     var row = document.createElement("div");
     row.className = "ch-row bot";
     var img = document.createElement("img");
-    img.src = "assets/characters/" + currentId + ".png";
+    var person = LIST.find(function (p) { return p.id === currentId; });
+    img.src = (person && person.image) || ("assets/characters/" + currentId + ".png");
     img.alt = "";
     var bubble = document.createElement("div");
     bubble.className = "ch-bubble";

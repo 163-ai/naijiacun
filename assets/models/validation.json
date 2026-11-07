@@ -8,53 +8,70 @@
       "inputSha256": "b375a6d8369243abbb7a21cef13d33f70feb42307e7fdb44af0f7e89a4c4fa95",
       "selection": "左侧完整正面人物，保留原黄色印字服装",
       "file": "assets/models/nailong.glb",
-      "bytes": 12532072,
-      "sha256": "1075dcd200377cdabf921423d2b44a0fd3791f97962f222cc319e2c60e7c4ea8",
+      "bytes": 6764860,
+      "sha256": "876643dc6a3e2432b4ec71588301089dc57aa18f04b339541363cf32c2eb7f19",
       "meshes": 1,
       "vertices": 67530,
       "triangles": 99999,
       "images": [
         {
-          "mimeType": "image/png",
-          "bytes": 2237866,
+          "mimeType": "image/webp",
+          "bytes": 1060352,
           "width": 2048,
           "height": 2048
         },
         {
-          "mimeType": "image/png",
-          "bytes": 3908757,
+          "mimeType": "image/webp",
+          "bytes": 2275110,
           "width": 2048,
           "height": 2048
         },
         {
-          "mimeType": "image/png",
-          "bytes": 3022248,
+          "mimeType": "image/webp",
+          "bytes": 1421000,
           "width": 2048,
           "height": 2048
         }
       ],
       "extensionsUsed": [
-        "KHR_materials_specular"
+        "KHR_materials_specular",
+        "EXT_texture_webp",
+        "EXT_meshopt_compression"
       ],
-      "extensionsRequired": [],
+      "extensionsRequired": [
+        "EXT_texture_webp",
+        "EXT_meshopt_compression"
+      ],
       "externalResources": [],
       "orientation": "Y-up, front +Z, feet at 0, height 2.2",
       "renders": [
         {
-          "file": "assets/characters/3d/nailong-avatar.png",
-          "bytes": 187530,
-          "sha256": "98547d92cf0c2dc2eeac698611ae392c499f9bf0cf881025d8a33c147d56ab23",
+          "file": "assets/characters/3d/nailong-avatar.webp",
+          "bytes": 85334,
+          "sha256": "af58d7873052008b818141e082d79141d78118188e0e02737e979b4029da38de",
           "width": 512,
-          "height": 512
+          "height": 512,
+          "losslessSource": "assets/characters/3d/nailong-avatar.png"
         },
         {
-          "file": "assets/characters/3d/nailong-pet.png",
-          "bytes": 472440,
-          "sha256": "580fa1478914ba1c0c526207b9f949acb61012cde18bf763ddc7ce70ce65a4f3",
+          "file": "assets/characters/3d/nailong-pet.webp",
+          "bytes": 216756,
+          "sha256": "c289d5e728dd9740811961e069b573d338d56ca9c67f188bda0d788b4da54dc2",
           "width": 720,
-          "height": 900
+          "height": 900,
+          "losslessSource": "assets/characters/3d/nailong-pet.png"
         }
-      ]
+      ],
+      "compression": {
+        "previousBytes": 12532072,
+        "previousSha256": "1075dcd200377cdabf921423d2b44a0fd3791f97962f222cc319e2c60e7c4ea8",
+        "textureEncoding": "lossless exact WebP",
+        "geometryEncoding": "meshoptimizer 0.25.0, filter NONE",
+        "textureRgbaExact": true,
+        "decodedGeometryBytesExact": true,
+        "quantization": false,
+        "triangleReduction": false
+      }
     },
     {
       "id": "naiwa",
@@ -64,53 +81,70 @@
       "inputSha256": "aff0dbe5a341cca166eff00ca41fef3eb1724e4b05875ceba605c1670535f933",
       "selection": "三个独立人物中保留中间白肚皮正面人物",
       "file": "assets/models/naiwa.glb",
-      "bytes": 13594700,
-      "sha256": "51c3995829afbe50e37a4c63c5b4fa8b802dcadde129191c6af559d9c5d9f6d5",
+      "bytes": 7499440,
+      "sha256": "136e4729dedb4afe3d38d1efb33961515f4e257d7e0078bb42865f051ceb615c",
       "meshes": 1,
       "vertices": 73093,
       "triangles": 99999,
       "images": [
         {
-          "mimeType": "image/png",
-          "bytes": 2146805,
+          "mimeType": "image/webp",
+          "bytes": 1029284,
           "width": 2048,
           "height": 2048
         },
         {
-          "mimeType": "image/png",
-          "bytes": 4841392,
+          "mimeType": "image/webp",
+          "bytes": 2854380,
           "width": 2048,
           "height": 2048
         },
         {
-          "mimeType": "image/png",
-          "bytes": 3065288,
+          "mimeType": "image/webp",
+          "bytes": 1454836,
           "width": 2048,
           "height": 2048
         }
       ],
       "extensionsUsed": [
-        "KHR_materials_specular"
+        "KHR_materials_specular",
+        "EXT_texture_webp",
+        "EXT_meshopt_compression"
       ],
-      "extensionsRequired": [],
+      "extensionsRequired": [
+        "EXT_texture_webp",
+        "EXT_meshopt_compression"
+      ],
       "externalResources": [],
       "orientation": "Y-up, front +Z, feet at 0, height 2.2",
       "renders": [
         {
-          "file": "assets/characters/3d/naiwa-avatar.png",
-          "bytes": 175602,
-          "sha256": "d9d758318c83080ad2b41d9f8feac57c82a9e04f10ec1087de952c67e82a5df4",
+          "file": "assets/characters/3d/naiwa-avatar.webp",
+          "bytes": 72890,
+          "sha256": "a033bfb23018bf1aeeed440b068eef5df20b9ce12e5d6c727d7c869d55bb6ee3",
           "width": 512,
-          "height": 512
+          "height": 512,
+          "losslessSource": "assets/characters/3d/naiwa-avatar.png"
         },
         {
-          "file": "assets/characters/3d/naiwa-pet.png",
-          "bytes": 349033,
-          "sha256": "7c72131ea35ff322793df00ed75976e4cd4d770b267ba5c40883647b1be58a64",
+          "file": "assets/characters/3d/naiwa-pet.webp",
+          "bytes": 149328,
+          "sha256": "34bb1226ebfc45914d91d13025fd893cec6702449d42fc2f91c51768ea22343f",
           "width": 720,
-          "height": 900
+          "height": 900,
+          "losslessSource": "assets/characters/3d/naiwa-pet.png"
         }
-      ]
+      ],
+      "compression": {
+        "previousBytes": 13594700,
+        "previousSha256": "51c3995829afbe50e37a4c63c5b4fa8b802dcadde129191c6af559d9c5d9f6d5",
+        "textureEncoding": "lossless exact WebP",
+        "geometryEncoding": "meshoptimizer 0.25.0, filter NONE",
+        "textureRgbaExact": true,
+        "decodedGeometryBytesExact": true,
+        "quantization": false,
+        "triangleReduction": false
+      }
     },
     {
       "id": "baobaolong",
@@ -120,53 +154,70 @@
       "inputSha256": "e1550d0124e35875f9a86a558b89d905c9dc81b8e3a1542c488a84c2eb1e7612",
       "selection": "保留原单角色与蛋壳造型",
       "file": "assets/models/baobaolong.glb",
-      "bytes": 8869860,
-      "sha256": "a654c010917c95ea58db5a0c544aceb05ec0bd68d33bf4d874e135aa62cb0a19",
+      "bytes": 5480032,
+      "sha256": "59e3e47fa19fba84976578a337513fc5ef1d73c630401cca92668394cbdf9658",
       "meshes": 1,
       "vertices": 65568,
       "triangles": 100000,
       "images": [
         {
-          "mimeType": "image/png",
-          "bytes": 542797,
+          "mimeType": "image/webp",
+          "bytes": 248142,
           "width": 1024,
           "height": 1024
         },
         {
-          "mimeType": "image/png",
-          "bytes": 4281307,
+          "mimeType": "image/webp",
+          "bytes": 2610288,
           "width": 2048,
           "height": 2048
         },
         {
-          "mimeType": "image/png",
-          "bytes": 745693,
+          "mimeType": "image/webp",
+          "bytes": 341102,
           "width": 1024,
           "height": 1024
         }
       ],
       "extensionsUsed": [
-        "KHR_materials_specular"
+        "KHR_materials_specular",
+        "EXT_texture_webp",
+        "EXT_meshopt_compression"
       ],
-      "extensionsRequired": [],
+      "extensionsRequired": [
+        "EXT_texture_webp",
+        "EXT_meshopt_compression"
+      ],
       "externalResources": [],
       "orientation": "Y-up, front +Z, feet at 0, height 2.2",
       "renders": [
         {
-          "file": "assets/characters/3d/baobaolong-avatar.png",
-          "bytes": 231742,
-          "sha256": "da26dea6b483be4c2306a4b28144c42c4c5fbe090161bc7d306c18eacc644ce3",
+          "file": "assets/characters/3d/baobaolong-avatar.webp",
+          "bytes": 104594,
+          "sha256": "043532ce577e7ceccde671d9ed26204e4668f862ac541519faec8ad494b9a169",
           "width": 512,
-          "height": 512
+          "height": 512,
+          "losslessSource": "assets/characters/3d/baobaolong-avatar.png"
         },
         {
-          "file": "assets/characters/3d/baobaolong-pet.png",
-          "bytes": 385126,
-          "sha256": "6a7282b429b73d0aedf00edc2d9e20b7e38869a5792c5f46106b3e8668ecff99",
+          "file": "assets/characters/3d/baobaolong-pet.webp",
+          "bytes": 170192,
+          "sha256": "5c764d1cc7ad004a7e0fd2b2b79149a6bb2dfa4f706e243d5f5edcf145430a8f",
           "width": 720,
-          "height": 900
+          "height": 900,
+          "losslessSource": "assets/characters/3d/baobaolong-pet.png"
         }
-      ]
+      ],
+      "compression": {
+        "previousBytes": 8869860,
+        "previousSha256": "a654c010917c95ea58db5a0c544aceb05ec0bd68d33bf4d874e135aa62cb0a19",
+        "textureEncoding": "lossless exact WebP",
+        "geometryEncoding": "meshoptimizer 0.25.0, filter NONE",
+        "textureRgbaExact": true,
+        "decodedGeometryBytesExact": true,
+        "quantization": false,
+        "triangleReduction": false
+      }
     },
     {
       "id": "xiaoqi",
@@ -176,53 +227,70 @@
       "inputSha256": "a55abdd433857fb14370365393786867c866a15993e5c89968baf44969252f53",
       "selection": "保留原单角色与红色上衣",
       "file": "assets/models/xiaoqi.glb",
-      "bytes": 8770052,
-      "sha256": "be825f525ee8217e3cdf56644526930accd9ebe4e83ed9b357c31dd935372050",
+      "bytes": 5414456,
+      "sha256": "5f35289a8afebc4422e3a43d91bff8819c0000c54c1d0278ce43ba4a5476fae5",
       "meshes": 1,
       "vertices": 69365,
       "triangles": 100000,
       "images": [
         {
-          "mimeType": "image/png",
-          "bytes": 440162,
+          "mimeType": "image/webp",
+          "bytes": 207822,
           "width": 1024,
           "height": 1024
         },
         {
-          "mimeType": "image/png",
-          "bytes": 3989769,
+          "mimeType": "image/webp",
+          "bytes": 2365514,
           "width": 2048,
           "height": 2048
         },
         {
-          "mimeType": "image/png",
-          "bytes": 918563,
+          "mimeType": "image/webp",
+          "bytes": 455260,
           "width": 1024,
           "height": 1024
         }
       ],
       "extensionsUsed": [
-        "KHR_materials_specular"
+        "KHR_materials_specular",
+        "EXT_texture_webp",
+        "EXT_meshopt_compression"
       ],
-      "extensionsRequired": [],
+      "extensionsRequired": [
+        "EXT_texture_webp",
+        "EXT_meshopt_compression"
+      ],
       "externalResources": [],
       "orientation": "Y-up, front +Z, feet at 0, height 2.2",
       "renders": [
         {
-          "file": "assets/characters/3d/xiaoqi-avatar.png",
-          "bytes": 135434,
-          "sha256": "b0e630b16488f50e0277fc1b1b086afa4b5e6ab7ad65f4616092725db40599f2",
+          "file": "assets/characters/3d/xiaoqi-avatar.webp",
+          "bytes": 63978,
+          "sha256": "2c0311807005cab3f933f96975c15a90904d35901dc9c233206d04970ebde771",
           "width": 512,
-          "height": 512
+          "height": 512,
+          "losslessSource": "assets/characters/3d/xiaoqi-avatar.png"
         },
         {
-          "file": "assets/characters/3d/xiaoqi-pet.png",
-          "bytes": 243064,
-          "sha256": "177f02e5788f33b8d49baddee8f34db0b4247b8f290726eb2a1963ed35674024",
+          "file": "assets/characters/3d/xiaoqi-pet.webp",
+          "bytes": 114308,
+          "sha256": "181041c03c66f54f2df011a3582e2cc55031807a7e33a1425c9e25cfc67d218a",
           "width": 720,
-          "height": 900
+          "height": 900,
+          "losslessSource": "assets/characters/3d/xiaoqi-pet.png"
         }
-      ]
+      ],
+      "compression": {
+        "previousBytes": 8770052,
+        "previousSha256": "be825f525ee8217e3cdf56644526930accd9ebe4e83ed9b357c31dd935372050",
+        "textureEncoding": "lossless exact WebP",
+        "geometryEncoding": "meshoptimizer 0.25.0, filter NONE",
+        "textureRgbaExact": true,
+        "decodedGeometryBytesExact": true,
+        "quantization": false,
+        "triangleReduction": false
+      }
     },
     {
       "id": "niulai",
@@ -232,54 +300,71 @@
       "inputSha256": "982971230579a526a11df373ba2cef2b173384e9eacb19dcc17865170ff5bd29",
       "selection": "三个独立人物中保留最左完整正面人物",
       "file": "assets/models/niulai.glb",
-      "bytes": 9910092,
-      "sha256": "5340cc3020ac164ee4fb29d06d9a5fc1b135d4683f0b2815eab938d8af80abfa",
+      "bytes": 6173704,
+      "sha256": "06cbaa3949b9bd55febc1a67bd9f070039c6e20169b2088c0337ebaffd6e7470",
       "meshes": 1,
       "vertices": 63182,
       "triangles": 100000,
       "images": [
         {
-          "mimeType": "image/png",
-          "bytes": 1083933,
+          "mimeType": "image/webp",
+          "bytes": 670202,
           "width": 1024,
           "height": 1024
         },
         {
-          "mimeType": "image/png",
-          "bytes": 5307403,
+          "mimeType": "image/webp",
+          "bytes": 3267762,
           "width": 2048,
           "height": 2048
         },
         {
-          "mimeType": "image/png",
-          "bytes": 895060,
+          "mimeType": "image/webp",
+          "bytes": 444286,
           "width": 1024,
           "height": 1024
         }
       ],
       "extensionsUsed": [
-        "KHR_materials_specular"
+        "KHR_materials_specular",
+        "EXT_texture_webp",
+        "EXT_meshopt_compression"
       ],
-      "extensionsRequired": [],
+      "extensionsRequired": [
+        "EXT_texture_webp",
+        "EXT_meshopt_compression"
+      ],
       "externalResources": [],
       "orientation": "Y-up, front +Z, feet at 0, height 2.2",
       "renders": [
         {
-          "file": "assets/characters/3d/niulai-avatar.png",
-          "bytes": 197558,
-          "sha256": "4a0bdbbed743c11391dff1a53fef1553ba6d5128cbdfe59aa4e1a80cca440d40",
+          "file": "assets/characters/3d/niulai-avatar.webp",
+          "bytes": 91428,
+          "sha256": "80eaf91a87089f6f385a22225cf58e37348bfb67ba2c4343cc5cfcbb6ac5fa02",
           "width": 512,
-          "height": 512
+          "height": 512,
+          "losslessSource": "assets/characters/3d/niulai-avatar.png"
         },
         {
-          "file": "assets/characters/3d/niulai-pet.png",
-          "bytes": 432051,
-          "sha256": "aa8aa61452f208b001d04dd6fb784a5d59288546d3fd7925ebd662e274572c52",
+          "file": "assets/characters/3d/niulai-pet.webp",
+          "bytes": 191574,
+          "sha256": "75cacc17ac1bd181cd647590373b7d989c16700561c1c9b0ce60cd9c25c2754b",
           "width": 720,
-          "height": 900
+          "height": 900,
+          "losslessSource": "assets/characters/3d/niulai-pet.png"
         }
       ],
-      "sourceLimitations": "所选正面人物的源几何无明显长尾；未拼接其他人物或补造部件。"
+      "sourceLimitations": "所选正面人物的源几何无明显长尾；未拼接其他人物或补造部件。",
+      "compression": {
+        "previousBytes": 9910092,
+        "previousSha256": "5340cc3020ac164ee4fb29d06d9a5fc1b135d4683f0b2815eab938d8af80abfa",
+        "textureEncoding": "lossless exact WebP",
+        "geometryEncoding": "meshoptimizer 0.25.0, filter NONE",
+        "textureRgbaExact": true,
+        "decodedGeometryBytesExact": true,
+        "quantization": false,
+        "triangleReduction": false
+      }
     },
     {
       "id": "capybara",
@@ -289,53 +374,70 @@
       "inputSha256": "86bf4ca45f3e3c93fc9ab442c008e01172d5335d64d18ae4570de3789d460744",
       "selection": "保留原泡澡水豚与红碗",
       "file": "assets/models/capybara.glb",
-      "bytes": 12493892,
-      "sha256": "bd314b8301fe4c4ed8abe0d8bb47712279589c48d02164d212a02c2dfa7c18a5",
+      "bytes": 6704768,
+      "sha256": "c6306462eba28391f5460c026e5584db7ac0b63381b4fc9b6dfb9502537ef171",
       "meshes": 1,
       "vertices": 74543,
       "triangles": 99999,
       "images": [
         {
-          "mimeType": "image/png",
-          "bytes": 2313883,
+          "mimeType": "image/webp",
+          "bytes": 1112722,
           "width": 2048,
           "height": 2048
         },
         {
-          "mimeType": "image/png",
-          "bytes": 4292193,
+          "mimeType": "image/webp",
+          "bytes": 2427810,
           "width": 2048,
           "height": 2048
         },
         {
-          "mimeType": "image/png",
-          "bytes": 2300532,
+          "mimeType": "image/webp",
+          "bytes": 996842,
           "width": 2048,
           "height": 2048
         }
       ],
       "extensionsUsed": [
-        "KHR_materials_specular"
+        "KHR_materials_specular",
+        "EXT_texture_webp",
+        "EXT_meshopt_compression"
       ],
-      "extensionsRequired": [],
+      "extensionsRequired": [
+        "EXT_texture_webp",
+        "EXT_meshopt_compression"
+      ],
       "externalResources": [],
       "orientation": "Y-up, front +Z, feet at 0, height 2.2",
       "renders": [
         {
-          "file": "assets/characters/3d/capybara-avatar.png",
-          "bytes": 260314,
-          "sha256": "54e4f88bcecbb69fd38ce5ee21ee51e17b188f47c7085acb90f4256960f89717",
+          "file": "assets/characters/3d/capybara-avatar.webp",
+          "bytes": 118418,
+          "sha256": "141b9141ede9df2f68a596dc9454c0b3b545d4fbe7ff1805e07f59639e72dc27",
           "width": 512,
-          "height": 512
+          "height": 512,
+          "losslessSource": "assets/characters/3d/capybara-avatar.png"
         },
         {
-          "file": "assets/characters/3d/capybara-pet.png",
-          "bytes": 494747,
-          "sha256": "7eba26bce551735b2a81f27cea445e511f9043fd07c5eff98403e92b70dc148d",
+          "file": "assets/characters/3d/capybara-pet.webp",
+          "bytes": 216036,
+          "sha256": "c6c47eb9b60578240a937b362a60c230386ee8a4b7f2bf78b57d18daa34b35aa",
           "width": 720,
-          "height": 900
+          "height": 900,
+          "losslessSource": "assets/characters/3d/capybara-pet.png"
         }
-      ]
+      ],
+      "compression": {
+        "previousBytes": 12493892,
+        "previousSha256": "bd314b8301fe4c4ed8abe0d8bb47712279589c48d02164d212a02c2dfa7c18a5",
+        "textureEncoding": "lossless exact WebP",
+        "geometryEncoding": "meshoptimizer 0.25.0, filter NONE",
+        "textureRgbaExact": true,
+        "decodedGeometryBytesExact": true,
+        "quantization": false,
+        "triangleReduction": false
+      }
     },
     {
       "id": "naicha",
@@ -345,53 +447,70 @@
       "inputSha256": "d199263f6604f4d46aa19767ef21ce5bd93eecb8eef6f589411996d2a3b7f4aa",
       "selection": "三个视图人物中保留左侧完整正面人物及制服配饰",
       "file": "assets/models/naicha.glb",
-      "bytes": 9604216,
-      "sha256": "1b1615f36f8bc5af9342a7489c19708a3f17d918f5da7b4a6a95feb1c9fa0091",
+      "bytes": 5533860,
+      "sha256": "1a5416d422f5434be8ec86023dd4a9119ac3d0baa549d0d7eb80ba145e8155be",
       "meshes": 1,
       "vertices": 10982,
       "triangles": 17326,
       "images": [
         {
-          "mimeType": "image/png",
-          "bytes": 2079449,
+          "mimeType": "image/webp",
+          "bytes": 1456188,
           "width": 2048,
           "height": 2048
         },
         {
-          "mimeType": "image/png",
-          "bytes": 4257158,
+          "mimeType": "image/webp",
+          "bytes": 2437632,
           "width": 2048,
           "height": 2048
         },
         {
-          "mimeType": "image/png",
-          "bytes": 2809997,
+          "mimeType": "image/webp",
+          "bytes": 1293130,
           "width": 2048,
           "height": 2048
         }
       ],
       "extensionsUsed": [
-        "KHR_materials_specular"
+        "KHR_materials_specular",
+        "EXT_texture_webp",
+        "EXT_meshopt_compression"
       ],
-      "extensionsRequired": [],
+      "extensionsRequired": [
+        "EXT_texture_webp",
+        "EXT_meshopt_compression"
+      ],
       "externalResources": [],
       "orientation": "Y-up, front +Z, feet at 0, height 2.2",
       "renders": [
         {
-          "file": "assets/characters/3d/naicha-avatar.png",
-          "bytes": 243487,
-          "sha256": "372a2ead88be78e6c04a2ccaefe788d437a24bbd3a86203b55702fee33275ce5",
+          "file": "assets/characters/3d/naicha-avatar.webp",
+          "bytes": 113724,
+          "sha256": "5dbceec012c8e0c089b49d5b9e2f7aa3d8f979ab30167c115f39cef76a35e11f",
           "width": 512,
-          "height": 512
+          "height": 512,
+          "losslessSource": "assets/characters/3d/naicha-avatar.png"
         },
         {
-          "file": "assets/characters/3d/naicha-pet.png",
-          "bytes": 482640,
-          "sha256": "a1d4dfc5322283f8d828c4c0de78998ea303d3ed5f8fa85ecf46caa2483c080b",
+          "file": "assets/characters/3d/naicha-pet.webp",
+          "bytes": 218732,
+          "sha256": "c811e37d607a74f161afc90b1ed71f0caf854be1019d0a26d11ad77d324c1c1f",
           "width": 720,
-          "height": 900
+          "height": 900,
+          "losslessSource": "assets/characters/3d/naicha-pet.png"
         }
-      ]
+      ],
+      "compression": {
+        "previousBytes": 9604216,
+        "previousSha256": "1b1615f36f8bc5af9342a7489c19708a3f17d918f5da7b4a6a95feb1c9fa0091",
+        "textureEncoding": "lossless exact WebP",
+        "geometryEncoding": "meshoptimizer 0.25.0, filter NONE",
+        "textureRgbaExact": true,
+        "decodedGeometryBytesExact": true,
+        "quantization": false,
+        "triangleReduction": false
+      }
     },
     {
       "id": "naidan",
@@ -401,53 +520,70 @@
       "inputSha256": "d41886ed708e88bfaa9889d64481e9cd848e2cff2663f6938d0e399391d057d3",
       "selection": "保留原金色蛋形与无四肢造型",
       "file": "assets/models/naidan.glb",
-      "bytes": 9575812,
-      "sha256": "78df41a9e4b5dafbf4052b2f9ca90e2f13cd21568d972785e614fa140f159eaa",
+      "bytes": 5061280,
+      "sha256": "db51c32d616247a2a130cb28b118acbb0364b58108104fce8cdbaf5203ba45ed",
       "meshes": 1,
       "vertices": 65378,
       "triangles": 99999,
       "images": [
         {
-          "mimeType": "image/png",
-          "bytes": 1687722,
+          "mimeType": "image/webp",
+          "bytes": 585426,
           "width": 2048,
           "height": 2048
         },
         {
-          "mimeType": "image/png",
-          "bytes": 3277144,
+          "mimeType": "image/webp",
+          "bytes": 1826656,
           "width": 2048,
           "height": 2048
         },
         {
-          "mimeType": "image/png",
-          "bytes": 1916943,
+          "mimeType": "image/webp",
+          "bytes": 783102,
           "width": 2048,
           "height": 2048
         }
       ],
       "extensionsUsed": [
-        "KHR_materials_specular"
+        "KHR_materials_specular",
+        "EXT_texture_webp",
+        "EXT_meshopt_compression"
       ],
-      "extensionsRequired": [],
+      "extensionsRequired": [
+        "EXT_texture_webp",
+        "EXT_meshopt_compression"
+      ],
       "externalResources": [],
       "orientation": "Y-up, front +Z, feet at 0, height 2.2",
       "renders": [
         {
-          "file": "assets/characters/3d/naidan-avatar.png",
-          "bytes": 218275,
-          "sha256": "79622c0950d0bf7b2807b193e115745fd3f3a82e8d6cd377a80c59fcc49a737e",
+          "file": "assets/characters/3d/naidan-avatar.webp",
+          "bytes": 95078,
+          "sha256": "4897fdcd2297ec3e9235b384762ea1bec7ff36fb338d7533d244ffd5e180fc31",
           "width": 512,
-          "height": 512
+          "height": 512,
+          "losslessSource": "assets/characters/3d/naidan-avatar.png"
         },
         {
-          "file": "assets/characters/3d/naidan-pet.png",
-          "bytes": 420492,
-          "sha256": "470c12aace0c1b3e529192ac7c0836a4d2307ec26947db217736ba0b0f5bd6d4",
+          "file": "assets/characters/3d/naidan-pet.webp",
+          "bytes": 177542,
+          "sha256": "6361077656de3e238139fdd339e526527f1a744481d6e50a786d6ff55e80b0ec",
           "width": 720,
-          "height": 900
+          "height": 900,
+          "losslessSource": "assets/characters/3d/naidan-pet.png"
         }
-      ]
+      ],
+      "compression": {
+        "previousBytes": 9575812,
+        "previousSha256": "78df41a9e4b5dafbf4052b2f9ca90e2f13cd21568d972785e614fa140f159eaa",
+        "textureEncoding": "lossless exact WebP",
+        "geometryEncoding": "meshoptimizer 0.25.0, filter NONE",
+        "textureRgbaExact": true,
+        "decodedGeometryBytesExact": true,
+        "quantization": false,
+        "triangleReduction": false
+      }
     },
     {
       "id": "feidudu",
@@ -457,54 +593,71 @@
       "inputSha256": "eedf9bf2128fa6672c2f9804aa2a8d283d221eda7723a35e15451eeb456b247c",
       "selection": "从大头像及三只视图人物中仅保留完整正面坐姿小袋鼠",
       "file": "assets/models/feidudu.glb",
-      "bytes": 10923904,
-      "sha256": "1ef6ea3258397ceaf80530c38528b71880e4d70d88b3561d1759a6249b3cbdc6",
+      "bytes": 6340220,
+      "sha256": "b55908c5c45127e277681264e48fed429ecb42f75d5b9a24c91a6e4b121e799c",
       "meshes": 1,
       "vertices": 59531,
       "triangles": 100000,
       "images": [
         {
-          "mimeType": "image/png",
-          "bytes": 1471991,
+          "mimeType": "image/webp",
+          "bytes": 761844,
           "width": 2048,
           "height": 2048
         },
         {
-          "mimeType": "image/png",
-          "bytes": 3923454,
+          "mimeType": "image/webp",
+          "bytes": 2328018,
           "width": 2048,
           "height": 2048
         },
         {
-          "mimeType": "image/png",
-          "bytes": 3021549,
+          "mimeType": "image/webp",
+          "bytes": 1443922,
           "width": 2048,
           "height": 2048
         }
       ],
       "extensionsUsed": [
-        "KHR_materials_specular"
+        "KHR_materials_specular",
+        "EXT_texture_webp",
+        "EXT_meshopt_compression"
       ],
-      "extensionsRequired": [],
+      "extensionsRequired": [
+        "EXT_texture_webp",
+        "EXT_meshopt_compression"
+      ],
       "externalResources": [],
       "orientation": "Y-up, front +Z, feet at 0, height 2.2",
       "renders": [
         {
-          "file": "assets/characters/3d/feidudu-avatar.png",
-          "bytes": 133860,
-          "sha256": "0e1239ded6492cd1d958adaf09120a30e22be5f443bbf25bdaaa4d9839b60dca",
+          "file": "assets/characters/3d/feidudu-avatar.webp",
+          "bytes": 54424,
+          "sha256": "3899809032e02baab53cb4f1b297a6ab0e8aa76d32d0dc94f4e8af52729f1a29",
           "width": 512,
-          "height": 512
+          "height": 512,
+          "losslessSource": "assets/characters/3d/feidudu-avatar.png"
         },
         {
-          "file": "assets/characters/3d/feidudu-pet.png",
-          "bytes": 339244,
-          "sha256": "1d3fc31e47c055ec4fadf8f2d96a9a4e52733ac8d3ca8d45df472ba0fe8025d0",
+          "file": "assets/characters/3d/feidudu-pet.webp",
+          "bytes": 135496,
+          "sha256": "3413f605cbd8d567e59a6afefb28d20dac59b3f699d821fe4e13caee1df6707c",
           "width": 720,
-          "height": 900
+          "height": 900,
+          "losslessSource": "assets/characters/3d/feidudu-pet.png"
         }
       ],
-      "sourceLimitations": "所选正面人物的源几何无明显长尾；未拼接其他人物或补造部件。"
+      "sourceLimitations": "所选正面人物的源几何无明显长尾；未拼接其他人物或补造部件。",
+      "compression": {
+        "previousBytes": 10923904,
+        "previousSha256": "1ef6ea3258397ceaf80530c38528b71880e4d70d88b3561d1759a6249b3cbdc6",
+        "textureEncoding": "lossless exact WebP",
+        "geometryEncoding": "meshoptimizer 0.25.0, filter NONE",
+        "textureRgbaExact": true,
+        "decodedGeometryBytesExact": true,
+        "quantization": false,
+        "triangleReduction": false
+      }
     }
   ]
 }

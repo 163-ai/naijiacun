@@ -1,6 +1,7 @@
 // 奶家村 · 公开完整模型展台
 import * as T from "three";
 import { GLTFLoader } from "../vendor/three/GLTFLoader.js";
+import { MeshoptDecoder } from "../vendor/meshopt/meshopt_decoder.module.js";
 
 (function () {
   "use strict";
@@ -62,6 +63,7 @@ import { GLTFLoader } from "../vendor/three/GLTFLoader.js";
   scene.add(ground);
 
   var loader = new GLTFLoader();
+  loader.setMeshoptDecoder(MeshoptDecoder);
   var model = null, currentId = "", loadVersion = 0;
   var yaw = 0, pitch = 0, velYaw = 0, velPitch = 0;
   var zoom = 1, fitDistance = 4.7;

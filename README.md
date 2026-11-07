@@ -57,7 +57,9 @@ DOM 分层由外到内：`.pet`（JS 控制位移）→ `.pet-inner`（走路起
 
 模型文件保存在 `assets/models/`，配置在 `js/3d-models.js`。多形象源文件只保留选中的完整角色，统一朝向、居中落地，并做适合网页的减面与贴图缩放，保留用户提供的造型和配色。Three.js 0.180.0 和 GLTFLoader 保存在 `vendor/three/`，运行时按需读取本地 GLB，不依赖外部 CDN。
 
-九位角色的图鉴头像为 `assets/characters/3d/<id>-avatar.png`，桌宠透明全身图为 `<id>-pet.png`。`js/data.js` 的 `image` 与 `petImage` 分别引用这两种取景；未设置 `petImage` 的角色仍使用 `image`。聊天头像和盲盒结果也沿用同一份角色数据。
+九位角色的图鉴头像为 `assets/characters/3d/<id>-avatar.webp`，桌宠透明全身图为 `<id>-pet.webp`。`js/data.js` 的 `image` 与 `petImage` 分别引用这两种取景；未设置 `petImage` 的角色仍使用 `image`。聊天头像（含历史消息、等待和错误状态）和盲盒结果也沿用同一份角色数据。
+
+加载资源采用无损压缩：19 张角色图片从 5.65 MB 降至 2.53 MB，九个 GLB 从 96.27 MB 降至 54.97 MB。图片尺寸、透明度与纹理 RGBA 保持一致，几何数据使用 meshopt 保留原精度及索引顺序；本次没有进一步减面或缩小贴图。解码器在 `vendor/meshopt/` 本地提供，压缩统计见 `assets/models/compression.json`。原 PNG 保留供旧缓存与源记录兼容使用。
 
 本页使用 ES Modules 和模型请求，**本地预览需要 HTTP 服务**，不能直接双击文件打开：
 
