@@ -225,6 +225,9 @@
         ? '<p class="detail-quote">“' + escapeHTML(people.quote) + '”</p>'
         : "") +
       '<p class="detail-desc">' + escapeHTML(people.desc || "这位村民还很神秘，介绍待补充。") + '</p>' +
+      (people.origin
+        ? '<p class="detail-origin">📎 来源与权利归属：' + escapeHTML(people.origin) + '</p>'
+        : "") +
       (tags ? '<div class="detail-tags">' + tags + '</div>' : "") +
       '<div class="card-foot">' +
         '<span class="heat">🔥 热度 ' +

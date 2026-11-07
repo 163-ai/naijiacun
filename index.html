@@ -3,17 +3,17 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>奶家村 · 网络热门人物图鉴</title>
-<meta name="description" content="一个关于网络热门人物的互动网站：搜索、投票、随机抽取，还可以提名你心中的村友。">
+<title>奶家村 · 网络热门虚拟形象图鉴</title>
+<meta name="description" content="一个关于网络热门虚拟形象的互动图鉴：奶龙、奶蛙、卡皮巴拉……可以搜索、投票、随机抽取，还能提名新角色。非官方、非商业的同人整理。">
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
 
 <header class="hero">
   <div class="container">
-    <p class="hero-badge">🌾 村口广播</p>
+    <p class="hero-badge">🌾 村口广播 · 非官方同人整理</p>
     <h1>奶家村</h1>
-    <p class="hero-sub">一个关于网络热门人物的互动网站 —— 收录那些陪伴过我们时间线的面孔</p>
+    <p class="hero-sub">网络热门虚拟形象图鉴 —— 那些在表情包和短视频里陪你打发过时间的黄色小东西们</p>
     <div class="stats" id="stats"></div>
   </div>
 </header>
@@ -46,7 +46,8 @@
 
 <footer class="footer">
   <div class="container">
-    <p>奶家村 · 数据与介绍仅供娱乐参考，示例内容已尽量保持中性客观。</p>
+    <p>奶家村是非官方、非商业的粉丝向文字整理，仅供娱乐与交流。</p>
+    <p>文中出现的角色名称与形象，著作权归各自权利人所有；本站不使用任何官方图片、立绘、视频与音频素材，如权利人认为不妥请联系删除。</p>
     <p>维护者 <a href="https://github.com/163-ai" target="_blank" rel="noopener">163-ai</a> · 源码开源，欢迎在 GitHub 提 Issue 或 PR。</p>
   </div>
 </footer>
@@ -67,23 +68,22 @@
     <button class="modal-close" data-close aria-label="关闭">✕</button>
     <h2 class="modal-title">提名一位新村民</h2>
     <form id="addForm" class="add-form">
-      <label>名字 *<input name="name" required maxlength="20" placeholder="例如：某某某"></label>
+      <label>名字 *<input name="name" required maxlength="20" placeholder="例如：奶龙"></label>
       <div class="form-row">
-        <label>头像 Emoji<input name="emoji" maxlength="4" placeholder="🙂"></label>
+        <label>头像 Emoji<input name="emoji" maxlength="4" placeholder="🐲"></label>
         <label>类别
           <select name="category">
-            <option>搞笑</option>
-            <option>美食</option>
-            <option>生活</option>
-            <option>科技</option>
-            <option>知识</option>
-            <option>手工</option>
+            <option>官方IP</option>
+            <option>抽象迷因</option>
+            <option>动物顶流</option>
+            <option>表情包</option>
+            <option>其他</option>
           </select>
         </label>
       </div>
-      <label>一句话称号<input name="title" maxlength="30" placeholder="例如：无用发明家"></label>
-      <label>名场面 / 金句<input name="quote" maxlength="80" placeholder="例如：真香！"></label>
-      <label>介绍<textarea name="desc" rows="3" maxlength="200" placeholder="用一两句中性的话介绍这位人物"></textarea></label>
+      <label>一句话称号<input name="title" maxlength="30" placeholder="例如：黄色大肚子的呆萌小恐龙"></label>
+      <label>热梗 / 名场面<input name="quote" maxlength="80" placeholder="例如：duang~duang~ 的大肚子"></label>
+      <label>介绍<textarea name="desc" rows="3" maxlength="200" placeholder="用一两句中性的话介绍这个形象"></textarea></label>
       <button type="submit" class="btn primary wide">入住奶家村</button>
     </form>
   </div>

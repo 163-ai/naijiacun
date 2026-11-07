@@ -386,6 +386,17 @@ body {
   margin: 0 0 14px;
 }
 
+.detail-origin {
+  font-size: 12px;
+  color: var(--ink-3);
+  line-height: 1.6;
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  border-left: 2px solid var(--line);
+  background: var(--bg);
+  border-radius: 0 8px 8px 0;
+}
+
 .detail-tags { margin-bottom: 16px; }
 
 .tag {
