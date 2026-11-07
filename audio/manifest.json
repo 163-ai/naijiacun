@@ -1,0 +1,50 @@
+{
+  "nailong": {
+    "file": "audio/nailong.mp3",
+    "text": "duang~duang~ 的大肚子，和一双童真的圆眼睛。",
+    "voice_id": "voc_fzjcsvs6awx2",
+    "model": "breeze-tts-2",
+    "bytes": 89856,
+    "generatedAt": "2026-11-07T06:25:14.696Z"
+  },
+  "naiwa": {
+    "file": "audio/naiwa.mp3",
+    "text": "点一下就狂笑，笑起来停不下来。",
+    "voice_id": "voc_96zgjajwm4yt",
+    "model": "breeze-tts-2",
+    "bytes": 60192,
+    "generatedAt": "2026-11-07T06:25:18.210Z"
+  },
+  "baobaolong": {
+    "file": "audio/baobaolong.mp3",
+    "text": "一山不容二龙，除非一起吃饭。",
+    "voice_id": "voc_2h2sbun8qvbk",
+    "model": "breeze-tts-2",
+    "bytes": 37152,
+    "generatedAt": "2026-11-07T06:25:22.896Z"
+  },
+  "xiaoqi": {
+    "file": "audio/xiaoqi.mp3",
+    "text": "冒险的起点，总是从一件奇怪的发明开始。",
+    "voice_id": "voc_qgpw3eqg6ku7",
+    "model": "breeze-tts-2",
+    "bytes": 53568,
+    "generatedAt": "2026-11-07T06:25:28.398Z"
+  },
+  "niulai": {
+    "file": "audio/niulai.mp3",
+    "text": "同一批 AI 畸变图里，长出来的另一个物种。",
+    "voice_id": "voc_vztvmkcwynj9",
+    "model": "breeze-tts-2",
+    "bytes": 63072,
+    "generatedAt": "2026-11-07T06:25:32.040Z"
+  },
+  "capybara": {
+    "file": "audio/capybara.mp3",
+    "text": "别人在卷，它在泡澡。",
+    "voice_id": "voc_reys5un5t4ed",
+    "model": "breeze-tts-2",
+    "bytes": 25632,
+    "generatedAt": "2026-11-07T06:28:07.837Z"
+  }
+}

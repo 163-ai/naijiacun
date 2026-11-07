@@ -54,7 +54,7 @@ function findAudio(id) {
   return null;
 }
 
-async function cloneOne(id, file, style) {
+async function cloneOne(id, file, style, personName) {
   const buf = fs.readFileSync(file);
 
   // 直连模式：Node 没有跨域限制，直接把参考音频 POST 给 Breeze
@@ -69,7 +69,13 @@ async function cloneOne(id, file, style) {
       headers: { "xi-api-key": API_KEY },
       body: form
     });
-    return parseVoiceId(res, await res.text());
+    const data = await readJSON(res, await res.text());
+
+    // Breeze 的克隆是两步：先返回 generated_voice_id，再 save 成正式音色
+    if (data.generated_voice_id && !data.voice_id) {
+      return saveGenerated(data.generated_voice_id, id, style, personName);
+    }
+    return voiceIdOf(data);
   }
 
   const form = new FormData();
@@ -82,10 +88,30 @@ async function cloneOne(id, file, style) {
     headers: { "x-breeze-key": API_KEY },
     body: form
   });
-  return parseVoiceId(res, await res.text());
+  return voiceIdOf(await readJSON(res, await res.text()));
 }
 
-function parseVoiceId(res, text) {
+// 把生成的音色保存到账号下，拿到可用的 voice_id
+async function saveGenerated(generatedId, id, style, personName) {
+  const res = await fetch(
+    API + "/voice-previews/" + encodeURIComponent(generatedId) + "/save",
+    {
+      method: "POST",
+      headers: { "xi-api-key": API_KEY, "content-type": "application/json" },
+      body: JSON.stringify({
+        voice_name: `奶家村-${personName || id}`,
+        voice_description: style || "",
+        language_code: "zh",
+        tags: ["naijiacun", id]
+      })
+    }
+  );
+  const data = await readJSON(res, await res.text());
+  if (!data.voice_id) throw new Error("保存成功但没有返回 voice_id");
+  return data.voice_id;
+}
+
+async function readJSON(res, text) {
   let data = {};
   try {
     data = text ? JSON.parse(text) : {};
@@ -94,10 +120,18 @@ function parseVoiceId(res, text) {
   }
 
   if (!res.ok || data.ok === false) {
-    const detail = data.detail || data.message || `HTTP ${res.status}`;
-    throw new Error(typeof detail === "string" ? detail.slice(0, 240) : JSON.stringify(detail).slice(0, 240));
+    let detail = data.detail || data.message || `HTTP ${res.status}`;
+    detail = typeof detail === "string" ? detail : JSON.stringify(detail);
+    if (/no clear speech/i.test(detail)) {
+      detail = "参考音频里没有清晰人声（笑声、歌曲、多人对话、带背景音乐都不行）。" +
+        "换一段单人说话素材，或用 scripts/design-voices.mjs 按文字描述生成音色";
+    }
+    throw new Error(detail.slice(0, 240));
   }
+  return data;
+}
 
+function voiceIdOf(data) {
   const voiceId = data.voice_id || data.id || (data.voice && data.voice.voice_id);
   if (!voiceId) throw new Error("接口没有返回 voice_id：" + JSON.stringify(data).slice(0, 200));
   return voiceId;
@@ -147,7 +181,7 @@ async function main() {
 
     process.stdout.write(`· ${p.name.padEnd(6)} 克隆中… `);
     try {
-      const voiceId = await cloneOne(p.id, audio, style);
+      const voiceId = await cloneOne(p.id, audio, style, p.name);
       writeVoiceId(p.id, voiceId);
       console.log(`完成 → ${voiceId}`);
       ok++;
