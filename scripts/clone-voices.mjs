@@ -8,11 +8,12 @@
 //   1. 把参考音频放进 voices/，文件名用角色 id：
 //        voices/nailong.mp3   voices/naiwa.mp3   ...
 //      （支持 mp3 / wav / m4a / ogg / webm，建议 10~30 秒干净人声）
-//   2. 运行：
-//        TTS_ENDPOINT=https://你的worker地址 BREEZE_API_KEY=brz_xxx node scripts/clone-voices.mjs
+//   2. 运行（直连 Breeze，不需要部署代理）：
+//        BREEZE_API_KEY=brz_xxx node scripts/clone-voices.mjs
+//      也可以走自己的 Worker（TTS_ENDPOINT=https://xxx.workers.dev）。
 //   3. 加 --only=nailong 可只处理一个，加 --dry-run 只看会做什么，不真的调用接口
 //
-// 重要：只有你拥有合法使用权的音频才适合上传。克隆真人（尤其配音演员）的声音，
+// 注意：只有你拥有合法使用权的音频才适合上传。克隆真人（尤其配音演员）的声音，
 //      需要本人书面授权；比赛演示建议用授权音色库里的音色，或按 CHARACTER_VOICES
 //      里的 style 描述做「声音设计」，生成全新音色，不指向具体的人。
 
@@ -24,6 +25,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DATA_FILE = path.join(ROOT, "js", "data.js");
 const VOICE_DIR = path.join(ROOT, "voices");
 
+const API = "https://api.breeze.blue/v1";
 const ENDPOINT = (process.env.TTS_ENDPOINT || "").replace(/\/$/, "");
 const API_KEY = process.env.BREEZE_API_KEY || "";
 const DRY = process.argv.includes("--dry-run");
@@ -54,6 +56,22 @@ function findAudio(id) {
 
 async function cloneOne(id, file, style) {
   const buf = fs.readFileSync(file);
+
+  // 直连模式：Node 没有跨域限制，直接把参考音频 POST 给 Breeze
+  if (!ENDPOINT) {
+    const form = new FormData();
+    form.append("name", `njc-${id}`);
+    if (style) form.append("description", style.slice(0, 300));
+    form.append("files", new Blob([buf], { type: "audio/mpeg" }), path.basename(file));
+
+    const res = await fetch(API + "/voices/add", {
+      method: "POST",
+      headers: { "xi-api-key": API_KEY },
+      body: form
+    });
+    return parseVoiceId(res, await res.text());
+  }
+
   const form = new FormData();
   form.append("name", `njc-${id}`);
   if (style) form.append("description", style);
@@ -64,11 +82,13 @@ async function cloneOne(id, file, style) {
     headers: { "x-breeze-key": API_KEY },
     body: form
   });
+  return parseVoiceId(res, await res.text());
+}
 
-  const text = await res.text();
+function parseVoiceId(res, text) {
   let data = {};
   try {
-    data = JSON.parse(text);
+    data = text ? JSON.parse(text) : {};
   } catch (e) {
     throw new Error(`返回的不是 JSON（HTTP ${res.status}）：${text.slice(0, 200)}`);
   }
@@ -87,12 +107,10 @@ async function main() {
   const { PEOPLE, CHARACTER_VOICES } = loadData();
 
   if (!DRY) {
-    if (!ENDPOINT) {
-      console.error("✗ 缺少 TTS_ENDPOINT（你的 Worker 地址，例如 https://naijiacun-tts.xxx.workers.dev）");
-      process.exit(1);
-    }
     if (!API_KEY) {
       console.error("✗ 缺少 BREEZE_API_KEY（brz_ 开头的 Key）");
+      console.error("  获取：登录 Breeze 控制台 → API Keys → 新建，然后：");
+      console.error("     BREEZE_API_KEY=brz_xxx node scripts/clone-voices.mjs");
       process.exit(1);
     }
   }
@@ -103,7 +121,8 @@ async function main() {
     process.exit(1);
   }
 
-  console.log(`待处理 ${targets.length} 位角色 | 目录 ${path.relative(ROOT, VOICE_DIR)}`);
+  console.log(`待处理 ${targets.length} 位角色 | 参考音频 ${path.relative(ROOT, VOICE_DIR)}`);
+  console.log(`接口：${ENDPOINT ? ENDPOINT + "/api/clone（经代理）" : API + "/voices/add（直连）"}`);
   console.log("");
 
   let ok = 0;
@@ -122,7 +141,7 @@ async function main() {
     }
 
     if (DRY) {
-      console.log(`· ${p.name.padEnd(6)} 会克隆 ${path.basename(audio)} → ${ENDPOINT}/api/clone`);
+      console.log(`· ${p.name.padEnd(6)} 会克隆 ${path.basename(audio)} → ${ENDPOINT || API + "/voices/add"}`);
       continue;
     }
 

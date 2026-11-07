@@ -25,6 +25,13 @@
                 /Xiaoyi/i, /Google/i, /Tingting/i, /Meijia/i, /女/i];
   var AVOID = [/Huihui/i, /Kangkang/i, /Yaoyao/i, /Yating/i, /Zhiwei/i, /eSpeak/i];
 
+  // 按名字粗略判断音色性别，只用于给角色配「男声/女声」
+  var FEMALE_NAME = [/Xiaoxiao/i, /Xiaoyi/i, /Xiaohan/i, /Xiaomeng/i, /Xiaomo/i,
+                     /Xiaorui/i, /Xiaoshuang/i, /Xiaoqiu/i, /Tingting/i,
+                     /Huihui/i, /Yaoyao/i, /Meijia/i, /Yaoyao/i, /女/i];
+  var MALE_NAME = [/Yunxi/i, /Yunyang/i, /Yunjian/i, /Yunfeng/i, /Yunhao/i,
+                   /Yunye/i, /Kangkang/i, /Zhiwei/i, /男/i];
+
   var audioEl = null;
   var currentId = null;
   var listeners = [];
@@ -64,7 +71,8 @@
   }
 
   // 选定音色：优先用户手动指定的，否则在中文音色里挑分数最高的
-  function pickVoice() {
+  // gender 传入 "male" / "female" 时，会优先挑同性别的音色
+  function pickVoice(gender) {
     var list = allVoices();
     if (!list.length) return null;
 
@@ -79,12 +87,40 @@
     var zh = list.filter(isZh);
     var pool = zh.length ? zh : list;
     var best = pool[0];
-    var bestScore = scoreVoice(best);
+    var bestScore = scoreVoiceFor(pool[0], gender);
     for (var j = 1; j < pool.length; j++) {
-      var sc = scoreVoice(pool[j]);
+      var sc = scoreVoiceFor(pool[j], gender);
       if (sc > bestScore) { best = pool[j]; bestScore = sc; }
     }
     return best;
+  }
+
+  function voiceGender(v) {
+    if (FEMALE_NAME.some(function (re) { return re.test(v.name); })) return "female";
+    if (MALE_NAME.some(function (re) { return re.test(v.name); })) return "male";
+    return "";
+  }
+
+  function scoreVoiceFor(v, gender) {
+    var s = scoreVoice(v);
+    if (gender) {
+      var g = voiceGender(v);
+      if (g === gender) s += 26;
+      else if (g) s -= 26;     // 明确是异性音色就压下去
+    }
+    return s;
+  }
+
+  // 角色的浏览器语音参数（没有云端音色时用它来区分角色）
+  function characterProfile(id) {
+    var map = (typeof window !== "undefined" && window.CHARACTER_VOICES) ||
+              (typeof CHARACTER_VOICES !== "undefined" ? CHARACTER_VOICES : null);
+    var p = (map && id && map[id]) || null;
+    return {
+      rate: p && typeof p.rate === "number" ? p.rate : null,
+      pitch: p && typeof p.pitch === "number" ? p.pitch : null,
+      gender: (p && p.gender) || ""
+    };
   }
 
   function listBrowserVoices() {
@@ -127,8 +163,9 @@
 
     var u = new SpeechSynthesisUtterance(text);
     var h = hash(id || text);
+    var prof = characterProfile(id);
 
-    var voice = pickVoice();
+    var voice = pickVoice(prof.gender);
     if (voice) {
       u.voice = voice;
       u.lang = voice.lang || "zh-CN";
@@ -140,9 +177,9 @@
       notify("当前浏览器没有可用音色，可能听不到声音。建议用 Edge 打开");
     }
 
-    // 只做轻微区分，避免同一个人换个页面就变成另一个声音
-    u.rate = 0.96 + (h % 5) * 0.015;
-    u.pitch = 0.96 + ((h >> 3) % 5) * 0.02;
+    // 有角色音色设定就用它（六个角色各不相同），没有就按 id 做个稳定的小幅区分
+    u.rate = prof.rate !== null ? prof.rate : 0.96 + (h % 5) * 0.015;
+    u.pitch = prof.pitch !== null ? prof.pitch : 0.96 + ((h >> 3) % 5) * 0.02;
 
     u.onend = function () { currentId = null; emit(); };
     u.onerror = function () { currentId = null; emit(); };

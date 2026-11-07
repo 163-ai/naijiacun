@@ -8,10 +8,10 @@
 
 本项目是**非官方、非商业的粉丝向文字整理**：
 
-- 不使用任何官方图片、立绘、视频、音频素材，头像一律用 emoji 代替
+- 仓库默认不内置任何形象图、原声音轨或克隆音色；`assets/` 里的素材由使用者自行放入，版权归各自权利人所有
 - 每个角色在详情页标注「来源与权利归属」，正文是介绍与评论性质
 - 角色名称与形象著作权归各自权利人所有；如权利人认为不妥，联系即删
-- **不做声音克隆**：不使用、不模仿官方配音，语音只用浏览器音色或平台授权音色
+- **声音克隆由使用者自行决定并承担相应责任**：克隆真人（尤其是配音演员、公众人物）需要本人书面授权；`scripts/clone-voices.mjs` 只是工具，不会自动抓取任何素材
 
 ## 功能
 
@@ -20,7 +20,7 @@
 - **热度投票**：给喜欢的角色顶一票，热度实时上涨（保存在浏览器本地）
 - **随机抽取**：选择困难时，让命运决定今天看谁
 - **提名新人**：任何人都可以提名新角色加入图鉴（保存在浏览器本地）
-- **语音朗读**：点卡片右上角 🔊 听热梗，详情页可朗读整段介绍
+- **语音朗读**：点卡片右上角 🔊 用角色音色朗读热梗，🎵 播放该角色自带的原声片段，详情页可朗读整段介绍
 - **桌宠模式**：`pet.html` 里角色会自己走动、打瞌睡、被拖动、点一下说话；支持「置顶小窗」（Edge / Chrome 116+），能浮在其他窗口上面
 
 ## 桌宠模式怎么用
@@ -103,12 +103,15 @@ BREEZE_API_KEY=brz_xxx BREEZE_VOICE_ID=voc_xxx node scripts/pregen-audio.mjs
 nailong: {
   voiceId: "",                       // 绑定后由脚本自动写入
   style: "软萌的小童声，圆润鼻音，语速偏慢，句尾带笑，像在撒娇",
-  gender: "female", age: "child", tone: ["gentle", "playful"], accent: null
+  gender: "female", age: "child", tone: ["gentle", "playful"], accent: null,
+  rate: 0.9, pitch: 1.4              // 没有 Key 时浏览器语音的语速/音高
 }
 ```
 
 - `voiceId` 有值 → 点 🔊 就用这个音色（优先于默认音色）
 - 为空 → 用默认音色；连默认都没有则退回浏览器语音
+- `rate` / `pitch` 只影响浏览器语音，让六个角色在没填 Key 时也能听出差别
+  （例如奶龙是女声、音高 1.4、语速 0.9；暴暴龙是男声、音高 0.7、语速 1.1）
 
 **路线 A：声音设计（推荐，只要一个 Key，不用准备音频）**
 
@@ -124,11 +127,16 @@ BREEZE_API_KEY=brz_xxx node scripts/design-voices.mjs
 
 ```bash
 # 参考音频放进 voices/，文件名 = 角色 id，例如 voices/nailong.mp3（10~30 秒干净人声）
-TTS_ENDPOINT=https://你的worker地址 BREEZE_API_KEY=brz_xxx node scripts/clone-voices.mjs
+BREEZE_API_KEY=brz_xxx node scripts/clone-voices.mjs
+# 想走自己的代理再加 TTS_ENDPOINT=https://你的worker地址，不填就是直连 Breeze
 ```
 
-脚本调用代理的 `/api/clone` → Breeze 的 `POST /v1/voices/add`，拿到 `voice_id` 后同样自动写回。
+脚本直接把参考音频 `POST /v1/voices/add`，拿到 `voice_id` 后自动写回 `js/data.js`。
+Node 没有跨域限制，所以**这条路不需要部署代理**，只要有 Key 就能跑。
 `voices/` 已加入 `.gitignore`，参考音频不会推到公开仓库。
+
+注意：克隆效果取决于参考音频质量。笑声、歌曲、多人对话、带背景音乐的音轨克隆出来会是"混合音色"，
+建议用 10~30 秒、单人、无背景音乐的说话片段。
 
 **想让网站彻底不依赖 Key：把音色合成为本地 mp3**
 
