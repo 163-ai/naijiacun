@@ -154,7 +154,7 @@
     bp.needsUpdate = true;
     backGeo.computeVertexNormals();
     var backMat = new T.MeshStandardMaterial({
-      map: tex, color: 0x6b5f52, alphaTest: 0.22, transparent: true,
+      map: tex, color: 0xa89a86, alphaTest: 0.22, transparent: true,
       side: T.DoubleSide, roughness: 0.95
     });
 
@@ -371,13 +371,15 @@
     requestAnimationFrame(loop);
     var t = (performance.now() - t0) / 1000;
     if (!dragging) {
-      if (autoSpin) yaw += 0.0035;
       yaw += velYaw; pitch += velPitch;
       velYaw *= 0.93; velPitch *= 0.93;
       pitch = Math.max(-0.55, Math.min(0.55, pitch));
     }
     if (model) {
-      model.rotation.set(pitch, yaw, 0);
+      // 自动展示只在正面 ±30° 摆动：360° 连转会露出暗色底板，观感差。
+      // 用户仍可手动拖到任意角度（yaw 是拖拽/惯性的基准值）。
+      var shownYaw = yaw + (autoSpin ? Math.sin(t * 0.42) * 0.52 : 0);
+      model.rotation.set(pitch, shownYaw, 0);
       model.position.y = Math.sin(t * 1.15) * 0.035;   // 轻轻漂浮
     }
     renderer.render(scene, camera);
