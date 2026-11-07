@@ -280,6 +280,10 @@ import { MeshoptDecoder } from "../vendor/meshopt/meshopt_decoder.module.js";
       }
       model = root;
       scene.add(model);
+      stopAction();
+      buildRig(model);
+      updateActAvailability();
+      updateActNote();
       yaw = pitch = velYaw = velPitch = 0;
       document.querySelectorAll("[data-view]").forEach(function (el) {
         el.setAttribute("aria-pressed", String(!autoSpin && el.dataset.view === "front"));
@@ -354,6 +358,250 @@ import { MeshoptDecoder } from "../vendor/meshopt/meshopt_decoder.module.js";
     }).catch(function () { if (audioEl === audio) setStatus("音频暂时无法播放，请再点一次。"); });
   }
 
+  // ---------- 动作系统：骨骼实时驱动，不依赖模型自带动画 ----------
+  // 模型自带的 7 段动画只动头部（幅度 0.03~0.14），当不了「大笑／鞠躬」，
+  // 因此这里直接按骨骼摆姿势：动作幅度可控、每个模型都能复用。
+  var rig = null, active = null, activeStart = 0, laughAudio = null;
+  var soundOn = true;
+  try { soundOn = localStorage.getItem("p3-sound") !== "off"; } catch (e) {}
+
+  function buildRig(root) {
+    var bones = {};
+    root.traverse(function (o) { if (o.isBone) bones[o.name] = o; });
+    root.updateMatrixWorld(true);
+    var rootInv = root.getWorldQuaternion(new T.Quaternion()).invert();
+    var rest = {};
+    Object.keys(bones).forEach(function (name) {
+      var bone = bones[name];
+      var parentWorld = new T.Quaternion();
+      if (bone.parent) bone.parent.getWorldQuaternion(parentWorld);
+      rest[name] = {
+        q: bone.quaternion.clone(),
+        self: rootInv.clone().multiply(bone.getWorldQuaternion(new T.Quaternion())),
+        parent: rootInv.clone().multiply(parentWorld)
+      };
+    });
+    var centered = root.children[0];
+    rig = {
+      root: root, centered: centered, bones: bones, rest: rest,
+      baseY: centered.position.y,
+      baseRot: centered.rotation.clone(),
+      baseScale: centered.scale.clone()
+    };
+  }
+
+  function resetRig() {
+    if (!rig) return;
+    Object.keys(rig.bones).forEach(function (name) {
+      rig.bones[name].quaternion.copy(rig.rest[name].q);
+    });
+    rig.centered.position.y = rig.baseY;
+    rig.centered.rotation.copy(rig.baseRot);
+    rig.centered.scale.copy(rig.baseScale);
+  }
+
+  // 以「模型自身坐标」的世界轴旋转某根骨骼（X 右、Y 上、Z 前）
+  function rotWorld(name, moves) {
+    if (!rig || !rig.bones[name]) return;
+    var quat = rig.rest[name].self.clone();
+    moves.forEach(function (move) {
+      var axis = new T.Vector3(move[0][0], move[0][1], move[0][2]).normalize();
+      quat.premultiply(new T.Quaternion().setFromAxisAngle(axis, move[1]));
+    });
+    rig.bones[name].quaternion.copy(rig.rest[name].parent.clone().invert().multiply(quat));
+  }
+
+  function setActiveAct(el) {
+    document.querySelectorAll(".p3-act").forEach(function (btn) {
+      btn.classList.toggle("playing", btn === el);
+      if (btn === el) btn.setAttribute("aria-pressed", "true");
+      else btn.removeAttribute("aria-pressed");
+    });
+  }
+
+  function burstLaugh() {
+    var box = document.getElementById("laughFx");
+    if (!box) return;
+    if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    box.innerHTML = "";
+    ["😂", "🤣", "😆", "🤣", "😂"].forEach(function (face, i) {
+      var span = document.createElement("span");
+      span.textContent = face;
+      span.style.left = 50 + (i - 2) * 7 + "%";
+      span.style.fontSize = (17 + Math.random() * 9).toFixed(0) + "px";
+      span.style.setProperty("--dx", ((i - 2) * 30 + (Math.random() * 18 - 9)).toFixed(0) + "px");
+      span.style.setProperty("--delay", (i * 0.16).toFixed(2) + "s");
+      box.appendChild(span);
+    });
+    setTimeout(function () { if (box) box.innerHTML = ""; }, 3200);
+  }
+
+  // 大笑：上身后仰 + 跟着笑点上下颠 + 左右晃 + 肚子一鼓一瘪
+  // 当前村民模型都是单网格、无骨骼，所以用整体变换来演；将来换成带骨骼的模型会自动叠加脊柱/头/手臂
+  function applyLaugh(t, env, wave) {
+    var beat = Math.max(0, wave);
+    var wobble = 0.085 * wave * env;
+    if (rig.bones.Spine) {
+      rotWorld("Spine", [[[1, 0, 0], -0.24 * env + wobble], [[0, 0, 1], 0.05 * wave * env]]);
+      if (rig.bones.Chest) rotWorld("Chest", [[[1, 0, 0], -0.14 * env + wobble * 0.8], [[0, 1, 0], 0.05 * wave * env]]);
+      if (rig.bones.Head) {
+        rotWorld("Head", [[[1, 0, 0], 0.3 * env - 0.14 * wave * env], [[0, 1, 0], -0.06 * wave * env]]);
+      }
+      if (rig.bones.LeftArm && rig.bones.RightArm) {
+        rotWorld("LeftArm", [[[0, 1, 0], -0.5 * env], [[1, 0, 0], (-0.02 - 0.06 * wave) * env]]);
+        rotWorld("RightArm", [[[0, 1, 0], 0.5 * env], [[1, 0, 0], (-0.02 - 0.06 * wave) * env]]);
+        if (rig.bones.LeftForeArm) rotWorld("LeftForeArm", [[[0, 0, 1], -0.2 * env]]);
+        if (rig.bones.RightForeArm) rotWorld("RightForeArm", [[[0, 0, 1], 0.2 * env]]);
+      }
+    } else {
+      // 无骨骼：整体后仰 + 侧晃
+      rig.centered.rotation.x = rig.baseRot.x - 0.27 * env + wobble;
+      rig.centered.rotation.z = rig.baseRot.z + 0.075 * wave * env;
+    }
+    rig.centered.position.y = rig.baseY + 0.09 * env * beat;
+    var squash = 0.07 * env * beat;
+    rig.centered.scale.set(
+      rig.baseScale.x * (1 + squash),
+      rig.baseScale.y * (1 - squash),
+      rig.baseScale.z * (1 + squash)
+    );
+  }
+
+  // 蹦一下：整体起跳（这个模型胳膊与身体共网格，侧抬会拉出薄片）
+  function applyJump(t, env, wave) {
+    var p = Math.min(1, t / 1.5);
+    var hop = Math.sin(Math.PI * p);
+    rig.centered.position.y = rig.baseY + 0.26 * hop;
+    var stretch = 0.06 * hop - 0.05 * (1 - hop);
+    rig.centered.scale.set(
+      rig.baseScale.x * (1 - stretch),
+      rig.baseScale.y * (1 + stretch),
+      rig.baseScale.z * (1 - stretch)
+    );
+    if (rig.bones.LeftArm && rig.bones.RightArm) {
+      rotWorld("LeftArm", [[[0, 1, 0], -0.28 * hop]]);
+      rotWorld("RightArm", [[[0, 1, 0], 0.28 * hop]]);
+    }
+  }
+
+
+
+
+  var ACTIONS = {
+    laugh: { label: "捧腹大笑", ms: 3450, rampIn: 0.4, rampOut: 0.5, freq: 3.5, sound: "audio/laugh.mp3", bubble: "哈哈哈哈哈——", fx: true, apply: applyLaugh },
+    jump: { label: "蹦一下", ms: 1500, rampIn: 0.05, rampOut: 0.05, freq: 1, apply: applyJump }
+  };
+
+  function envelope(t, def) {
+    var dur = def.ms / 1000;
+    var rampIn = Math.min(1, t / def.rampIn);
+    var rampOut = t > dur - def.rampOut ? Math.max(0, (dur - t) / def.rampOut) : 1;
+    return (rampIn * rampIn * (3 - 2 * rampIn)) * (rampOut * rampOut * (3 - 2 * rampOut));
+  }
+
+  function playAction(name, btn) {
+    var def = ACTIONS[name];
+    if (!def || !rig) return;
+    if (def.needsBones && !rig.bones.Spine) {
+      setStatus("这个模型没有骨骼，暂时只能做「捧腹大笑」。");
+      return;
+    }
+    stopAction();
+    resetRig();
+    active = def;
+    activeStart = performance.now();
+    setActiveAct(btn || document.querySelector('.p3-act[data-act="' + name + '"]'));
+    if (def.bubble) {
+      bubble.textContent = def.bubble;
+      bubble.classList.remove("hidden");
+    }
+    if (def.fx) burstLaugh();
+    if (def.sound && soundOn) {
+      var audio = new Audio(def.sound);
+      laughAudio = audio;
+      audio.volume = 0.92;
+      audio.play().catch(function () {});
+    }
+    setStatus(def.label + " · 播放一次");
+  }
+
+  function stopAction() {
+    if (!active) return;
+    active = null;
+    if (laughAudio) { laughAudio.pause(); laughAudio = null; }
+    clearTimeout(bubbleTimer);
+    bubble.classList.add("hidden");
+    setActiveAct(null);
+    resetRig();
+  }
+
+  function updateAction(now) {
+    if (!active || !rig) return;
+    var t = (now - activeStart) / 1000;
+    if (t >= active.ms / 1000) { stopAction(); return; }
+    active.apply(t, envelope(t, active), Math.sin(t * Math.PI * 2 * (active.freq || 1)));
+  }
+
+  function updateActAvailability() {
+    var hasBones = !!(rig && rig.bones.Spine);
+    document.querySelectorAll(".p3-act[data-act]").forEach(function (btn) {
+      var def = ACTIONS[btn.dataset.act];
+      btn.disabled = !!(def && def.needsBones && !hasBones);
+    });
+  }
+
+  function refreshSoundBtn() {
+    var button = document.getElementById("soundBtn");
+    if (!button) return;
+    button.textContent = soundOn ? "🔊 有声音" : "🔇 静音";
+    button.setAttribute("aria-pressed", String(soundOn));
+    button.title = soundOn ? "点击静音：只做动作、不出声" : "点击开启动作声音";
+    if (!soundOn && laughAudio) { laughAudio.pause(); laughAudio = null; }
+  }
+
+  function updateActNote() {
+    var note2 = document.getElementById("actNote");
+    if (!note2) return;
+    var tab = document.querySelector(".p3-cat.on");
+    var mood = !tab || tab.dataset.cat === "mood";
+    if (!rig) { note2.textContent = ""; return; }
+    if (!rig.bones.Spine) {
+      note2.textContent = mood
+        ? "这个村民是整块模型、没有骨骼，大笑会整体后仰、跟着节拍抖。声音可以随时关掉。"
+        : "蹦一下：原地跳起再落回，不带动骨骼。";
+      return;
+    }
+    note2.textContent = mood
+      ? "点一下，它会后仰大笑、跟着节拍直抖。声音可以随时关掉。"
+      : "蹦一下：原地跳起再落回。";
+  }
+
+  document.querySelectorAll(".p3-cat").forEach(function (tab) {
+    tab.addEventListener("click", function () {
+      document.querySelectorAll(".p3-cat").forEach(function (el) {
+        var on = el === tab;
+        el.classList.toggle("on", on);
+        el.setAttribute("aria-selected", String(on));
+      });
+      document.querySelectorAll(".p3-act-list").forEach(function (panel) {
+        panel.classList.toggle("hidden", panel.dataset.panel !== tab.dataset.cat);
+      });
+      updateActNote();
+    });
+  });
+  document.querySelectorAll(".p3-act").forEach(function (btn) {
+    btn.addEventListener("click", function () { playAction(btn.dataset.act, btn); });
+  });
+  var soundBtnEl = document.getElementById("soundBtn");
+  if (soundBtnEl) {
+    soundBtnEl.addEventListener("click", function () {
+      soundOn = !soundOn;
+      try { localStorage.setItem("p3-sound", soundOn ? "on" : "off"); } catch (e) {}
+      refreshSoundBtn();
+    });
+    refreshSoundBtn();
+  }
+
   // ---------- 置顶小窗 ----------
   async function togglePin() {
     if (!("documentPictureInPicture" in window)) return;
@@ -426,6 +674,7 @@ import { MeshoptDecoder } from "../vendor/meshopt/meshopt_decoder.module.js";
   }
   window.addEventListener("pagehide", function (e) {
     ++loadVersion;
+    stopAction();
     if (pendingLoad) { pendingLoad.abort(); pendingLoad = null; }
     stopAudio();
     if (!e.persisted) {
@@ -450,6 +699,7 @@ import { MeshoptDecoder } from "../vendor/meshopt/meshopt_decoder.module.js";
       velYaw *= 0.93; velPitch *= 0.93;
     }
     if (model) model.rotation.set(pitch, yaw, 0);
+    updateAction(now);
     renderer.render(scene, camera);
   }
   resize();
@@ -464,6 +714,23 @@ import { MeshoptDecoder } from "../vendor/meshopt/meshopt_decoder.module.js";
     spin: function (on) { autoSpin = on; toggleBtn("spinBtn", on); },
     scene: scene, camera: camera, renderer: renderer,
     model: function () { return model; },
-    currentId: function () { return currentId; }
+    currentId: function () { return currentId; },
+    act: function (name, withSound) {
+      if (withSound === false) soundOn = false;
+      playAction(name);
+      return !!(active && active.label === (ACTIONS[name] || {}).label);
+    },
+    poseAt: function (name, t) {
+      var def = ACTIONS[name];
+      if (!def || !rig) return false;
+      stopAction();
+      active = def;
+      activeStart = performance.now() - t * 1000;
+      def.apply(t, 1, Math.sin(t * Math.PI * 2 * (def.freq || 1)));
+      return true;
+    },
+    stopAction: function () { stopAction(); },
+    rig: function () { return rig; },
+    bones: function () { return rig ? Object.keys(rig.bones) : []; }
   };
 })();

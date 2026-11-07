@@ -6,6 +6,7 @@
   <title>3D 形象展台 · 奶家村</title>
   <link rel="stylesheet" href="css/style.css?v=village-1">
   <link rel="stylesheet" href="css/pet3d.css?v=loading-1">
+  <link rel="stylesheet" href="css/pet3d-actions.css?v=laugh-1">
   <link rel="stylesheet" href="css/village.css?v=village-1">
 </head>
 <body class="village-theme p3-page">
@@ -37,6 +38,7 @@
         </div>
         <div id="fallback" class="p3-fallback hidden" role="status"><p id="errorMessage"></p><button id="retryBtn" class="p3-btn">重新加载</button></div>
         <div id="bubble" class="p3-bubble hidden"></div>
+        <div id="laughFx" class="p3-fx" aria-hidden="true"></div>
         <div class="p3-hint">按住拖拽旋转 · 滚轮缩放 · 双击复位</div>
         <div class="p3-corner">村民立体档案 <span>360°</span></div>
       </div>
@@ -45,6 +47,30 @@
         <section class="p3-select" aria-labelledby="p3RosterTitle">
           <div class="p3-section-head"><h2 id="p3RosterTitle">哪位村民上台？</h2><span>点选切换</span></div>
           <div id="chips" class="p3-chips" aria-label="选择 3D 角色"></div>
+        </section>
+
+        <section class="p3-actions" aria-labelledby="p3ActTitle">
+          <div class="p3-section-head">
+            <h2 id="p3ActTitle">动作</h2>
+            <button id="soundBtn" class="p3-sound" type="button" aria-pressed="true" title="切换动作音效">🔊 有声音</button>
+          </div>
+          <div class="p3-cats" role="tablist" aria-label="动作分类">
+            <button class="p3-cat on" type="button" role="tab" data-cat="mood" aria-selected="true">😄 情绪</button>
+            <button class="p3-cat" type="button" role="tab" data-cat="interact" aria-selected="false">👋 互动</button>
+          </div>
+          <div class="p3-act-list" data-panel="mood">
+            <button class="p3-act" type="button" data-act="laugh">
+              <span class="p3-act-emoji" aria-hidden="true">🤣</span>
+              <span class="p3-act-text"><b>捧腹大笑</b><em>捂着肚子笑到前仰后合</em></span>
+            </button>
+          </div>
+          <div class="p3-act-list hidden" data-panel="interact">
+            <button class="p3-act" type="button" data-act="jump">
+              <span class="p3-act-emoji" aria-hidden="true">🦘</span>
+              <span class="p3-act-text"><b>蹦一下</b><em>原地蹦起来再落回去</em></span>
+            </button>
+          </div>
+          <p class="p3-act-note" id="actNote">点一下，它会笑到后仰直抖，还带着笑声。</p>
         </section>
 
         <div class="p3-tools" aria-label="模型操作">
@@ -71,7 +97,7 @@
   <script type="importmap">{"imports":{"three":"./vendor/three/three.module.min.js"}}</script>
   <script src="js/data.js?v=lossless-1"></script>
   <script src="js/3d-models.js?v=lossless-1"></script>
-  <script type="module" src="js/pet3d.js?v=loading-1"></script>
+  <script type="module" src="js/pet3d.js?v=laugh-1"></script>
   <script src="js/village.js?v=village-1"></script>
   <script>
     window.addEventListener("load", function () {

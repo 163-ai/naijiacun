@@ -1,0 +1,108 @@
+/* 奶家村 · 3D 展台「动作」区（骨骼实时驱动，与模型自带动画无关） */
+.p3-actions {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.p3-actions .p3-section-head { margin-bottom: 10px; }
+
+.p3-sound {
+  flex-shrink: 0;
+  border: 1px solid var(--line);
+  background: var(--bg, #f8f2e5);
+  color: var(--ink-2);
+  border-radius: 999px;
+  padding: 4px 9px;
+  font: inherit;
+  font-size: 10px;
+  line-height: 1.5;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color .15s, color .15s, background .15s;
+}
+.p3-sound:hover { border-color: var(--green); color: var(--green); }
+.p3-sound[aria-pressed="false"] { color: var(--ink-3); background: var(--green-soft); border-color: transparent; }
+
+.p3-cats { display: flex; gap: 6px; margin-bottom: 9px; }
+.p3-cat {
+  flex: 1;
+  min-height: 30px;
+  border: 1px solid var(--line);
+  background: var(--surface, #fffbf2);
+  color: var(--ink-2);
+  border-radius: 7px;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  transition: border-color .15s, background .15s, color .15s;
+}
+.p3-cat:hover { border-color: var(--green); }
+.p3-cat.on { background: var(--green, #823d2f); border-color: var(--green, #823d2f); color: #fff9e9; }
+
+.p3-act-list { display: flex; flex-direction: column; gap: 7px; }
+.p3-act {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 52px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  background: var(--surface, #fffbf2);
+  border-radius: 9px;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color .15s, background .15s, box-shadow .15s, transform .15s;
+}
+.p3-act:hover:not(:disabled) {
+  border-color: var(--green);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px #3c32220f;
+}
+.p3-act:disabled { opacity: .45; cursor: not-allowed; transform: none; box-shadow: none; border-color: var(--line); }
+.p3-act.playing { border-color: var(--green); background: var(--green-soft); }
+.p3-act-emoji { font-size: 22px; line-height: 1; flex-shrink: 0; }
+.p3-act-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.p3-act-text b { font-size: 13px; font-weight: 650; color: var(--ink); }
+.p3-act-text em { font-style: normal; font-size: 10px; color: var(--ink-3); line-height: 1.4; }
+.p3-act-note { margin: 9px 0 0; font-size: 10px; color: var(--ink-3); line-height: 1.7; }
+
+/* 大笑时从舞台里飘出的笑脸 */
+.p3-fx { position: absolute; inset: 0; z-index: 4; overflow: hidden; pointer-events: none; }
+.p3-fx span {
+  position: absolute;
+  bottom: 26%;
+  transform: translateX(-50%);
+  animation: p3-fx-float 2.6s var(--delay, 0s) ease-out both;
+  filter: drop-shadow(0 2px 4px #6b513018);
+}
+@keyframes p3-fx-float {
+  0% { opacity: 0; transform: translate(-50%, 10px) scale(.7); }
+  18% { opacity: 1; }
+  100% { opacity: 0; transform: translate(calc(-50% + var(--dx, 0px)), -150px) scale(1.05) rotate(8deg); }
+}
+
+.p3-act:focus-visible, .p3-cat:focus-visible, .p3-sound:focus-visible { outline: 3px solid var(--green); outline-offset: 3px; }
+
+@media (max-width: 880px) {
+  /* 侧栏在窄屏拆成网格：选人 → 动作 → 工具 → 舞台 → 状态 → 来源 */
+  .p3-select { grid-row: 1; }
+  .p3-actions { grid-row: 2; margin-top: 12px; padding-top: 12px; }
+  .p3-tools { grid-row: 3; }
+  .p3-stage { grid-row: 4; }
+  .p3-status { grid-row: 5; }
+  .p3-panel { grid-row: 6; }
+  .p3-caveat { grid-row: 7; }
+  .p3-act-list { flex-direction: row; overflow-x: auto; padding-bottom: 2px; scrollbar-width: thin; scrollbar-color: #cbb89a transparent; }
+  .p3-act { flex: 0 0 auto; min-width: 176px; }
+}
+@media (max-width: 560px) {
+  .p3-act { min-width: 164px; min-height: 50px; }
+  .p3-act-text b { font-size: 12px; }
+  .p3-cat { min-height: 28px; font-size: 10px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .p3-fx span { animation-duration: .01s; }
+  .p3-act, .p3-cat, .p3-sound { transition: none !important; }
+}
