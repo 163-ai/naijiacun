@@ -23,6 +23,7 @@
   var token = "";
   var login = "";
   var busy = false;
+  var API = (window.NAIJIACUN_CONFIG && window.NAIJIACUN_CONFIG.apiBase) || "";
 
   function $(id) { return document.getElementById(id); }
 
@@ -187,6 +188,171 @@
     } catch (e) { /* 忽略 */ }
   }
 
+  // ---------- 待审提名 ----------
+  function workerApi(path, options) {
+    options = options || {};
+    return fetch(API.replace(/\/+$/, "") + path, {
+      method: options.method || "GET",
+      headers: Object.assign(
+        { "x-gh-token": token },
+        options.body ? { "content-type": "application/json" } : {}
+      ),
+      body: options.body ? JSON.stringify(options.body) : undefined
+    }).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (data) {
+        if (!res.ok || !data.ok) {
+          throw new Error((data && data.detail) || ("HTTP " + res.status));
+        }
+        return data;
+      });
+    });
+  }
+
+  // 把提名作为新村民条目插进 data.js 的 PEOPLE 数组末尾
+  function insertPerson(src, item) {
+    var start = src.indexOf("const PEOPLE");
+    if (start === -1) return src;
+    var end = src.indexOf("\n];", start);
+    if (end === -1) return src;
+    var before = src.slice(0, end).replace(/\s+$/, "");
+    // 数组最后一项通常没有尾逗号，先补上再插入
+    if (/}$/.test(before) && !/,$/.test(before)) before += ",";
+    var entry =
+      "  {\n" +
+      "    id: " + JSON.stringify(item.id) + ",\n" +
+      "    name: " + JSON.stringify(item.name) + ",\n" +
+      "    emoji: " + JSON.stringify(item.emoji || "🙂") + ",\n" +
+      "    category: " + JSON.stringify(item.category || "其他") + ",\n" +
+      "    title: " + JSON.stringify(item.title || "新来的村民") + ",\n" +
+      "    heat: 100,\n" +
+      (item.quote ? "    quote: " + JSON.stringify(item.quote) + ",\n" : "") +
+      "    desc: " + JSON.stringify(item.desc || "这位村民由观众提名，介绍待补充。") + ",\n" +
+      '    tags: ["观众提名"],\n' +
+      '    origin: "观众提名，经管理员审核收录"\n' +
+      "  },\n";
+    return before + "\n" + entry + src.slice(end + 1);
+  }
+
+  function renderPending() {
+    var section = $("pendingSection");
+    var box = $("pendingList");
+    if (!section || !box) return;
+    if (!API) { section.classList.add("hidden"); return; }
+    section.classList.remove("hidden");
+    box.innerHTML = '<p class="hint tiny">正在加载待审提名…</p>';
+
+    workerApi("/api/nominations").then(function (data) {
+      var items = data.items || [];
+      if (!items.length) {
+        box.innerHTML = '<p class="hint tiny">暂无待审提名。</p>';
+        return;
+      }
+      box.innerHTML = "";
+      items.forEach(function (item) {
+        var el = document.createElement("div");
+        el.className = "admin-row pending-row";
+        el.innerHTML =
+          '<div class="admin-meta">' +
+            "<strong>" + escapeText(item.emoji + " " + item.name) + "</strong>" +
+            "<span>" + escapeText(item.category) +
+              (item.title ? " · " + escapeText(item.title) : "") +
+              (item.submitter ? " · 提名者：" + escapeText(item.submitter) : "") +
+            "</span>" +
+            (item.desc ? '<span class="pending-desc">' + escapeText(item.desc) + "</span>" : "") +
+          "</div>" +
+          '<div class="pending-actions">' +
+            '<button class="btn ghost" type="button" data-act="approve">通过</button>' +
+            '<button class="btn ghost danger" type="button" data-act="reject">拒绝</button>' +
+          "</div>";
+        el.querySelector('[data-act="approve"]').addEventListener("click", function () {
+          approveNomination(item, el);
+        });
+        el.querySelector('[data-act="reject"]').addEventListener("click", function () {
+          rejectNomination(item, el);
+        });
+        box.appendChild(el);
+      });
+    }).catch(function (err) {
+      box.innerHTML = '<p class="hint tiny">加载失败：' + escapeText(err.message) + "</p>";
+    });
+  }
+
+  function pendingEmptyHint() {
+    var box = $("pendingList");
+    if (box && !box.querySelector(".pending-row")) {
+      box.innerHTML = '<p class="hint tiny">暂无待审提名。</p>';
+    }
+  }
+
+  function rejectNomination(item, rowEl) {
+    if (busy) return;
+    if (!confirm("拒绝「" + item.name + "」的提名？拒绝后不会展示。")) return;
+    busy = true;
+    setStatus("正在拒绝 …");
+    workerApi("/api/nominations/decide", {
+      method: "POST",
+      body: { id: item.id, action: "reject" }
+    }).then(function () {
+      rowEl.remove();
+      pendingEmptyHint();
+      setStatus("已拒绝「" + item.name + "」。", "ok");
+      toast("已拒绝「" + item.name + "」");
+    }).catch(function (err) {
+      setStatus("拒绝失败：" + err.message, "err");
+    }).then(function () { busy = false; });
+  }
+
+  function approveNomination(item, rowEl) {
+    if (busy) return;
+    var dupName = builtinPeople().some(function (p) { return p.name === item.name; }) ||
+      localExtra().some(function (p) { return p.name === item.name; });
+    if (dupName) {
+      setStatus("村里已经有同名的「" + item.name + "」，请改名后再通过，或拒绝这条提名。", "err");
+      return;
+    }
+    if (!confirm("通过「" + item.name + "」的提名？\n\n会写入仓库 js/data.js 并提交 main，全站 1~2 分钟后可见。")) return;
+
+    busy = true;
+    setStatus("正在把「" + item.name + "」写入 " + DATA_PATH + " …");
+    var fileSha = null;
+    var newText = null;
+
+    api("/repos/" + REPO + "/contents/" + DATA_PATH + "?ref=" + BRANCH)
+      .then(function (file) {
+        fileSha = file.sha;
+        var text = decodeBase64(file.content);
+        newText = insertPerson(text, item);
+        if (newText === text) throw new Error("写入失败：data.js 内容没有变化。");
+        setStatus("正在提交到 " + BRANCH + " …");
+        return api("/repos/" + REPO + "/contents/" + DATA_PATH, {
+          method: "PUT",
+          body: {
+            message: "feat(data): 审核通过观众提名「" + item.name + "」(" + item.id + ")",
+            content: encodeBase64(newText),
+            sha: fileSha,
+            branch: BRANCH
+          }
+        });
+      })
+      .then(function (res) {
+        // 仓库写入成功后，把这条提名从 Worker 队列里移出
+        return workerApi("/api/nominations/decide", {
+          method: "POST",
+          body: { id: item.id, action: "approve" }
+        }).then(function () { return res; });
+      })
+      .then(function (res) {
+        rowEl.remove();
+        pendingEmptyHint();
+        setStatus("已通过并提交。（" + ((res && res.commit && res.commit.sha) || "").slice(0, 7) + "）线上约 1 分钟后全站可见", "ok");
+        toast("「" + item.name + "」已入住奶家村");
+      })
+      .catch(function (err) {
+        setStatus("通过失败：" + err.message, "err");
+      })
+      .then(function () { busy = false; });
+  }
+
   // ---------- 列表渲染 ----------
   function renderList() {
     var box = $("adminList");
@@ -297,8 +463,9 @@
   function showPanel() {
     $("adminLocked").classList.add("hidden");
     $("adminPanel").classList.remove("hidden");
-    $("adminWho").textContent = "已以 " + login + " 身份进入：只列出删除操作，不会改动其他内容。";
+    $("adminWho").textContent = "已以 " + login + " 身份进入：可审批观众提名、删除成员。";
     renderList();
+    renderPending();
   }
 
   function open() {
@@ -334,6 +501,11 @@
         e.preventDefault();
         open();
       });
+    }
+
+    var refresh = $("pendingRefresh");
+    if (refresh) {
+      refresh.addEventListener("click", renderPending);
     }
 
     $("adminForm").addEventListener("submit", function (e) {
