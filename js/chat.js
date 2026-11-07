@@ -226,6 +226,14 @@
         if (opts.onDelta) opts.onDelta(t);
         return t;
       });
+    }).catch(function (err) {
+      // 浏览器直连最常见的问题是服务商没开跨域 → fetch 直接抛 TypeError
+      var msg = String((err && err.message) || "");
+      if (/Failed to fetch|NetworkError|Load failed|fetch failed/i.test(msg) || (err && err.name === "TypeError")) {
+        throw new Error("连不上模型服务：可能是该服务商不允许浏览器直连（跨域被拦）。" +
+          "解决办法：在设置里把「接入方式」改成「走我的代理」，并用你的 Worker 地址；或换一个支持跨域的模型服务。");
+      }
+      throw err;
     });
   }
 
