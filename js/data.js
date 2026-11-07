@@ -168,8 +168,8 @@ const CHARACTER_VOICES = {
     rate: 0.9, pitch: 1.4
   },
   naiwa: {
-    voiceId: "voc_96zgjajwm4yt",
-    style: "夸张的尖细男声，情绪外放，笑声很多，语速快，带一点破音的滑稽感",
+    voiceId: "voc_764cyq6dcdpp",
+    style: "清亮稚嫩的童声嗓音，语速平缓、咬字清楚、句尾偏软；克隆自《一百分的家》前 15 秒的叙述声",
     gender: "male", age: "young", tone: ["playful", "energetic"], accent: null,
     rate: 1.18, pitch: 1.3
   },
