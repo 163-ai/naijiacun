@@ -1,7 +1,9 @@
 // 奶家村 · 网络热门「虚拟形象」图鉴数据
 //
-// 声明：本站是非官方、非商业的文字介绍型同人整理，不使用任何官方图片、立绘、视频、音频素材。
-// 角色名称与形象的著作权归各自权利人所有；如权利人认为不妥，可联系删除。
+// 声明：本站是非官方、非商业的文字介绍型同人整理。
+// 形象图（assets/characters/）与原声音轨（assets/audio/）由使用者自行提供，
+// 版权归各自权利人所有，仅供本地个人学习/比赛演示，请勿商用或再分发；
+// 如权利人认为不妥，可联系删除。
 //
 // 字段说明：
 //   id       唯一标识（同时用作投票、语音的 key）
@@ -22,7 +24,8 @@ const PEOPLE = [
     id: "nailong",
     name: "奶龙",
     emoji: "🐲",
-    image: "",
+    image: "assets/characters/nailong.png",
+    clip: "assets/audio/nailong.mp3",
     category: "官方IP",
     title: "黄色大肚子的呆萌小恐龙",
     heat: 9860,
@@ -35,7 +38,8 @@ const PEOPLE = [
     id: "naiwa",
     name: "奶蛙",
     emoji: "🐸",
-    image: "",
+    image: "assets/characters/naiwa.png",
+    clip: "assets/audio/naiwa.mp3",
     category: "抽象迷因",
     title: "笑到停不下来的黄色抽象蛙",
     heat: 9720,
@@ -48,7 +52,8 @@ const PEOPLE = [
     id: "baobaolong",
     name: "暴暴龙",
     emoji: "🦖",
-    image: "",
+    image: "assets/characters/baobaolong.png",
+    clip: "assets/audio/baobaolong.mp3",
     category: "官方IP",
     title: "奶龙的对手，脾气不太好",
     heat: 8320,
@@ -61,7 +66,8 @@ const PEOPLE = [
     id: "xiaoqi",
     name: "小七",
     emoji: "🧒",
-    image: "",
+    image: "assets/characters/xiaoqi.png",
+    clip: "assets/audio/xiaoqi.mp3",
     category: "官方IP",
     title: "带着神奇发明的搭档",
     heat: 6180,
@@ -74,7 +80,8 @@ const PEOPLE = [
     id: "niulai",
     name: "牛来",
     emoji: "🐮",
-    image: "",
+    image: "assets/characters/niulai.png",
+    clip: "assets/audio/niulai.mp3",
     category: "抽象迷因",
     title: "黄色抽象宇宙的另一位成员",
     heat: 5340,
@@ -87,7 +94,8 @@ const PEOPLE = [
     id: "capybara",
     name: "卡皮巴拉",
     emoji: "🦫",
-    image: "",
+    image: "assets/characters/capybara.png",
+    clip: "assets/audio/capybara.mp3",
     category: "动物顶流",
     title: "情绪稳定到没有天敌",
     heat: 9150,

@@ -313,6 +313,35 @@ a.btn {
   border-color: var(--green);
 }
 
+/* 原声播放按钮：与朗读按钮同款圆形样式 */
+.clip-btn {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  border-radius: 50%;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--ink-2);
+}
+
+.clip-btn:hover { border-color: var(--ink-3); }
+
+.clip-btn.playing {
+  background: var(--green-soft);
+  border-color: var(--green);
+}
+
+.btn.clip-detail { margin-left: 0; }
+
+.btn.clip-detail.playing {
+  background: var(--green-soft);
+  border-color: var(--green);
+  color: var(--green);
+}
+
 .detail-cta {
   display: flex;
   align-items: center;

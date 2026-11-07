@@ -91,11 +91,60 @@
 
   function toggleSpeak(p) {
     if (!hasTTS() || !p) return;
+    stopClip();
     if (window.NaijiacunTTS.getCurrent() === p.id) {
       window.NaijiacunTTS.stop();
     } else {
       window.NaijiacunTTS.speak(speechTextOf(p), p.id);
     }
+  }
+
+  // ---------- 原声播放（角色自带音轨） ----------
+  var clipAudio = null;
+  var clipCurrentId = null;
+
+  function stopClip() {
+    if (clipAudio) {
+      clipAudio.pause();
+      clipAudio.currentTime = 0;
+    }
+    clipCurrentId = null;
+    refreshClipButtons();
+  }
+
+  function refreshClipButtons() {
+    document.querySelectorAll(".clip-btn").forEach(function (btn) {
+      var playing = btn.dataset.id === clipCurrentId;
+      btn.classList.toggle("playing", playing);
+      btn.textContent = playing ? "⏹" : "🎵";
+    });
+    document.querySelectorAll(".clip-detail").forEach(function (btn) {
+      var playing = clipCurrentId !== null;
+      btn.classList.toggle("playing", playing);
+      btn.textContent = playing ? "⏹ 停止原声" : "🎵 原声";
+    });
+  }
+
+  function toggleClip(p) {
+    if (!p || !p.clip) return;
+    if (hasTTS()) window.NaijiacunTTS.stop();
+    if (clipCurrentId === p.id) {
+      stopClip();
+      return;
+    }
+    if (!clipAudio) clipAudio = new Audio();
+    clipAudio.src = p.clip;
+    clipAudio.onended = function () { stopClip(); };
+    clipAudio.onerror = function () {
+      stopClip();
+      showToast("这段原声加载失败");
+    };
+    clipCurrentId = p.id;
+    clipAudio.play().catch(function () {
+      stopClip();
+      showToast("浏览器阻止了播放，请再点一次");
+    });
+    refreshClipButtons();
   }
 
   // ---------- 统计 ----------
@@ -179,6 +228,8 @@
           '</div>' +
           '<button class="speak-btn" data-id="' + escapeHTML(p.id) + '"' +
             ' aria-label="朗读" title="听 TA 说">🔊</button>' +
+          (p.clip ? '<button class="clip-btn" data-id="' + escapeHTML(p.id) + '"' +
+            ' aria-label="原声" title="播放原声片段">🎵</button>' : "") +
         '</div>' +
         '<p class="card-title">' + escapeHTML(p.title || "") + '</p>' +
         (p.quote ? '<p class="card-quote">“' + escapeHTML(p.quote) + '”</p>' : "") +
@@ -198,6 +249,13 @@
         e.stopPropagation();
         toggleSpeak(p);
       });
+      var clipBtn = card.querySelector(".clip-btn");
+      if (clipBtn) {
+        clipBtn.addEventListener("click", function (e) {
+          e.stopPropagation();
+          toggleClip(p);
+        });
+      }
       grid.appendChild(card);
     });
   }
@@ -249,6 +307,7 @@
           formatHeat((people.heat || 0) + (votes[id] || 0)) + '</span>' +
         '<span class="detail-cta">' +
           '<button class="btn ghost speak-detail">🔊 朗读</button>' +
+          (people.clip ? '<button class="btn ghost clip-detail">🎵 原声</button>' : "") +
           '<button class="vote' + (isVoted ? " voted" : "") + '">' +
             (isVoted ? "已顶 👍" : "顶一票 👍") +
           '</button>' +
@@ -261,11 +320,18 @@
     document.querySelector("#modalBody .speak-detail").addEventListener("click", function () {
       toggleSpeak(people);
     });
+    var clipDetailBtn = document.querySelector("#modalBody .clip-detail");
+    if (clipDetailBtn) {
+      clipDetailBtn.addEventListener("click", function () {
+        toggleClip(people);
+      });
+    }
     document.getElementById("modal").classList.remove("hidden");
   }
 
   function closeModals() {
     if (hasTTS()) window.NaijiacunTTS.stop();
+    stopClip();
     document.getElementById("modal").classList.add("hidden");
     document.getElementById("addModal").classList.add("hidden");
     document.getElementById("voiceModal").classList.add("hidden");
