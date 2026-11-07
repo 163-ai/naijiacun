@@ -155,14 +155,32 @@ npx serve .
 ├── css/style.css             # 样式
 ├── js/
 │   ├── data.js               # 角色数据 + 音色绑定（想增删角色直接改这里）
+│   ├── avatars.js            # 内置原创 SVG 形象（没有图片时的默认头像）
 │   ├── tts.js                # 语音适配层（Key / 预生成 / 浏览器 三档降级）
 │   └── app.js                # 交互逻辑
+├── assets/characters/        # 放你自己的角色形象图（见目录内 README）
 ├── scripts/
 │   ├── pregen-audio.mjs      # 批量预生成 mp3
+│   ├── design-voices.mjs     # 按文字描述生成音色并回写
 │   └── clone-voices.mjs      # 克隆音色并回写 voiceId
 ├── server/tts-worker.js      # Cloudflare Worker 透传代理（不存任何密钥）
 └── voices/                   # 参考音频（默认不进版本库，见 voices/README.md）
 ```
+
+## 换成自己的形象图
+
+默认头像是 `js/avatars.js` 里的内置 SVG。想换成图片，把文件放进 `assets/characters/`，然后给 `js/data.js` 里对应角色填上 `image`：
+
+```js
+{
+  id: "nailong",
+  name: "奶龙",
+  image: "assets/characters/nailong.png",   // 留空则用内置 SVG
+  ...
+}
+```
+
+图片建议正方形、400px 以上、单张 300KB 以内（页面用 `object-fit: cover` 圆形裁切）。放什么图由你自己决定——详细说明见 `assets/characters/README.md`。
 
 ## 数据说明
 

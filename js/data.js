@@ -6,7 +6,9 @@
 // 字段说明：
 //   id       唯一标识（同时用作投票、语音的 key）
 //   name     名称
-//   emoji    用 emoji 代替形象图，避免使用官方美术素材
+//   image    形象图路径，例如 "assets/characters/nailong.png"。留空则用内置 SVG 形象。
+//            图片放哪个目录、用哪张，由你自己决定；本站不内置任何官方素材。
+//   emoji    最后的兜底，仅在既没有 image 也没有内置形象时使用
 //   category 分类
 //   title    一句话称号
 //   heat     基础热度
@@ -20,6 +22,7 @@ const PEOPLE = [
     id: "nailong",
     name: "奶龙",
     emoji: "🐲",
+    image: "",
     category: "官方IP",
     title: "黄色大肚子的呆萌小恐龙",
     heat: 9860,
@@ -32,6 +35,7 @@ const PEOPLE = [
     id: "naiwa",
     name: "奶蛙",
     emoji: "🐸",
+    image: "",
     category: "抽象迷因",
     title: "笑到停不下来的黄色抽象蛙",
     heat: 9720,
@@ -44,6 +48,7 @@ const PEOPLE = [
     id: "baobaolong",
     name: "暴暴龙",
     emoji: "🦖",
+    image: "",
     category: "官方IP",
     title: "奶龙的对手，脾气不太好",
     heat: 8320,
@@ -56,6 +61,7 @@ const PEOPLE = [
     id: "xiaoqi",
     name: "小七",
     emoji: "🧒",
+    image: "",
     category: "官方IP",
     title: "带着神奇发明的搭档",
     heat: 6180,
@@ -68,6 +74,7 @@ const PEOPLE = [
     id: "niulai",
     name: "牛来",
     emoji: "🐮",
+    image: "",
     category: "抽象迷因",
     title: "黄色抽象宇宙的另一位成员",
     heat: 5340,
@@ -80,6 +87,7 @@ const PEOPLE = [
     id: "capybara",
     name: "卡皮巴拉",
     emoji: "🦫",
+    image: "",
     category: "动物顶流",
     title: "情绪稳定到没有天敌",
     heat: 9150,

@@ -51,8 +51,12 @@
       .replace(/'/g, "&#39;");
   }
 
-  // 头像：优先用原创 SVG 形象，其次首字圆牌，最后才回退 emoji
+  // 头像：优先用数据里指定的图片，其次原创 SVG 形象，然后首字圆牌，最后回退 emoji
   function avatarHTML(p) {
+    if (p && p.image) {
+      return '<img class="avatar-img" src="' + escapeHTML(p.image) + '" alt="' +
+        escapeHTML(p.name || "") + '" loading="lazy">';
+    }
     var a = window.NaijiacunAvatars;
     if (a && p) {
       var s = a.svg(p.id);
