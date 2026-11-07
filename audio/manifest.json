@@ -10,10 +10,10 @@
   "naiwa": {
     "file": "audio/naiwa.mp3",
     "text": "点一下就狂笑，笑起来停不下来。",
-    "voice_id": "voc_dxwq5emsep7d",
+    "voice_id": "voc_kjt4wqrndgf6",
     "model": "breeze-tts-2",
-    "bytes": 44928,
-    "generatedAt": "2026-11-07T10:16:13.753Z"
+    "bytes": 35136,
+    "generatedAt": "2026-11-07T10:23:12.590Z"
   },
   "baobaolong": {
     "file": "audio/baobaolong.mp3",

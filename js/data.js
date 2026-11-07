@@ -168,8 +168,8 @@ const CHARACTER_VOICES = {
     rate: 0.9, pitch: 1.4
   },
   naiwa: {
-    voiceId: "voc_dxwq5emsep7d",
-    style: "清亮稚嫩的童声嗓音，单独说话时语气安静、略带委屈，咬字清楚、句尾软；克隆自《一百分的家》11:00 处的独白",
+    voiceId: "voc_kjt4wqrndgf6",
+    style: "清亮稚嫩的童声嗓音，咬字软糯、句尾轻轻收住；克隆自《一百分的家》开头 15 秒的说话声",
     gender: "male", age: "young", tone: ["playful", "energetic"], accent: null,
     rate: 1.18, pitch: 1.3
   },
