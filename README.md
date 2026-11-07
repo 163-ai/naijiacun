@@ -83,33 +83,48 @@ BREEZE_API_KEY=brz_xxx BREEZE_VOICE_ID=voc_xxx node scripts/pregen-audio.mjs
 
 文本不一致时不会误播（例如预生成的是金句、你想读整段介绍），会自动降级到下一档。
 
-### 每个角色一个专属音色（克隆 / 声音设计）
+### 每个角色一个专属音色
 
 `js/data.js` 末尾的 `CHARACTER_VOICES` 保存"角色 → 音色"的绑定：
 
 ```js
-const CHARACTER_VOICES = {
-  nailong: { voiceId: "", style: "软萌童声，圆润，语速偏慢，句尾带笑" },
-  ...
-};
+nailong: {
+  voiceId: "",                       // 绑定后由脚本自动写入
+  style: "软萌的小童声，圆润鼻音，语速偏慢，句尾带笑，像在撒娇",
+  gender: "female", age: "child", tone: ["gentle", "playful"], accent: null
+}
 ```
 
-- `voiceId` 有值 → 点 🔊 就用这个音色（优先于访客选的默认音色）
-- `voiceId` 为空 → 用访客在设置里选的默认音色；连默认都没有则退回浏览器语音
-- `style` 是听感描述，用于在授权音色库里挑接近的，或做「声音设计」生成全新音色
+- `voiceId` 有值 → 点 🔊 就用这个音色（优先于默认音色）
+- 为空 → 用默认音色；连默认都没有则退回浏览器语音
 
-**克隆流程**（把自己的参考音频变成每个角色的固定音色）：
+**路线 A：声音设计（推荐，只要一个 Key，不用准备音频）**
 
 ```bash
-# 1. 参考音频放进 voices/，文件名 = 角色 id，例如 voices/nailong.mp3（10~30 秒干净人声）
-# 2. 运行
-TTS_ENDPOINT=https://你的worker地址 BREEZE_API_KEY=brz_xxx node scripts/clone-voices.mjs
-# --only=nailong 只处理一位；--dry-run 只看计划不调用接口
+BREEZE_API_KEY=brz_xxx node scripts/design-voices.mjs
+# --only=nailong 只做一位 / --preview=2 取第二个候选 / --force 已有音色也重建
 ```
 
-脚本调用代理的 `/api/clone` → Breeze 的 `POST /v1/voices/add`，拿到 `voice_id` 后**自动写回 `js/data.js`**，重跑会跳过已成功的。
+按每个角色的 `style` 描述生成全新音色 → 保存为私人音色 → 自动把 `voice_id` 写回 `js/data.js`。
+试听音频会存到 `voices/preview/{id}.mp3`，先听再决定要不要换一版。因为不采样任何真人，这条路没有声音权益问题。
 
-`voices/` 目录默认被 `.gitignore` 排除，参考音频不会推到公开仓库。
+**路线 B：克隆自己的参考音频**
+
+```bash
+# 参考音频放进 voices/，文件名 = 角色 id，例如 voices/nailong.mp3（10~30 秒干净人声）
+TTS_ENDPOINT=https://你的worker地址 BREEZE_API_KEY=brz_xxx node scripts/clone-voices.mjs
+```
+
+脚本调用代理的 `/api/clone` → Breeze 的 `POST /v1/voices/add`，拿到 `voice_id` 后同样自动写回。
+`voices/` 已加入 `.gitignore`，参考音频不会推到公开仓库。
+
+**想让网站彻底不依赖 Key：把音色合成为本地 mp3**
+
+```bash
+BREEZE_API_KEY=brz_xxx node scripts/pregen-audio.mjs
+```
+
+会按每个角色自己的音色逐句合成到 `audio/`，之后打开网页点 🔊 直接播本地文件——不需要 Key、不需要代理、零额度消耗。
 
 ### 安全与合规
 

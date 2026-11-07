@@ -92,18 +92,44 @@ const PEOPLE = [
 
 // 每个角色的音色绑定
 //
-//   voiceId  绑定到该角色的 Breeze 音色 ID。留空 = 用访客在「语音设置」里选的默认音色。
-//            跑 `node scripts/clone-voices.mjs` 会自动把克隆得到的 voice_id 写回这里。
-//   style    音色描述。没有 voiceId 时用于「声音设计」生成新音色，
-//            也可以照着这个描述在授权音色库里挑一个接近的。
+//   voiceId  绑定到该角色的 Breeze 音色 ID。留空 = 用默认音色（或浏览器语音）。
+//            `scripts/design-voices.mjs` 和 `scripts/clone-voices.mjs` 会自动把拿到的
+//            voice_id 写回这里，不用手抄。
+//   style    音色描述（中文即可），直接作为「声音设计」的提示词。
+//   gender / age / tone / accent  音色的结构化标签，保存音色时一并写入，方便在控制台筛选。
 //
 // 说明：这里描述的是"听感"（音高、语速、气质），不指向任何具体的人。
 // 若要克隆真实配音演员的声音，需先取得本人书面授权。
 const CHARACTER_VOICES = {
-  nailong:    { voiceId: "", style: "软萌童声，圆润，语速偏慢，句尾带笑" },
-  naiwa:      { voiceId: "", style: "夸张的尖细男声，爱笑，语速快" },
-  baobaolong: { voiceId: "", style: "低沉粗声，火爆脾气，语速快，句尾下压" },
-  xiaoqi:     { voiceId: "", style: "清亮少年音，机灵，语速中等" },
-  niulai:     { voiceId: "", style: "憨厚中年男声，北方口音，语速慢，带笑意" },
-  capybara:   { voiceId: "", style: "慵懒低音，语速极慢，带气声" }
+  nailong: {
+    voiceId: "",
+    style: "软萌的小童声，圆润鼻音，语速偏慢，句尾带笑，像在撒娇",
+    gender: "female", age: "child", tone: ["gentle", "playful"], accent: null
+  },
+  naiwa: {
+    voiceId: "",
+    style: "夸张的尖细男声，情绪外放，笑声很多，语速快，带一点破音的滑稽感",
+    gender: "male", age: "young", tone: ["playful", "energetic"], accent: null
+  },
+  baobaolong: {
+    voiceId: "",
+    style: "低沉粗哑的男声，火爆脾气，语速快，句尾下压，像在吼人",
+    gender: "male", age: "young", tone: ["energetic", "authoritative"], accent: null
+  },
+  xiaoqi: {
+    voiceId: "",
+    style: "清亮的少年音，机灵跳脱，语速中等，偶尔上扬",
+    gender: "male", age: "young", tone: ["bright", "friendly"], accent: null
+  },
+  niulai: {
+    voiceId: "",
+    style: "憨厚的中年男声，北方口音，语速慢，带笑意，像邻居大叔聊天",
+    gender: "male", age: "middle_aged", tone: ["warm", "sincere"], accent: "mandarin_henan"
+  },
+  capybara: {
+    voiceId: "",
+    style: "慵懒的低音，语速极慢，气声多，听起来永远不着急",
+    gender: "male", age: "middle_aged", tone: ["calm", "measured"], accent: null
+  }
 };
+

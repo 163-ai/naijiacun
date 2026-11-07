@@ -36,28 +36,11 @@ function loadData() {
   return new Function(code + "\nreturn { PEOPLE, CHARACTER_VOICES };")();
 }
 
-function readStyleBlock() {
-  const code = fs.readFileSync(DATA_FILE, "utf8");
-  const hit = code.match(/const CHARACTER_VOICES = \{[\s\S]*?\n\};/);
-  return { code, block: hit ? hit[0] : "" };
-}
-
-// 把某个角色的 voiceId 写回 data.js（只改那一行，保持格式不变）
 function writeVoiceId(id, voiceId) {
-  const { code, block } = readStyleBlock();
-  if (!block) throw new Error("在 js/data.js 里找不到 CHARACTER_VOICES 配置块");
-
-  const lines = block.split("\n");
-  let changed = false;
-  const next = lines.map((line) => {
-    if (!new RegExp(`^\\s{2}${id}:`).test(line)) return line;
-    changed = true;
-    return line.replace(/voiceId:\s*"[^"]*"/, `voiceId: "${voiceId}"`);
-  });
-
-  if (!changed) throw new Error(`CHARACTER_VOICES 里没有 ${id} 这一项`);
-
-  fs.writeFileSync(DATA_FILE, code.replace(block, next.join("\n")), "utf8");
+  const code = fs.readFileSync(DATA_FILE, "utf8");
+  const re = new RegExp(`(\\n\\s{2}${id}:\\s*\\{[\\s\\S]*?voiceId:\\s*")[^"]*(")`);
+  if (!re.test(code)) throw new Error(`js/data.js 里找不到 ${id} 的 voiceId 字段`);
+  fs.writeFileSync(DATA_FILE, code.replace(re, `$1${voiceId}$2`), "utf8");
 }
 
 function findAudio(id) {

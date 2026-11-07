@@ -258,9 +258,12 @@
   }
 
   // ---------- 预生成音频（站长用 scripts/pregen-audio.mjs 生成） ----------
+  var manifestOK = null;   // null=未加载完，true=读到清单，false=没有清单（例如 file:// 直接打开）
+
   function loadLocalManifest() {
     return fetch("audio/manifest.json", { cache: "no-cache" })
       .then(function (res) {
+        manifestOK = res.ok;
         return res.ok ? res.json() : {};
       })
       .then(function (data) {
@@ -268,6 +271,7 @@
         return localMap;
       })
       .catch(function () {
+        manifestOK = false;
         localMap = {};
         return localMap;
       });
@@ -275,7 +279,12 @@
 
   function playLocal(text, id) {
     var entry = localMap[id];
-    if (!entry || !entry.file) return false;
+
+    // 没有清单（比如直接用 file:// 打开，fetch 被拦）：按约定路径盲试 audio/{id}.mp3
+    if (!entry || !entry.file) {
+      if (manifestOK === false && id) return tryDirectFile(text, id);
+      return false;
+    }
 
     // 只有请求的文本与预生成时一致，才用本地文件，避免读错内容
     if (entry.text && String(entry.text).trim() !== String(text).trim()) return false;
@@ -290,6 +299,30 @@
       currentId = null;
       emit();
     });
+    return true;
+  }
+
+  function tryDirectFile(text, id) {
+    var probe = new Audio("audio/" + id + ".mp3");
+    currentId = id;
+    emit();
+
+    probe.onerror = function () {
+      // 文件不存在，让调用方继续降级到浏览器语音
+      currentId = null;
+      emit();
+      speakBrowser(text, id);
+    };
+    probe.onended = function () { currentId = null; emit(); };
+
+    var p = probe.play();
+    if (p && p.catch) {
+      p.catch(function () {
+        currentId = null;
+        emit();
+      });
+    }
+    audioEl = probe;
     return true;
   }
 

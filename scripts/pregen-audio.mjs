@@ -28,22 +28,26 @@ const ONLY = (args.find((a) => a.startsWith("--only=")) || "").split("=")[1] || 
 const LIMIT = Number((args.find((a) => a.startsWith("--limit=")) || "").split("=")[1] || 0);
 
 const KEY = process.env.BREEZE_API_KEY || "";
-const VOICE_ID = process.env.BREEZE_VOICE_ID || "";
+const FALLBACK_VOICE = process.env.BREEZE_VOICE_ID || "";
 
 if (!KEY) {
   console.error("缺少环境变量 BREEZE_API_KEY");
   process.exit(1);
 }
-if (!VOICE_ID) {
-  console.error("缺少环境变量 BREEZE_VOICE_ID（到 Breeze 控制台或 GET /v1/voices 获取）");
-  process.exit(1);
-}
 
 function loadPeople() {
   const code = fs.readFileSync(DATA_FILE, "utf8");
-  // data.js 是给浏览器用的普通脚本，包一层函数取出 PEOPLE 数组
-  return new Function(code + "\nreturn PEOPLE;")();
+  // data.js 是给浏览器用的普通脚本，包一层函数取出 PEOPLE 与音色绑定
+  return new Function(code + "\nreturn { PEOPLE, CHARACTER_VOICES };")();
 }
+
+// 每个角色优先用自己的音色；没绑定就退回环境变量里的默认音色
+function voiceOf(id, voices) {
+  const cfg = voices && voices[id];
+  if (cfg && cfg.voiceId) return cfg.voiceId;
+  return FALLBACK_VOICE;
+}
+
 
 function speechTextOf(p) {
   if (p.quote) return p.quote;
@@ -93,10 +97,11 @@ async function synthesize(text, voiceId) {
 
 async function main() {
   fs.mkdirSync(AUDIO_DIR, { recursive: true });
-  const people = loadPeople().filter((p) => !ONLY || p.id === ONLY);
+  const { PEOPLE, CHARACTER_VOICES } = loadPeople();
+  const people = PEOPLE.filter((p) => !ONLY || p.id === ONLY);
   const manifest = readManifest();
 
-  console.log("音色：" + VOICE_ID + " ｜ 待处理：" + people.length + " 位");
+  console.log("待处理：" + people.length + " 位（音色按角色分别取用）");
 
   let done = 0;
   let skipped = 0;
@@ -113,23 +118,30 @@ async function main() {
       continue;
     }
 
+    const voiceId = voiceOf(p.id, CHARACTER_VOICES);
+    if (!voiceId) {
+      console.log("跳过 " + p.name + "（没有绑定音色，可先跑 scripts/design-voices.mjs）");
+      skipped++;
+      continue;
+    }
+
     const fileName = p.id + ".mp3";
     const filePath = path.join(AUDIO_DIR, fileName);
     const old = manifest[p.id];
 
-    if (!FORCE && old && old.text === text && fs.existsSync(filePath)) {
-      console.log("跳过 " + p.name + "（已存在且文本未变）");
+    if (!FORCE && old && old.text === text && old.voice_id === voiceId && fs.existsSync(filePath)) {
+      console.log("跳过 " + p.name + "（已存在且文本、音色都未变）");
       skipped++;
       continue;
     }
 
     try {
-      const buf = await synthesize(text, VOICE_ID);
+      const buf = await synthesize(text, voiceId);
       fs.writeFileSync(filePath, buf);
       manifest[p.id] = {
         file: "audio/" + fileName,
         text,
-        voice_id: VOICE_ID,
+        voice_id: voiceId,
         model: MODEL,
         bytes: buf.length,
         generatedAt: new Date().toISOString()
