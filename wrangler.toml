@@ -9,3 +9,10 @@ compatibility_date = "2026-11-01"
 [vars]
 LLM_BASE = "https://open.bigmodel.cn/api/paas/v4"
 LLM_MODEL = "glm-4-flash"
+
+# 观众提名队列的 KV 存储。
+# 首次部署前执行：npx wrangler kv namespace create NOMINATIONS
+# 然后把命令输出的 id 填到下面（本地 wrangler dev 不需要真实 id，模拟即可）。
+[[kv_namespaces]]
+binding = "NOMINATIONS"
+id = "REPLACE_WITH_REAL_KV_ID"

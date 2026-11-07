@@ -19,6 +19,159 @@ const ORIGIN_PATTERNS = [
   /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/
 ];
 
+// ---------- 观众提名队列（KV） ----------
+// 流程：访客 POST /api/nominate → 存入 KV 待审列表；
+//       管理面板 GET /api/nominations（需仓库写权限的 GitHub Token）看队列；
+//       通过 → 由前端直接用 GitHub Contents API 把村民写进 js/data.js（与删除同一路径），
+//       随后 POST /api/nominations/decide 把该条移出队列。
+// KV 绑定名：NOMINATIONS（见 wrangler.toml）。
+const NOM_REPO = "163-ai/naijiacun";
+const NOM_PENDING_KEY = "noms:pending";
+const NOM_APPROVED_KEY = "noms:approved";
+const NOM_MAX_PENDING = 50;
+const NOM_RATE_MS = 60 * 60 * 1000; // 同一 IP 一小时一条
+
+function nomSanitize(body) {
+  if (!body || typeof body !== "object") return null;
+  const name = String(body.name || "").trim().slice(0, 20);
+  if (!name) return null;
+  const clean = (v, n) => String(v || "").trim().slice(0, n);
+  return {
+    id: "nom-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    name: name,
+    emoji: clean(body.emoji, 8) || "🙂",
+    category: clean(body.category, 12) || "其他",
+    title: clean(body.title, 30),
+    quote: clean(body.quote, 80),
+    desc: clean(body.desc, 200) || "这位村民由观众提名，介绍待补充。",
+    submitter: clean(body.submitter, 24),
+    status: "pending",
+    created: new Date().toISOString()
+  };
+}
+
+async function nomReadList(env, key) {
+  const raw = await env.NOMINATIONS.get(key);
+  try { const list = JSON.parse(raw || "[]"); return Array.isArray(list) ? list : []; }
+  catch (e) { return []; }
+}
+
+// 校验 GitHub Token 是否对本仓库有写权限（协作者校验交给 GitHub，Worker 不存任何名单）
+async function nomCheckPush(token, env) {
+  const base = String((env && env.GH_BASE) || "https://api.github.com").replace(/\/+$/, "");
+  try {
+    const res = await fetch(base + "/repos/" + NOM_REPO, {
+      headers: {
+        "Authorization": "Bearer " + token,
+        "Accept": "application/vnd.github+json",
+        "User-Agent": "naijiacun-worker"
+      }
+    });
+    if (!res.ok) return false;
+    const data = await res.json();
+    return !!(data && data.permissions && data.permissions.push);
+  } catch (e) { return false; }
+}
+
+async function nomGuard(request, env, origin) {
+  const token = request.headers.get("x-gh-token") || "";
+  if (!token) {
+    return json({ ok: false, code: "NO_TOKEN", detail: "缺少 x-gh-token 请求头" }, 401, origin);
+  }
+  const ok = await nomCheckPush(token, env);
+  if (!ok) {
+    return json({ ok: false, code: "FORBIDDEN", detail: "该 Token 没有 " + NOM_REPO + " 的写权限" }, 403, origin);
+  }
+  return null;
+}
+
+async function handleNominate(request, env, origin) {
+  if (!env || !env.NOMINATIONS) {
+    return json({ ok: false, code: "NO_KV", detail: "Worker 未绑定 KV（NOMINATIONS）" }, 500, origin);
+  }
+  let body;
+  try { body = await request.json(); }
+  catch (e) { return json({ ok: false, code: "BAD_JSON", detail: "请求体不是合法 JSON" }, 400, origin); }
+
+  const item = nomSanitize(body);
+  if (!item) {
+    return json({ ok: false, code: "NO_NAME", detail: "请填写村民名字" }, 400, origin);
+  }
+
+  // 频率限制：同一 IP 一小时一条（可用环境变量 NOM_RATE_MS 覆盖，0 = 关闭）
+  const rateMs = Number(env && env.NOM_RATE_MS);
+  const rate = Number.isFinite(rateMs) && rateMs >= 0 ? rateMs : NOM_RATE_MS;
+  const ip = request.headers.get("cf-connecting-ip") || "unknown";
+  const rlKey = "rl:" + ip;
+  const last = Number(await env.NOMINATIONS.get(rlKey) || 0);
+  const now = Date.now();
+  if (rate > 0 && last && now - last < rate) {
+    const mins = Math.ceil((rate - (now - last)) / 60000);
+    return json({ ok: false, code: "TOO_OFTEN", detail: "你刚提名过啦，请 " + mins + " 分钟后再试" }, 429, origin);
+  }
+
+  const pending = await nomReadList(env, NOM_PENDING_KEY);
+  if (pending.length >= NOM_MAX_PENDING) {
+    return json({ ok: false, code: "FULL", detail: "待审提名已满，管理员处理后再来吧" }, 503, origin);
+  }
+  if (pending.some((p) => p.name === item.name)) {
+    return json({ ok: false, code: "DUP", detail: "已经有同名的村民在等待审核了" }, 409, origin);
+  }
+
+  pending.push(item);
+  await env.NOMINATIONS.put(NOM_PENDING_KEY, JSON.stringify(pending));
+  await env.NOMINATIONS.put(rlKey, String(now), { expirationTtl: 3700 });
+  return json({ ok: true, id: item.id, detail: "提名已提交，管理员通过后全站可见" }, 200, origin);
+}
+
+async function handleNomList(request, env, origin) {
+  const denied = await nomGuard(request, env, origin);
+  if (denied) return denied;
+  const pending = await nomReadList(env, NOM_PENDING_KEY);
+  return json({ ok: true, items: pending }, 200, origin);
+}
+
+async function handleNomDecide(request, env, origin) {
+  const denied = await nomGuard(request, env, origin);
+  if (denied) return denied;
+  if (request.method !== "POST") {
+    return json({ ok: false, code: "BAD_METHOD", detail: "请用 POST" }, 405, origin);
+  }
+  let body;
+  try { body = await request.json(); }
+  catch (e) { return json({ ok: false, code: "BAD_JSON", detail: "请求体不是合法 JSON" }, 400, origin); }
+
+  const id = String(body.id || "");
+  const action = String(body.action || "");
+  if (!id || (action !== "approve" && action !== "reject")) {
+    return json({ ok: false, code: "BAD_PARAM", detail: "需要 id 与 action（approve/reject）" }, 400, origin);
+  }
+
+  const pending = await nomReadList(env, NOM_PENDING_KEY);
+  const at = pending.findIndex((p) => p.id === id);
+  if (at === -1) {
+    return json({ ok: false, code: "NOT_FOUND", detail: "这条提名不在待审列表里（可能已被处理）" }, 404, origin);
+  }
+  const item = pending.splice(at, 1)[0];
+
+  if (action === "approve") {
+    // 通过：由前端负责写仓库；这里只做记录与出队
+    item.status = "approved";
+    item.decidedAt = new Date().toISOString();
+    const approved = await nomReadList(env, NOM_APPROVED_KEY);
+    approved.unshift(item);
+    await env.NOMINATIONS.put(NOM_APPROVED_KEY, JSON.stringify(approved.slice(0, 100)));
+  } else {
+    item.status = "rejected";
+    item.decidedAt = new Date().toISOString();
+    const rejected = await nomReadList(env, "noms:rejected");
+    rejected.unshift(item);
+    await env.NOMINATIONS.put("noms:rejected", JSON.stringify(rejected.slice(0, 100)));
+  }
+  await env.NOMINATIONS.put(NOM_PENDING_KEY, JSON.stringify(pending));
+  return json({ ok: true }, 200, origin);
+}
+
 const API_BASE = "https://api.breeze.blue/v1";
 const MODEL_ID = "breeze-tts-2";
 
@@ -38,7 +191,7 @@ function corsHeaders(origin) {
   return {
     "access-control-allow-origin": allow,
     "access-control-allow-methods": "GET, POST, OPTIONS",
-    "access-control-allow-headers": "content-type, x-breeze-key, x-llm-key",
+    "access-control-allow-headers": "content-type, x-breeze-key, x-llm-key, x-gh-token",
     "access-control-max-age": "86400",
     vary: "origin"
   };
@@ -141,6 +294,17 @@ export default {
     // 聊天转发：Key 优先用访客自带的 x-llm-key，其次用 Worker 环境变量 LLM_KEY
     if (url.pathname === "/api/chat") {
       return handleChat(request, env, origin);
+    }
+
+    // 观众提名队列
+    if (url.pathname === "/api/nominate") {
+      return handleNominate(request, env, origin);
+    }
+    if (url.pathname === "/api/nominations") {
+      return handleNomList(request, env, origin);
+    }
+    if (url.pathname === "/api/nominations/decide") {
+      return handleNomDecide(request, env, origin);
     }
 
     const key = request.headers.get("x-breeze-key") || "";
