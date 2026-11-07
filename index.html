@@ -209,11 +209,14 @@
       </p>
       <form id="adminForm" class="add-form">
         <label>GitHub Token
-          <input name="token" type="password" placeholder="github_pat_…" autocomplete="off" spellcheck="false">
+          <input name="token" type="password" placeholder="ghp_… 或 github_pat_…" autocomplete="off" spellcheck="false">
         </label>
         <p class="hint tiny">
-          建议用 fine-grained Token，只授权本仓库的 <b>Contents: Read and write</b>，并设置有效期。
-          Token 只存在你自己的浏览器里（不勾选「记住」则关闭页面即失效）。
+          两种 Token 任选其一：<b>经典 Token</b>（github.com/settings/tokens/new，勾 <b>repo</b> 权限）
+          —— 仓库在别人个人账号名下时只能用这种；
+          <b>fine-grained Token</b>（只授权本仓库 <b>Contents: Read and write</b>）
+          —— 仅当仓库在你自己名下或在组织里时可用。
+          Token 只存在你自己的浏览器里（不勾选「记住」则关闭页面即失效），建议都设置有效期。
         </p>
         <label class="checkbox">
           <input type="checkbox" name="remember" checked>
