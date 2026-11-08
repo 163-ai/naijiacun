@@ -42,22 +42,22 @@ const CAST = {
     desc: "建模粗糙的黄色小牛，五年手搓，一句“妈妈，牛来！”被股民当成涨停许愿池。"
   },
   baobaolong: {
-    name: "暴暴龙", h: 1.7,
+    name: "暴暴龙", h: 1.7, model: true,
     img: "assets/characters/baobaolong.png",
     desc: "奶龙的宿敌。头顶白色蛋壳、蓝色小翅膀，擅长布陷阱并把自己埋进去。"
   },
   capybara: {
-    name: "卡皮巴拉", h: 1.45,
+    name: "卡皮巴拉", h: 1.45, model: true,
     img: "assets/characters/capybara.png",
     desc: "水豚，方头小圆耳，永远半眯眼。全网情绪稳定代言人。"
   },
   xiaoqi: {
-    name: "小七", h: 1.8, npc: true,
+    name: "小七", h: 1.8, npc: true, model: true,
     img: "assets/characters/xiaoqi.png",
     desc: "地球少年发明家，黑短发带一撮呆毛。在村口站着，抱着一台没焊完的机器。"
   },
   naidan: {
-    name: "奶蛋", h: 1.12, npc: true,
+    name: "奶蛋", h: 1.12, npc: true, model: true,
     img: "assets/characters/naidan.png",
     desc: "圆滚滚的黄色蛋形小伙伴，住在田边，见谁都劝人下地干活。"
   }
