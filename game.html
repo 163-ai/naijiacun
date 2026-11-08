@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>奶家村 · 大冒险</title>
+  <link rel="stylesheet" href="css/game.css?v=14">
+</head>
+<body>
+  <canvas id="gl"></canvas>
+  <div id="rain"></div>
+
+  <!-- ========== HUD ========== -->
+  <div id="hud" class="hidden">
+    <div class="topbar">
+      <div class="me card">
+        <img id="hudImg" src="assets/characters/nailong.png" alt="奶龙">
+        <div style="flex:1">
+          <div class="nm">奶龙 <span class="lv" id="hudLv">Lv.3</span></div>
+          <div class="bar"><div class="bar-fill" id="hudHp"></div></div>
+          <div class="nums"><span id="hudHpText">62/62</span> · EXP <span id="hudExp">0/54</span></div>
+        </div>
+      </div>
+      <div class="tools">
+        <a class="btn" href="index.html">← 回村</a>
+        <button class="btn" id="btnDex">图鉴 <span id="dexCount">0</span>/4</button>
+        <button class="btn" id="btnSound">🔊</button>
+        <button class="btn" id="btnHelp">?</button>
+      </div>
+    </div>
+
+    <!-- 时间 / 体力 / 金币 -->
+    <div id="clock" class="card">
+      <div class="clock-top">
+        <span class="cday" id="cDay">第 1 天</span>
+        <span class="cwea" id="cWeather">☀️ 晴</span>
+      </div>
+      <div class="ctime" id="cTime">6:00</div>
+      <div class="cbar"><i id="cStam"></i></div>
+      <div class="cbot"><span id="cStamTxt">体力 100</span><b id="cGold">120</b></div>
+    </div>
+
+    <div class="chips">
+      <div class="chip" id="areaChip"><span class="dot"></span> 奶家村广场</div>
+      <div class="chip">捕捉球 <b id="ballCount">8</b> · 已走 <b id="stepCount">0</b> 步</div>
+    </div>
+
+    <div id="radarWrap" class="card"><canvas id="radar" width="240" height="240"></canvas></div>
+
+    <div id="hotbar"></div>
+  </div>
+
+  <div id="pad">
+    <button class="u" data-k="up">▲</button>
+    <button class="l" data-k="left">◀</button>
+    <button class="r" data-k="right">▶</button>
+    <button class="d" data-k="down">▼</button>
+  </div>
+  <button id="btnA">互动</button>
+
+  <!-- ========== 标题 ========== -->
+  <div class="overlay show" id="title">
+    <div class="veil"></div>
+    <div class="title-box">
+      <div class="title-kicker">NAIJIA VILLAGE · TOP-DOWN FARM LIFE</div>
+      <h1 class="g-h1">奶家村 · 大冒险</h1>
+      <p class="g-sub">种地、遛弯、跟村民打一架。白天锄地浇水，草够高了就进去碰碰运气；
+        天黑了回家睡觉，第二天作物会长高一点。</p>
+      <div class="g-actions">
+        <button class="big" id="btnStart">进入村子</button>
+        <button class="big alt" id="btnContinue" style="display:none">继续上次</button>
+      </div>
+      <div class="g-keys">
+        <span><kbd>W A S D</kbd>走动</span>
+        <span><kbd>Shift</kbd>跑</span>
+        <span><kbd>E</kbd>使用 / 互动</span>
+        <span><kbd>1</kbd>–<kbd>5</kbd>换工具</span>
+        <span><kbd>战斗中</kbd>J 轻拳 · K 重拳 · L 必杀</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== 对战（拳皇式） ========== -->
+  <div id="kof">
+    <div class="khud">
+      <div class="kside p">
+        <div class="kname"><b id="kpName">奶龙</b><i id="kpLv">Lv.3</i></div>
+        <div class="kbar"><div class="klag" id="kpHpLag"></div><div class="kfill" id="kpHp"></div></div>
+        <div class="kmeter"><i id="kpMeter"></i></div>
+      </div>
+      <div class="ktimer" id="kTimer">60</div>
+      <div class="kside e">
+        <div class="kname"><i id="keLv">Lv.3</i><b id="keName">野生的奶蛙</b></div>
+        <div class="kbar flip"><div class="klag" id="keHpLag"></div><div class="kfill" id="keHp"></div></div>
+        <div class="kmeter"><i id="keMeter"></i></div>
+      </div>
+    </div>
+
+    <div id="kCombo" class="kcombo"></div>
+    <div id="kIntro" class="kintro"></div>
+    <div id="kFlash" class="kflash"></div>
+    <div id="kCatch" class="kcatch">空格投球 · 剩 <b id="kBallNum">8</b> 个</div>
+
+    <div class="khint">A / D 前后　W 跳　J 轻拳　K 重拳　L 必杀　后退自动防御</div>
+
+    <div id="kpad">
+      <button class="kl" data-k="left">◀</button>
+      <button class="kr" data-k="right">▶</button>
+      <button class="kj" data-k="jump">跳</button>
+      <button class="ka" data-k="light">轻拳</button>
+      <button class="kb" data-k="heavy">重拳</button>
+      <button class="kc" data-k="special">必杀</button>
+      <button class="kd" data-k="catch">投球</button>
+    </div>
+
+    <div id="kResult">
+      <div class="kres">
+        <div class="kres-kicker">ROUND RESULT</div>
+        <h2 id="kResultTitle">胜　利</h2>
+        <p id="kResultSub">对手撑不住了。</p>
+        <button class="big" id="kResultBtn">回到村子</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== 商店 ========== -->
+  <div class="overlay" id="shop">
+    <div class="veil"></div>
+    <div class="sheet">
+      <div class="sheet-inner shop-inner">
+        <div class="shop-head">
+          <div>
+            <div class="shop-kicker">小七的杂货摊</div>
+            <h2>买种子 · 卖收成</h2>
+          </div>
+          <div class="shop-gold">💰 <b id="shopGold">120</b></div>
+        </div>
+        <div class="shop-cols">
+          <div class="shop-col">
+            <h3>种子</h3>
+            <div id="shopBuy"></div>
+          </div>
+          <div class="shop-col">
+            <h3>背包里的收成</h3>
+            <div id="shopSell"></div>
+          </div>
+        </div>
+        <p class="shop-tip">萝卜 3 天、玉米 4 天、甜瓜 5 天成熟；每天浇水才长，下雨天不用管。</p>
+        <div class="closebar"><button class="btn dark" id="btnShopClose">收起来</button></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== 公园那盘棋（写着围棋，其实是五子棋） ========== -->
+  <div class="overlay" id="go">
+    <div class="veil"></div>
+    <div class="go-wrap" id="goWrap">
+      <div class="go-head">
+        <span class="go-kicker">九路盘 · 围棋</span>
+        <span class="go-side">你执 <b>黑</b></span>
+      </div>
+      <div class="go-board-box" id="goBoardBox">
+        <canvas id="goBoard" width="720" height="720"></canvas>
+        <div class="go-result" id="goResult"></div>
+      </div>
+      <div class="go-foot">
+        <span id="goMsg"></span>
+        <button class="btn dark" id="goQuit">不下了</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== 图鉴 ========== -->
+  <div class="overlay" id="dex">
+    <div class="veil"></div>
+    <div class="sheet">
+      <div class="sheet-inner">
+        <h2>村民图鉴</h2>
+        <p class="sub">草丛里遇到并用捕捉球收服的会亮起来。奶龙是你本人；小七在村口等你，不算收集品。
+          标着「3D」的能用完整模型上场，其余的用站内立绘当立牌。</p>
+        <div class="dexgrid" id="dexGrid"></div>
+        <div class="closebar"><button class="btn dark" id="btnDexClose">收起图鉴</button></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== 帮助 ========== -->
+  <div class="overlay" id="help">
+    <div class="veil"></div>
+    <div class="sheet">
+      <div class="sheet-inner" style="max-width:640px">
+        <h2>怎么玩</h2>
+        <p class="sub">像种田游戏一样过日子：白天干活，晚上睡觉，一天一天往下过。</p>
+        <div style="font-size:13px;line-height:2;color:var(--ink-2)">
+          <b style="color:var(--ink)">走路</b>：WASD / 方向键，按住 Shift 跑；手机上用左下方向键。<br>
+          <b style="color:var(--ink)">格子</b>：地上那圈方框永远指着你面前那一格。橙色 = 这格能动手，绿色 = 只是地面。<br>
+          <b style="color:var(--ink)">工具</b>：底部物品栏 1–5 切换，手机直接点那几格；<b>E</b>（手机右下的「互动」钮）对着那格用一次。<br>
+          <b style="color:var(--ink)">种地</b>：西边围栏里是一片荒地，一格一格地用锄头翻开，撒种子，再浇水。
+          锄哪格就是哪格——地上那圈方框指着的那一格，就是这一下会动的那一格。水壶空了去西边水塘、或者广场那口井，按 E 打水。<br>
+          <b style="color:var(--ink)">村民</b>：广场、水塘边、田边、树林边都住着人，走近了屏幕下方会提示，按 E 就说话；
+          对话框左右各有一张立绘，左边是他，右边是你。聊完可以选「要点种子 / 收下球 / 陪你打一场」这类事。<br>
+          <b style="color:var(--ink)">四间屋子</b>：南边自己家（床睡觉、灶台做饭补体力）、杂货摊（买种卖菜）、
+          北边村史馆（翻村史长阅历、长椅歇脚）、东边奶察局（领悬赏、看公告、档案室坐一会儿）。
+          走到门口那一格按 E 进去，屋里踩到门口的门垫上按 E 出来。<br>
+          <b style="color:var(--ink)">地名</b>：房子顶上挂着名牌，空地上直接写着「水塘」「花田」「我的地」「棋爷的公园」这些字，
+          走在路上抬头就知道哪儿是哪儿；左下角还会显示你现在站在哪一片。<br>
+          <b style="color:var(--ink)">公园</b>：广场往东有一块石板小院，棋爷天天在那儿摆着一盘棋。走过去按 E，
+          坐下陪他下一盘——他嘴上不说，你下着下着就会发现哪儿不对劲。<br>
+          <b style="color:var(--ink)">悬赏</b>：奶察局柜台前按 E，值日的奶察每天派一件活（收三样作物 / 收服一只 / 走访三个人），
+          做完回柜台交，拿钱和东西。村口巡逻的奶察会顺手给你把伤包上。<br>
+          <b style="color:var(--ink)">生长</b>：每过一天，浇过水的作物长一截；下雨天等于自动浇水。熟了就对着它按 E 收。<br>
+          <b style="color:var(--ink)">日子</b>：天亮 6:00 开工，越晚天越黑，路灯会亮起来。回家走到床边按 E，人真的躺到床上，
+          灯一关就是第二天，体力全满；
+          撑到凌晨 2:00 会累倒在路边，只能恢复一半体力。<br>
+          <b style="color:var(--ink)">买卖</b>：村口的杂货铺里，小七在柜台后头，对着柜台按 E 买种子、卖收成。<br>
+          <b style="color:var(--ink)">遇怪</b>：走进深绿色的高草丛，走着走着会有东西跳出来，就是一场街机式单挑。<br>
+          <b style="color:var(--ink)">对战</b>：左右移动、跳，J 轻拳快、K 重拳沉、L 放必杀（要半管气）。往后走就是防御。<br>
+          <b style="color:var(--ink)">捕捉</b>：把对手打到三成血以下，球才会亮起来，这时按空格扔。<br>
+          <b style="color:var(--ink)">存档</b>：自动存浏览器本地，下次点「继续上次」。
+        </div>
+        <div class="closebar"><button class="btn dark" id="btnHelpClose">知道了</button></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="dialog">
+    <div class="dlg-stage">
+      <div class="pt" id="ptL">
+        <img id="ptLImg" alt="">
+        <span id="ptLName"></span>
+      </div>
+      <div class="dlg">
+        <div class="who"><i></i><span id="dlgWho">小七</span></div>
+        <div class="txt" id="dlgTxt"></div>
+        <div class="next">点这里 / E 继续</div>
+        <div class="dlg-choice" id="dlgChoice"></div>
+      </div>
+      <div class="pt" id="ptR">
+        <img id="ptRImg" alt="">
+        <span id="ptRName"></span>
+      </div>
+    </div>
+  </div>
+
+  <div id="fade"></div>
+  <div id="toast"></div>
+  <div id="npcHint"></div>
+  <script type="importmap">{"imports":{"three":"./vendor/three/three.module.min.js"}}</script>
+  <script src="js/data.js"></script>
+  <script src="js/3d-models.js"></script>
+  <script type="module" src="js/game2d.js?v=48"></script>
+</body>
+</html>
