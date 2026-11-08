@@ -1,7 +1,7 @@
-// 奶家村 · 原创头像（内联 SVG）
+// 奶家村 · 头像兜底（内联 SVG）
 //
 // 说明：
-//   - 全部是本站自绘的原创几何造型，不使用、不临摹任何官方美术素材。
+//   - 奶龙复用用户提供模型的渲染图，其余角色使用本站自绘的原创几何造型。
 //   - 统一风格：圆形底色 + 圆润身体 + 大眼 + 一句话就能记住的特征。
 //   - 用法：NaijiacunAvatars.svg("nailong", 56) 返回 SVG 字符串；没有对应形象时返回 null，
 //     调用方回退到 emoji。
@@ -30,20 +30,11 @@
   }
 
   var ART = {
-    // 奶龙：圆滚滚的黄身小恐龙，无刺、短手、腮红
+    // 奶龙：与图鉴共用挥手微笑模型渲染图
     nailong: {
       bg: "#FFF4D2",
       render: function () {
-        return (
-          '<ellipse cx="26" cy="80" rx="7" ry="9" fill="#F7C948"/>' +
-          '<ellipse cx="94" cy="80" rx="7" ry="9" fill="#F7C948"/>' +
-          '<ellipse cx="60" cy="66" rx="35" ry="32" fill="#F7C948"/>' +
-          '<ellipse cx="60" cy="76" rx="20" ry="17" fill="#FFE7A3"/>' +
-          eye(47, 60, 6.5, 7.5, 3.4) + eye(73, 60, 6.5, 7.5, 3.4) +
-          smile(60, 76, 8, "#8A6420", 3) +
-          '<circle cx="34" cy="72" r="6" fill="#F2A93C" opacity=".55"/>' +
-          '<circle cx="86" cy="72" r="6" fill="#F2A93C" opacity=".55"/>'
-        );
+        return '<image href="assets/characters/3d/nailong-waving-avatar.webp?v=waving-1" width="120" height="120" preserveAspectRatio="xMidYMid meet"/>';
       }
     },
 

@@ -3,75 +3,103 @@
     {
       "id": "nailong",
       "name": "奶龙",
-      "inputFile": "奶龙.glb",
-      "inputBytes": 41700076,
-      "inputSha256": "b375a6d8369243abbb7a21cef13d33f70feb42307e7fdb44af0f7e89a4c4fa95",
-      "selection": "左侧完整正面人物，保留原黄色印字服装",
-      "file": "assets/models/nailong.glb",
-      "bytes": 6764860,
-      "sha256": "876643dc6a3e2432b4ec71588301089dc57aa18f04b339541363cf32c2eb7f19",
+      "inputFile": "result+(2).3mf",
+      "inputBytes": 7962092,
+      "inputSha256": "360271031db3d1733f77199d4d9abc0775c59306b1f50dc7b9aee1ee1d33d824",
+      "sourceAuthor": "乌鲁鲁",
+      "sourceUrl": "https://makerworld.com.cn/zh/models/972585-nai-long",
+      "sourceLicenseMetadata": "Standard Digital File License",
+      "selection": "完整招手笑脸单角色，保留网格；按用户确认的07号参考补色",
+      "file": "assets/models/nailong-waving.glb",
+      "bytes": 9557332,
+      "sha256": "4263ac1b14080db792ae4bf7f6278915e1333c8965e06c1450bb14a14c6aa448",
       "meshes": 1,
-      "vertices": 67530,
-      "triangles": 99999,
+      "vertices": 230294,
+      "triangles": 460209,
+      "originalTriangles": 452114,
       "images": [
         {
-          "mimeType": "image/webp",
-          "bytes": 1060352,
-          "width": 2048,
-          "height": 2048
+          "mimeType": "image/png",
+          "bytes": 61652
         },
         {
-          "mimeType": "image/webp",
-          "bytes": 2275110,
-          "width": 2048,
-          "height": 2048
-        },
-        {
-          "mimeType": "image/webp",
-          "bytes": 1421000,
-          "width": 2048,
-          "height": 2048
+          "mimeType": "image/png",
+          "bytes": 102883
         }
       ],
       "extensionsUsed": [
-        "KHR_materials_specular",
-        "EXT_texture_webp",
         "EXT_meshopt_compression"
       ],
       "extensionsRequired": [
-        "EXT_texture_webp",
         "EXT_meshopt_compression"
       ],
       "externalResources": [],
-      "orientation": "Y-up, front +Z, feet at 0, height 2.2",
+      "orientation": "Y-up, front +Z, centered at origin, height 2; viewer fits at runtime",
       "renders": [
         {
-          "file": "assets/characters/3d/nailong-avatar.webp",
-          "bytes": 85334,
-          "sha256": "af58d7873052008b818141e082d79141d78118188e0e02737e979b4029da38de",
-          "width": 512,
-          "height": 512,
-          "losslessSource": "assets/characters/3d/nailong-avatar.png"
-        },
-        {
-          "file": "assets/characters/3d/nailong-pet.webp",
-          "bytes": 216756,
-          "sha256": "c289d5e728dd9740811961e069b573d338d56ca9c67f188bda0d788b4da54dc2",
+          "file": "assets/characters/3d/nailong-waving-pet.webp",
+          "bytes": 143330,
+          "sha256": "18d9b08b7eb84a5c40ad65de604a4f4a703fa7cb0513dc69cd5d593b5b0ca7e4",
           "width": 720,
           "height": 900,
-          "losslessSource": "assets/characters/3d/nailong-pet.png"
+          "rgbaExact": true,
+          "rgbaSha256": "a0ec4d4b373b8e8852fb0d65a3c1bcb1b76e37f06a887f50049ee4b0b130cc13",
+          "alphaBbox": [
+            56,
+            41,
+            664,
+            859
+          ],
+          "source": "Same reference-colored nailong-waving GLB render"
+        },
+        {
+          "file": "assets/characters/3d/nailong-waving-avatar.webp",
+          "bytes": 73714,
+          "sha256": "50de7efe8e32db24aea3030ccbd6a058df65ee9a27ae9bd7bcf75e5c61aad607",
+          "width": 512,
+          "height": 512,
+          "rgbaExact": true,
+          "rgbaSha256": "802c61901a7229cfe8ad7a7fc8b71c4362466c6b04c2a20d69b2f4ec1c88cf02",
+          "alphaBbox": [
+            0,
+            56,
+            482,
+            512
+          ],
+          "source": "Same reference-colored nailong-waving GLB render"
         }
       ],
+      "conversion": {
+        "paintingCodecRoundtrip": true,
+        "paintingSurfaceAreaVerified": true,
+        "exactCoplanarPaintingSubdivision": true,
+        "referenceRecolorUserApproved": true,
+        "geometryPositionAndNormalBytesPreserved": true,
+        "orientedTriangleMultisetPreserved": true,
+        "paletteSrgb": {
+          "body": "#FFCF3D",
+          "belly": "#FFE7BB",
+          "palm": "#FFB1A6",
+          "claws": "#9E6E54",
+          "white": "#FFFFFF",
+          "mouth": "#190604",
+          "iris": "#4E7B39",
+          "iris_rim": "#294323",
+          "pupil": "#101D19",
+          "highlight": "#FFFDF1"
+        }
+      },
       "compression": {
-        "previousBytes": 12532072,
-        "previousSha256": "1075dcd200377cdabf921423d2b44a0fd3791f97962f222cc319e2c60e7c4ea8",
-        "textureEncoding": "lossless exact WebP",
+        "previousBytes": 13061116,
+        "previousSha256": "f21c3ef625aa31a8295026e6ba604f9c7a90135a876eccb87b3c5ffc67759845",
         "geometryEncoding": "meshoptimizer 0.25.0, filter NONE",
-        "textureRgbaExact": true,
+        "textureEncoding": "embedded lossless PNG",
         "decodedGeometryBytesExact": true,
+        "textureRgbaExact": true,
         "quantization": false,
         "triangleReduction": false
-      }
+      },
+      "primitives": 7
     },
     {
       "id": "naiwa",

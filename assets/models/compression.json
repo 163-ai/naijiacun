@@ -1,16 +1,25 @@
 {
   "models": {
-    "beforeBytes": 96274600,
-    "afterBytes": 54972620,
+    "beforeBytes": 96803644,
+    "afterBytes": 57765092,
     "count": 9,
     "textureRgbaExact": true,
     "decodedGeometryBytesExact": true
   },
   "characterImages": {
-    "beforeBytes": 5652778,
-    "afterBytes": 2529922,
+    "beforeBytes": 5542316,
+    "afterBytes": 2444876,
     "count": 19,
     "rgbaExact": true
   },
-  "decoderBytes": 32483
+  "decoderBytes": 32483,
+  "wavingNailongReplacement": {
+    "date": "2026-11-08",
+    "rawGlbBytes": 13061116,
+    "webGlbBytes": 9557332,
+    "geometryAndTexturesLossless": true,
+    "sourceTriangles": 452114,
+    "paintingSubdivisionTriangles": 460209,
+    "nativePetPackageUnchanged": true
+  }
 }
