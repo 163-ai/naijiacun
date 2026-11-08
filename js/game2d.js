@@ -999,6 +999,9 @@ function buildProps() {
    模型
    ========================================================= */
 const PACK = window.N3D_MODELS || {};
+// 游戏里的奶龙用站立版模型：挥手版（nailong-waving）手臂定格高举，走路也举着很怪；
+// 图鉴/桌宠/盲盒走 pet-renderer 的 N3D_MODELS 原映射，仍是挥手形象。
+if (PACK.nailong) PACK.nailong = { ...PACK.nailong, file: "assets/models/nailong.glb" };
 const gltfLoader = new GLTFLoader();
 // 模型是 meshopt 压缩过的，不配解压器会全部解析失败，退化成 2D 立牌
 gltfLoader.setMeshoptDecoder(MeshoptDecoder);
@@ -2007,8 +2010,10 @@ function dim(on) {
 }
 
 // 躺下时盖在腿上的那一床被子 —— 光把模型放平看不出"躺"，得盖上才读出来。
-// 尺寸按躺平的奶龙实测：身体总宽 1.30、头占躺平后靠枕头那端 .78，
-// 被子宽 1.44 罩住两侧、被口（本地 z=-.15）压在下巴下、头整个露在外面。
+// 尺寸按躺平的奶龙实测：身体总宽 1.30、躺平厚度 0.85（y 0.06~0.91），
+// 被子宽 1.44 罩住两侧、高 0.94 把肚子整个兜进去（顶 0.96 > 身顶 0.91），
+// 被口（本地 z=-.15）压在下巴下、头整个露在外面。之前高 0.6 太矮，
+// 肚子高出被子一截，俯视角看就像人躺在被子外面。
 let quilt = null;
 function quiltMesh() {
   if (quilt) return quilt;
@@ -2016,18 +2021,18 @@ function quiltMesh() {
   const cloth = new T.MeshStandardMaterial({ color: 0xcd675c, roughness: .96 });
   const dup = new T.MeshStandardMaterial({ color: 0xe69383, roughness: .95 });
 
-  const main = new T.Mesh(new T.BoxGeometry(1.44, .6, 1.05), cloth);
-  main.position.set(0, .3, .375);
+  const main = new T.Mesh(new T.BoxGeometry(1.44, .94, 1.05), cloth);
+  main.position.set(0, .47, .375);
   main.castShadow = true;
   quilt.add(main);
-  // 被口翻出来的一圈浅色边（贴着下巴那侧）
+  // 被口翻出来的一圈浅色边（贴着下巴那侧，翻在被子顶上）
   const flap = new T.Mesh(new T.BoxGeometry(1.47, .16, .16), dup);
-  flap.position.set(0, .52, -.09);
+  flap.position.set(0, .82, -.09);
   quilt.add(flap);
   // 脚那头鼓起来一点（加宽到能兜住两只伸开的脚丫）
   const bump = new T.Mesh(new T.SphereGeometry(.3, 10, 8), cloth);
   bump.scale.set(1.9, .52, .9);
-  bump.position.set(0, .5, .8);
+  bump.position.set(0, .78, .8);
   quilt.add(bump);
 
   quilt.visible = false;
