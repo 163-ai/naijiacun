@@ -9,6 +9,21 @@
 想管理这个代理服务：WorkBuddy「设置 — 数据管理 — 应用」。
 想换模型 / 换 Key：改代理服务目录里的 `server.js` 后重新发布。
 
+## 语音的免费额度（每人 5 句）
+
+访客不填 Key 时，`/api/sf-tts` 用站长的 `SF_KEY` 合成，**每个访客一共 5 句**：
+
+- 前端 `js/tts.js` 用 `localStorage` 的 `naijacun_voice_quota` 记账（含随机访客 ID），
+  到 0 就不再请求，直接退回浏览器内置语音，并在聊天页弹提示条引导填自己的 Key。
+- 服务端 `server.js` 按请求头 `x-visitor-id` 再卡一道（`FREE_TTS_TOTAL`，默认 5），
+  合成成功才扣；同时按 IP 每天兜底 `SF_DAILY_LIMIT`（默认 40）。
+- 访客自带 `x-sf-key` 时不计数、不限量。
+- 自测想重来：控制台 `NaijiacunTTS.quota.reset()`；服务端重启即可清零内存计数。
+
+改了 `server.js` 必须重新发布代理服务，否则线上还是旧规则（旧版是每 IP 每天 120 句、
+没有按访客卡 5 句）。前端改完记得 bump `chat.html` 里的 `?v=`。
+
+
 > ⚠️ `server.js` 含密钥，它放在站点仓库**之外**的独立目录
 > （`~/WorkBuddy/naijiacun-chat-proxy/`），不要复制进仓库提交。
 

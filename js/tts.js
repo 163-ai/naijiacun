@@ -472,7 +472,23 @@
       });
     }
 
-    return fetch(url, { method: "POST", headers: headers, body: body })
+    // 老版本代理的 CORS 白名单里没有 x-visitor-id，带这个头预检会被拦。
+    // 遇到网络错误就把它摘掉重试一次（服务端退化成按 IP 计数，客户端照常本地扣）。
+    function request(sendVid) {
+      var h = {};
+      Object.keys(headers).forEach(function (k) { h[k] = headers[k]; });
+      if (!sendVid) delete h["x-visitor-id"];
+      return fetch(url, { method: "POST", headers: h, body: body });
+    }
+
+    return request(free)
+      .catch(function (err) {
+        var msg = String((err && err.message) || "");
+        var netDown = (err && err.name === "TypeError") ||
+          /Failed to fetch|NetworkError|Load failed|fetch failed/i.test(msg);
+        if (free && netDown) return request(false);
+        throw err;
+      })
       .then(function (res) {
         // 服务端会回 x-free-left（按访客 ID 算的剩余句数），有就以它为准
         var left = res.headers.get("x-free-left");

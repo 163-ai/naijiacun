@@ -102,9 +102,18 @@ wrangler secret put LLM_MODEL   # 可选，默认 deepseek-chat
 
 | 访客 | 会听到什么 |
 |---|---|
-| 什么都不填 | 站点自带转发服务用站长的额度合成（每人每天有上限） |
-| 在 🔑 语音设置里填自己的 sk- Key | 无限量，直接浏览器直连硅基流动 |
-| 上面都不通 | 退回 `audio/` 里预生成的金句 mp3，再不行用浏览器内置语音 |
+| 什么都不填 | 站点代理用站长的额度合成，**每人免费 5 句** |
+| 在 ⚙️ 设置里填自己的 sk- Key | 无限量，浏览器直连硅基流动，不占站点额度 |
+| 5 句用完 / 代理不通 | 退回 `audio/` 里预生成的金句 mp3，再不行用浏览器内置语音 |
+
+免费额度怎么算：
+
+- 前端 `js/tts.js` 在 `localStorage` 的 `naijacun_voice_quota` 里记一个随机访客 ID 和剩余句数，
+  合成一句扣一句；扣到 0 就只走浏览器语音，并在聊天页弹一条「可以接自己的 Key」的提示条。
+- 服务端按 `x-visitor-id` 一共只放 5 句（`FREE_TTS_TOTAL`），再按 IP 每天兜底一道
+  （`SF_DAILY_LIMIT`，默认 40）。清缓存换个访客 ID 也拿不到更多。
+- 自己测想重来一遍：浏览器控制台执行 `NaijiacunTTS.quota.reset()`，服务端重启或调大 `FREE_TTS_TOTAL`。
+- 想改免费句数：`js/tts.js` 的 `FREE_LIMIT` 和代理的 `FREE_TTS_TOTAL` 要一起改，两边不一致会前后矛盾。
 
 三家音色不能混用：音色 id 属于某一家平台，另一家的 Key 取不到它。所以本站只认硅基流动一家。
 
@@ -130,7 +139,7 @@ Key 留在服务端，并按 IP 限制每日条数，费用可控。
 | `GET /api/voices` | 旧：拉取 Breeze 账号下的音色列表 |
 
 服务端 Key 放环境变量 `SF_KEY`（WorkBuddy 代理里写在 `server.js` 顶部，那个目录在仓库之外，
-不要复制进来）；每日上限 `SF_DAILY_LIMIT`，默认 120 条。
+不要复制进来）；每人免费句数 `FREE_TTS_TOTAL`（默认 5），每 IP 每日兜底 `SF_DAILY_LIMIT`（默认 40）。
 
 ### 可选：预生成音频（连代理都不用）
 

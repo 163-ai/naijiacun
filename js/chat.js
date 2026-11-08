@@ -372,6 +372,9 @@
     statusEl.className = "ch-status" + (warn ? " warn" : "");
   }
 
+  // tts.js 的提示（额度用完、Key 报错等）接到页面底部那行状态里，别只丢进控制台
+  window.showTTSNotice = function (msg) { setStatus(msg, true); };
+
   function scrollBottom() {
     msgList.scrollTop = msgList.scrollHeight;
   }
