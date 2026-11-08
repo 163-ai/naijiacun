@@ -83,6 +83,31 @@
   100% { opacity: 0; transform: translate(calc(-50% + var(--dx, 0px)), -150px) scale(1.05) rotate(8deg); }
 }
 
+/* 愤怒呐喊：舞台边缘泛起怒气的红光，跟着吼声一下一下地脉冲 */
+.p3-rage {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .28s ease;
+  background: radial-gradient(58% 62% at 50% 58%, #d8442f00 55%, #d8442f30 76%, #b3251a5c 100%);
+}
+.p3-stage.angry .p3-rage { opacity: 1; animation: p3-rage-pulse .42s ease-in-out infinite alternate; }
+@keyframes p3-rage-pulse { from { opacity: .5; } to { opacity: 1; } }
+
+/* 怒气符号往上炸，比笑脸更急、更硬 */
+.p3-fx[data-kind="angry"] span {
+  bottom: 30%;
+  animation-name: p3-fx-burst;
+  animation-duration: 1.5s;
+}
+@keyframes p3-fx-burst {
+  0% { opacity: 0; transform: translate(-50%, 14px) scale(.45) rotate(-10deg); }
+  22% { opacity: 1; transform: translate(-50%, -6px) scale(1.2) rotate(4deg); }
+  100% { opacity: 0; transform: translate(calc(-50% + var(--dx, 0px)), -104px) scale(.85) rotate(-14deg); }
+}
+
 .p3-act:focus-visible, .p3-cat:focus-visible, .p3-sound:focus-visible { outline: 3px solid var(--green); outline-offset: 3px; }
 
 @media (max-width: 880px) {

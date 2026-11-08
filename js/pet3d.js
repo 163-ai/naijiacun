@@ -413,6 +413,7 @@ import { getLaughPose } from "./pet-laugh.js?v=site-pets-1";
     rig = {
       root: root, centered: centered, bones: bones, rest: rest,
       baseY: centered.position.y,
+      baseX: centered.position.x,
       baseZ: centered.position.z,
       baseRot: centered.rotation.clone(),
       baseScale: centered.scale.clone(),
@@ -436,6 +437,7 @@ import { getLaughPose } from "./pet-laugh.js?v=site-pets-1";
       rig.bones[name].quaternion.copy(rig.rest[name].q);
     });
     rig.centered.position.y = rig.baseY;
+    rig.centered.position.x = rig.baseX;
     rig.centered.position.z = rig.baseZ;
     rig.centered.rotation.copy(rig.baseRot);
     rig.centered.scale.copy(rig.baseScale);
@@ -460,12 +462,18 @@ import { getLaughPose } from "./pet-laugh.js?v=site-pets-1";
     });
   }
 
-  function burstLaugh() {
+  var FX_SETS = {
+    laugh: ["😂", "🤣", "😆", "🤣", "😂"],
+    angry: ["💢", "🔥", "⚡", "💥", "😤"]
+  };
+
+  function burstFx(kind) {
     var box = document.getElementById("laughFx");
     if (!box) return;
     if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     box.innerHTML = "";
-    ["😂", "🤣", "😆", "🤣", "😂"].forEach(function (face, i) {
+    box.dataset.kind = kind;
+    (FX_SETS[kind] || FX_SETS.laugh).forEach(function (face, i) {
       var span = document.createElement("span");
       span.textContent = face;
       span.style.left = 50 + (i - 2) * 7 + "%";
@@ -525,8 +533,90 @@ import { getLaughPose } from "./pet-laugh.js?v=site-pets-1";
 
 
 
+  // 愤怒呐喊：整套情绪按「憋气 → 拔起来吼 → 气到发抖跺脚 → 吼到没劲、喘气」来演。
+  // 村民模型是单个网格（没骨骼），所以情绪全靠整体俯仰、胀缩、上下弹和震动表达。
+  function seg(t, a, b) { return Math.min(1, Math.max(0, (t - a) / (b - a))); }
+  function easeOut(x) { var p = 1 - Math.min(1, Math.max(0, x)); return 1 - p * p * p; }
+
+  function applyAngry(t) {
+    var H = rig.h;
+    var bend = 0;      // >0 前倾、<0 后仰挺胸
+    var squash = 0;    // 下压（横向变胖）
+    var puff = 0;      // 鼓气（整体胀大）
+    var lift = 0;
+    var shake = 0;
+    var sway = 0;
+    var yawTwist = 0;  // 摇头：最容易被看懂的「气到不行」
+    var jitter = 0;    // 左右小幅高频位移，气到发抖
+
+    if (t < 0.45) {
+      // ① 憋气：整个人蹲下去、往前压，把火攒在肚子里
+      var p = easeOut(seg(t, 0, 0.42));
+      squash = 0.20 * p;
+      bend = 0.16 * p;
+      puff = -0.03 * p;
+      sway = 0.015 * p * Math.sin(t * Math.PI * 2 * 2.4);
+    } else if (t < 0.64) {
+      // ② 开吼：猛地拔起来、胸挺出去、一直冲到镜头前
+      var q = easeOut(seg(t, 0.45, 0.64));
+      squash = 0.20 * (1 - q) - 0.06 * q;
+      bend = 0.13 + 0.02 * q;
+      lift = 0.14 * q;
+      puff = -0.03 + 0.20 * q;
+    } else if (t < 2.42) {
+      // ③ 怒吼：身体一下一下往前顶、气到发抖，还左右摇头；每 0.42 秒跺一次脚
+      var s = t - 0.64;
+      bend = 0.10 + 0.05 * Math.sin(s * Math.PI * 2 * 4.4);
+      shake = 0.05 * Math.sin(t * Math.PI * 2 * 9.2) + 0.02 * Math.sin(t * Math.PI * 2 * 3.3);
+      yawTwist = 0.095 * Math.sin(s * Math.PI * 2 * 5.6);
+      jitter = 0.018 * Math.sin(t * Math.PI * 2 * 7.3);
+      var stomp = Math.max(0, Math.sin(s * Math.PI * 2 / 0.42));
+      squash = 0.075 * stomp - 0.02;
+      lift = 0.07 * stomp * stomp * stomp;
+      puff = 0.115 + 0.04 * Math.sin(s * Math.PI * 2 * 2.2);
+      sway = 0.05 * Math.sin(s * Math.PI * 2 * 1.15);
+    } else if (t < 2.78) {
+      // ④ 最后一下重跺：整个人弹起来，再重重砸回地面
+      var r = seg(t, 2.42, 2.78);
+      lift = 0.17 * Math.sin(Math.PI * Math.min(1, r * 1.35));
+      squash = r > 0.58 ? 0.18 * (1 - (r - 0.58) / 0.42) : 0;
+      bend = 0.10 - 0.07 * easeOut(seg(r, 0.55, 1));
+      shake = 0.025 * (1 - r) * Math.sin(t * Math.PI * 2 * 9);
+      puff = 0.08 * (1 - r);
+    } else {
+      // ⑤ 吼累了：身体松下来，喘两口气慢慢找回呼吸
+      var u = seg(t, 2.78, 3.5);
+      var breathe = Math.sin(u * Math.PI * 2 * 1.9) * (1 - u) * 0.5;
+      bend = 0.04 * (1 - u) - 0.03 * breathe;
+      squash = 0.05 * breathe;
+      puff = 0.03 * (1 - u);
+      shake = 0.014 * (1 - u) * Math.sin(t * Math.PI * 2 * 6);
+    }
+
+    rig.centered.rotation.x = rig.baseRot.x + bend + shake;
+    rig.centered.rotation.z = rig.baseRot.z + sway;
+    rig.centered.rotation.y = rig.baseRot.y + yawTwist;
+    var sc = 1 + puff, sy = 1 + puff * 0.25 - squash;
+    rig.centered.scale.set(
+      rig.baseScale.x * (sc + squash * 0.45),
+      rig.baseScale.y * sy,
+      rig.baseScale.z * (sc + squash * 0.45)
+    );
+    // 前倾/后仰时身体重心跟着移动，脚大概留在原地
+    rig.centered.position.x = (rig.baseX || 0) + jitter;
+    rig.centered.position.z = rig.baseZ + (H / 2) * Math.sin(bend) * 0.5;
+    var e = new T.Matrix4().makeRotationFromEuler(rig.centered.rotation).elements;
+    var s2 = rig.centered.scale, bs = rig.baseScale;
+    var extent = Math.abs(e[1]) * rig.hx * (s2.x / bs.x) +
+                 Math.abs(e[5]) * rig.hy * (s2.y / bs.y) +
+                 Math.abs(e[9]) * rig.hz * (s2.z / bs.z);
+    rig.centered.position.y = rig.groundY + extent + lift - rig.restLift;
+  }
+
+
   var ACTIONS = {
-    laugh: { label: "捧腹大笑", ms: 4700, rampIn: 0.01, rampOut: 0.01, freq: 1, sound: "audio/laugh.mp3?v=2", bubble: "哈哈哈哈哈哈——笑岔气了", fx: true, apply: applyLaugh },
+    laugh: { label: "捧腹大笑", ms: 4700, rampIn: 0.01, rampOut: 0.01, freq: 1, sound: "audio/laugh.mp3?v=2", bubble: "哈哈哈哈哈哈——笑岔气了", fx: "laugh", apply: applyLaugh },
+    angry: { label: "愤怒呐喊", ms: 3500, rampIn: 0.01, rampOut: 0.01, freq: 1, sound: "audio/angry.mp3?v=1", bubble: "啊啊啊啊啊——气死我啦！", fx: "angry", apply: applyAngry },
     jump: { label: "蹦一下", ms: 1500, rampIn: 0.05, rampOut: 0.05, freq: 1, apply: applyJump }
   };
 
@@ -553,7 +643,8 @@ import { getLaughPose } from "./pet-laugh.js?v=site-pets-1";
       bubble.textContent = def.bubble;
       bubble.classList.remove("hidden");
     }
-    if (def.fx) burstLaugh();
+    if (def.fx) burstFx(def.fx === true ? "laugh" : def.fx);
+    if (def.fx === "angry") stage.classList.add("angry");
     // 手机上动作区在展台上方，点完先滚到展台，别让人对着按钮看不到角色
     if (window.matchMedia && window.matchMedia("(max-width: 720px)").matches) {
       var stageEl = document.getElementById("stage");
@@ -579,6 +670,7 @@ import { getLaughPose } from "./pet-laugh.js?v=site-pets-1";
     if (laughAudio) { laughAudio.pause(); laughAudio = null; }
     clearTimeout(bubbleTimer);
     bubble.classList.add("hidden");
+    stage.classList.remove("angry");
     setActiveAct(null);
     resetRig();
   }
@@ -615,12 +707,12 @@ import { getLaughPose } from "./pet-laugh.js?v=site-pets-1";
     if (!rig) { note2.textContent = ""; return; }
     if (!rig.bones.Spine) {
       note2.textContent = mood
-        ? "照视频里的演法：站着笑到抖，越笑越后仰，笑岔气直接歪倒在地、侧躺着滚两下再爬起来。"
+        ? "情绪档：大笑会笑到抖、笑到歪倒在地再爬起来；愤怒呐喊先蹲下憋气，再冲着镜头吼、气到发抖跺脚，最后喘两口气。"
         : "蹦一下：原地跳起再落回，不带动骨骼。";
       return;
     }
     note2.textContent = mood
-      ? "点一下：笑到抖、笑到后仰，然后歪倒在地滚两下再爬起来。"
+      ? "点一下：大笑会笑到后仰倒地打滚；愤怒则先憋气下蹲，再拔起来怒吼跺脚，气到发抖后喘气收尾。"
       : "蹦一下：原地跳起再落回。";
   }
 

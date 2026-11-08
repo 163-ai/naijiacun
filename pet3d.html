@@ -11,8 +11,8 @@
   <link rel="preload" as="image" href="assets/characters/3d/nailong-waving-pet.webp?v=waving-1">
   <link rel="stylesheet" href="css/style.css?v=village-1">
   <link rel="stylesheet" href="css/pet.css?v=browser-pets-1">
-  <link rel="stylesheet" href="css/pet3d.css?v=loading-1">
-  <link rel="stylesheet" href="css/pet3d-actions.css?v=laugh-1">
+  <link rel="stylesheet" href="css/pet3d.css?v=angry-1">
+  <link rel="stylesheet" href="css/pet3d-actions.css?v=angry-1">
   <link rel="stylesheet" href="css/village.css?v=village-1">
 </head>
 <body class="village-theme p3-page">
@@ -25,6 +25,11 @@
       </div>
       <a class="p3-back" href="pet.html">← 回桌宠小院</a>
     </header>
+
+    <section class="pet-download" aria-label="奶家村全站桌宠">
+      <a class="pet-btn primary" href="extension.html">全站桌宠 · 无需安装 ↗</a>
+      <p>选好村民后点「变桌宠」，立体形象就能陪你逛奶家村。</p>
+    </section>
 
     <div class="p3-main">
       <div id="stage" class="p3-stage">
@@ -44,6 +49,7 @@
         </div>
         <div id="fallback" class="p3-fallback hidden" role="status"><p id="errorMessage"></p><button id="retryBtn" class="p3-btn">重新加载</button></div>
         <div id="bubble" class="p3-bubble hidden"></div>
+        <div id="rageFx" class="p3-rage" aria-hidden="true"></div>
         <div id="laughFx" class="p3-fx" aria-hidden="true"></div>
         <div class="p3-hint">按住拖拽旋转 · 滚轮缩放 · 双击复位</div>
         <div class="p3-corner">村民立体档案 <span>360°</span></div>
@@ -69,6 +75,10 @@
               <span class="p3-act-emoji" aria-hidden="true">🤣</span>
               <span class="p3-act-text"><b>捧腹大笑</b><em>捂着肚子笑到前仰后合</em></span>
             </button>
+            <button class="p3-act" type="button" data-act="angry">
+              <span class="p3-act-emoji" aria-hidden="true">😤</span>
+              <span class="p3-act-text"><b>愤怒呐喊</b><em>憋气鼓起，跺脚冲你吼一嗓子</em></span>
+            </button>
           </div>
           <div class="p3-act-list hidden" data-panel="interact">
             <button class="p3-act" type="button" data-act="jump">
@@ -76,7 +86,7 @@
               <span class="p3-act-text"><b>蹦一下</b><em>原地蹦起来再落回去</em></span>
             </button>
           </div>
-          <p class="p3-act-note" id="actNote">点一下，它会笑到后仰、笑得歪倒在地，还带着笑声。</p>
+          <p class="p3-act-note" id="actNote">情绪档：大笑会笑到歪倒在地再爬起来；愤怒呐喊先憋气下蹲，再冲你吼、气到跺脚，最后喘气收尾。</p>
         </section>
 
         <div class="p3-tools" aria-label="模型操作">
@@ -105,7 +115,7 @@
   <script src="js/data.js?v=browser-pets-1"></script>
   <script src="js/3d-models.js?v=waving-1"></script>
   <script src="js/site-pet.js?v=site-pets-1"></script>
-  <script type="module" src="js/pet3d.js?v=site-pets-2"></script>
+  <script type="module" src="js/pet3d.js?v=angry-1"></script>
   <script src="js/village.js?v=village-1"></script>
   <script>
     window.addEventListener("load", function () {
