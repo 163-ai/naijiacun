@@ -1,6 +1,7 @@
 import * as T from '../vendor/three/three.module.min.js';
 import { GLTFLoader } from '../vendor/three/GLTFLoader.js';
-import { createPetMotion } from './pet-motion.js';
+import { createPetMotion } from './pet-motion.js?v=site-pets-1';
+import { getLaughPose, LAUGH_DURATION } from './pet-laugh.js?v=site-pets-1';
 
 function disposeModel(root) {
   const geometries = new Set(), materials = new Set(), textures = new Set(), skeletons = new Set(), bitmaps = new Set();
@@ -28,15 +29,17 @@ export class PetRenderer {
     this._meshoptDecoder = meshoptDecoder;
     this.id = ''; this.mode = '2d'; this._requestedMode = '2d';
     this._motion = 'idle'; this._facing = 1; this._time = 0; this._version = 0; this._destroyed = false;
+    this._action = null; this._actionBox = new T.Box3();
     this._pixel = new Uint8Array(4);
     this.host.style.position = 'relative';
     this.setSize(180);
   }
 
-  async setCharacter(id) {
+  async setCharacter(id, mode = this._requestedMode) {
     if (!this.catalog.some(person => person.id === id)) throw new Error('没有找到这个村民');
-    if (this.id === id && (this._rig || this._image)) return this.mode;
-    this.id = id;
+    if (mode !== '2d' && mode !== '3d') throw new Error('不支持的桌宠模式');
+    if (this.id === id && this._requestedMode === mode && (this._rig || this._image)) return this.mode;
+    this.id = id; this._requestedMode = mode;
     return this._load();
   }
 
@@ -51,8 +54,16 @@ export class PetRenderer {
 
   setMotion(motion) {
     if (!['idle', 'walk', 'run', 'dragged'].includes(motion)) throw new Error('不支持的桌宠动作');
+    if (motion === 'dragged' && this._action) { this._action = null; this._fitCamera(); }
     this._motion = motion;
   }
+
+  playAction(name) {
+    if (name !== 'laugh' || this._destroyed || (!this._rig && !this._image)) return false;
+    this._action = { name, time: 0 }; this.update(0); return true;
+  }
+
+  get action() { return this._action?.name || null; }
 
   setFacing(direction) { this._facing = direction < 0 ? -1 : 1; }
 
@@ -68,6 +79,7 @@ export class PetRenderer {
   }
 
   _clear() {
+    this._action = null; this._imageMatrix = null;
     this._abort?.abort(); this._abort = null;
     if (this._rig) { this._scene.remove(this._pivot); disposeModel(this._rig.root); }
     this._rig = this._pivot = null;
@@ -151,12 +163,15 @@ export class PetRenderer {
     return this.mode;
   }
 
-  _fitCamera() {
+  _fitCamera(actionBounds) {
     if (!this._rig || !this._camera) return;
     const size = this._rig.bounds.getSize(new T.Vector3());
     // Enough room for raised hands, long feet, the hop apex and a quarter turn.
     const width = Math.hypot(size.x, size.z) * 1.12;
-    const height = Math.max(2.42, width / .9);
+    let height = Math.max(2.42, width / .9);
+    if (actionBounds) height = Math.max(height,
+      Math.max(Math.abs(actionBounds.min.x), Math.abs(actionBounds.max.x)) * 2.12 / .9,
+      Math.max(Math.abs(actionBounds.min.y - 1.12), Math.abs(actionBounds.max.y - 1.12)) * 2.12);
     const camera = this._camera;
     camera.left = -height * .45; camera.right = height * .45;
     camera.top = height / 2; camera.bottom = -height / 2;
@@ -167,16 +182,34 @@ export class PetRenderer {
     if (this._destroyed) return;
     const dt = Math.max(0, Math.min(Number.isFinite(dtSeconds) ? dtSeconds : 0, .1));
     this._time += dt;
+    if (this._action) {
+      this._action.time += dt;
+      if (this._action.time >= LAUGH_DURATION - 1e-8) { this._action = null; this._fitCamera(); }
+    }
     if (this.mode === '3d' && this._rig && this._renderer) {
-      this._rig.update(dt, this._motion);
       this._pivot.rotation.y = this._facing * .38;
+      if (this._action) {
+        this._rig.laugh(this._action.time); this._pivot.updateMatrixWorld(true);
+        this._fitCamera(this._actionBox.copy(this._rig.bounds).applyMatrix4(this._rig.root.matrixWorld));
+      } else this._rig.update(dt, this._motion);
       this._renderer.render(this._scene, this._camera);
     } else if (this._image) {
       // Flat mode deliberately retains its original cutout. Tiny hops signal
       // movement without pretending the portrait has a 3D skeleton.
       const moving = this._motion === 'walk' || this._motion === 'run';
-      this._imageOffset = moving ? -Math.abs(Math.sin(this._time * (this._motion === 'run' ? 15 : 9))) * this._height * .025 : 0;
-      this._image.style.transform = `translateY(${this._imageOffset}px) scaleX(${this.id === 'xiaocao' ? 1 : this._facing})`;
+      this._imageOffset = moving && !this._action ? -Math.abs(Math.sin(this._time * (this._motion === 'run' ? 15 : 9))) * this._height * .025 : 0;
+      const width = this._width, height = this._height, facing = this.id === 'xiaocao' ? 1 : this._facing;
+      let angle = 0, sx = 1, sy = 1, centerY = height / 2 + this._imageOffset;
+      if (this._action) {
+        const pose = getLaughPose(this._action.time);
+        angle = pose.roll + pose.shake; sx = 1 + pose.squash * .7; sy = (1 - pose.squash) * Math.cos(pose.lean);
+        const extentX = Math.abs(Math.cos(angle)) * width * sx / 2 + Math.abs(Math.sin(angle)) * height * sy / 2;
+        const extentY = Math.abs(Math.sin(angle)) * width * sx / 2 + Math.abs(Math.cos(angle)) * height * sy / 2;
+        const fit = Math.min(1, width / (extentX * 2), height / (extentY * 2));
+        sx *= fit; sy *= fit; centerY = height - extentY * fit - pose.lift * height / 2;
+      }
+      this._imageMatrix = new DOMMatrix().translate(width / 2, centerY).rotate(angle * 180 / Math.PI).scale(facing * sx, sy).translate(-width / 2, -height / 2);
+      this._image.style.transformOrigin = '0 0'; this._image.style.transform = this._imageMatrix.toString();
     }
   }
 
@@ -184,21 +217,26 @@ export class PetRenderer {
     if (this._destroyed) return false;
     const element = this.mode === '3d' ? this._renderer?.domElement : this._image;
     if (!element) return false;
-    const rect = element.getBoundingClientRect();
-    if (clientX < rect.left || clientY < rect.top || clientX >= rect.right || clientY >= rect.bottom || !rect.width || !rect.height) return false;
     if (this.mode === '3d') {
+      const rect = element.getBoundingClientRect();
+      if (clientX < rect.left || clientY < rect.top || clientX >= rect.right || clientY >= rect.bottom || !rect.width || !rect.height) return false;
       const gl = this._renderer.getContext();
       const x = Math.floor((clientX - rect.left) / rect.width * gl.drawingBufferWidth);
       const y = gl.drawingBufferHeight - 1 - Math.floor((clientY - rect.top) / rect.height * gl.drawingBufferHeight);
       gl.readPixels(x, y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, this._pixel);
       return this._pixel[3] > 16;
     }
+    const rect = this.host.getBoundingClientRect();
+    if (!rect.width || !rect.height || !this._imageMatrix) return false;
+    const matrix = new DOMMatrix(this._image.style.transform), painted = element.getBoundingClientRect();
+    matrix.e = painted.left - rect.left - Math.min(0, matrix.a * rect.width, matrix.c * rect.height, matrix.a * rect.width + matrix.c * rect.height);
+    matrix.f = painted.top - rect.top - Math.min(0, matrix.b * rect.width, matrix.d * rect.height, matrix.b * rect.width + matrix.d * rect.height);
+    const point = new DOMPoint(clientX - rect.left, clientY - rect.top).matrixTransform(matrix.inverse());
     const image = this._image, scale = Math.min(rect.width / image.naturalWidth, rect.height / image.naturalHeight);
     const width = image.naturalWidth * scale, height = image.naturalHeight * scale;
-    let x = clientX - rect.left - (rect.width - width) / 2;
-    const y = clientY - rect.top - (rect.height - height) / 2;
+    const x = point.x - (rect.width - width) / 2;
+    const y = point.y - (rect.height - height) / 2;
     if (x < 0 || y < 0 || x >= width || y >= height) return false;
-    if (this._facing < 0 && this.id !== 'xiaocao') x = width - x - Number.EPSILON;
     const ix = Math.min(image.naturalWidth - 1, Math.floor(x / scale)), iy = Math.floor(y / scale);
     return this._imageAlpha[(iy * image.naturalWidth + ix) * 4 + 3] > 16;
   }

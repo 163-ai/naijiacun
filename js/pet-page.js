@@ -1,6 +1,6 @@
 // 奶家村 · 桌宠页面控制
 //
-// 小院预览、真实 3D 活动与浏览器扩展入口；聊天沿用共享接口。
+// 小院预览、真实 3D 活动与站内悬浮入口；聊天沿用共享接口。
 
 (function () {
   "use strict";
@@ -65,7 +65,7 @@
   pet.setDepth(false);
   var renderView = null;
   var wants3D = false;
-  var extensionState = null;
+  var sitePetState = window.NaijiacunSitePet.getState();
   var catalog = PEOPLE.map(function (p) {
     var model = window.N3D_MODELS && window.N3D_MODELS[p.id];
     return { id: p.id, name: p.name, image: p.petImage || p.image, model: model && model.file };
@@ -79,7 +79,7 @@
     depthBtn.title = available ? "切换平面与可活动的真实 3D" : "小草使用透明抠图形象";
     pet.el.dataset.renderMode = mode;
   }
-  var rendererReady = import("./pet-renderer.js?v=browser-pets-1").then(function (module) {
+  var rendererReady = import("./pet-renderer.js?v=site-pets-1").then(function (module) {
     pet.bodyEl.replaceChildren();
     renderView = new module.PetRenderer(pet.bodyEl, {
       catalog: catalog,
@@ -165,30 +165,33 @@
     pet.setSize(parseInt(sizeRange.value, 10));
   });
 
-  // ---------- 跨网页桌宠 ----------
+  // ---------- 免安装的奶家村全站桌宠 ----------
   function syncExtensionButton() {
-    var outside = !!(extensionState && extensionState.enabled && extensionState.id === pet.id);
+    var outside = !!(sitePetState && sitePetState.enabled && sitePetState.id === pet.id);
     pinBtn.textContent = outside ? "↩ 收回桌宠" : "🐾 变桌宠";
     pet.el.style.visibility = outside ? "hidden" : "";
   }
-  window.addEventListener("naijiacun-pet-state", function (event) {
-    extensionState = event.detail;
+  window.addEventListener("naijiacun-site-pet-state", function (event) {
+    sitePetState = event.detail;
     syncExtensionButton();
     var status = document.getElementById("extensionStatus");
-    if (status) status.textContent = "扩展已连接 · 换个普通网页也能继续陪伴。";
+    if (status) status.textContent = sitePetState.enabled ? "村民已来到页面上，逛奶家村时会继续陪伴。" : "无需安装，点「变桌宠」即可在奶家村内陪伴。";
   });
-  window.NaijiacunPetBridge.probe();
+  syncExtensionButton();
   setNote("先选一位村民。可拖动、聊天，或切到真实 3D 后跑一跑。");
   pinBtn.addEventListener("click", async function () {
     pinBtn.disabled = true;
     try {
-      var outside = extensionState && extensionState.enabled && extensionState.id === pet.id;
-      if (outside) await window.NaijiacunPetBridge.stop();
-      else await window.NaijiacunPetBridge.start({ id: pet.id, mode: renderView ? renderView.mode : "2d", size: pet.size });
-      setNote(outside ? "桌宠回到小院了。" : "已变成跨网页桌宠。拖动可移动，右键可切换村民或收回。");
+      var outside = sitePetState && sitePetState.enabled && sitePetState.id === pet.id;
+      if (outside) await window.NaijiacunSitePet.stop();
+      else await window.NaijiacunSitePet.start({ id: pet.id, mode: renderView ? renderView.mode : "2d", size: pet.size });
+      setNote(outside ? "桌宠回到小院了。" : "村民已来到页面上。拖动可移动，点它上方的「⋯」切换或收回。");
     } catch (error) { setNote(error.message, "warn"); }
     finally { pinBtn.disabled = false; syncExtensionButton(); }
   });
+  if (new URLSearchParams(location.search).get("pet") === "1" && !sitePetState.enabled) {
+    rendererReady.then(function (view) { if (view) pinBtn.click(); });
+  }
   window.addEventListener("pagehide", function (event) { if (!event.persisted) pet.destroy(); });
 
   // ---------- 和桌宠聊天 ----------

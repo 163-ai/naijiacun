@@ -1,0 +1,114 @@
+:host {
+  color-scheme: light;
+  font-family: "Microsoft YaHei UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  color: #493d30;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; }
+button, select, input { font: inherit; }
+button, select, input[type="range"], input[type="checkbox"] { cursor: pointer; }
+button { -webkit-tap-highlight-color: transparent; }
+:is(button, select, input):focus-visible { outline: 3px solid #b77b35; outline-offset: 3px; }
+button:disabled { cursor: not-allowed; opacity: .48; }
+
+.shell {
+  position: fixed;
+  z-index: 2147483000;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  isolation: isolate;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+.visual { position: relative; pointer-events: none; line-height: 0; }
+.visual canvas, .visual img { display: block; pointer-events: none; user-select: none; -webkit-user-select: none; }
+
+.tools {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -34px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 29px;
+  padding: 2px 3px 2px 9px;
+  border: 1px solid #dcc6a7;
+  border-radius: 999px;
+  background: #fff9eeed;
+  box-shadow: 0 2px 7px #6e48231a, inset 0 1px 0 #fffdf7;
+  pointer-events: auto;
+  line-height: 1.3;
+}
+.pet-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: #74442d; }
+.tools button, .panel header button {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 26px;
+  height: 25px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #7e4a34;
+  font-size: 18px;
+  line-height: 1;
+}
+.tools button:hover, .panel header button:hover { background: #f1dfc8; }
+
+.panel {
+  position: absolute;
+  left: var(--panel-left, 0px);
+  top: var(--panel-top, 34px);
+  width: 240px;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100vh - 24px);
+  max-height: calc(100dvh - 24px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 16px;
+  border: 1px solid #d5b991;
+  border-top: 3px solid #8c432f;
+  border-radius: 15px;
+  background: linear-gradient(145deg, #fffdf6, #fbf0dd);
+  box-shadow: 0 9px 28px #4e35222b, inset 0 0 0 3px #fffaf1;
+  pointer-events: auto;
+  touch-action: pan-y;
+}
+.panel header { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: -2px 0 12px; }
+.panel header strong { font-size: 16px; font-weight: 750; color: #613a27; }
+.panel label { display: block; margin: 11px 0 5px; font-size: 12px; color: #6d5a44; }
+.panel select { display: block; width: 100%; min-height: 36px; padding: 6px 9px; border: 1px solid #ddc7a6; border-radius: 8px; background: #fffdf7; color: #493d30; }
+.panel .row { display: flex; align-items: center; gap: 6px; margin-top: 9px; }
+.panel button { min-height: 34px; padding: 6px 10px; border: 1px solid #d9c09c; border-radius: 8px; background: #fffaf0; color: #75432d; line-height: 1.4; touch-action: manipulation; }
+.panel .row button { flex: 1; min-width: 0; }
+.panel button:hover:not(:disabled) { background: #f3e3cc; border-color: #b18758; }
+.panel button[aria-pressed="true"] { border-color: #974d35; background: #f0ddc7; color: #803b29; }
+.panel input[type="range"] { display: block; width: 100%; margin: 6px 0 0; accent-color: #8c432f; touch-action: pan-x; }
+.panel input[type="checkbox"] { width: 15px; height: 15px; margin: 0 5px 0 0; vertical-align: -3px; accent-color: #8c432f; }
+.panel .check { display: flex; align-items: center; gap: 4px; }
+.panel > [data-action="return"], .panel > [data-action="close"] { display: block; width: 100%; margin-top: 8px; }
+.panel > [data-action="close"] { border-color: #8c432f; background: #8c432f; color: #fff8e9; }
+.panel > [data-action="close"]:hover:not(:disabled) { background: #733424; border-color: #733424; }
+.panel header button { width: 26px; min-height: 25px; padding: 0; border: 0; background: transparent; }
+.panel p { margin: 10px 0 0; overflow-wrap: anywhere; }
+.notice { font-size: 11px; line-height: 1.65; color: #826a4f; }
+.notice:empty { display: none; }
+.notice.warn { color: #94601e; }
+
+@media (max-width: 480px) {
+  .panel { width: 232px; padding: 14px; }
+  .tools { min-height: 30px; padding-left: 7px; }
+  .tools button { width: 27px; height: 26px; }
+  .panel button, .panel select { min-height: 38px; }
+  .panel header button { min-height: 27px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; }
+}

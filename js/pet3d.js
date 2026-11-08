@@ -2,6 +2,7 @@
 import * as T from "three";
 import { GLTFLoader } from "../vendor/three/GLTFLoader.js";
 import { MeshoptDecoder } from "../vendor/meshopt/meshopt_decoder.module.js";
+import { getLaughPose } from "./pet-laugh.js?v=site-pets-1";
 
 (function () {
   "use strict";
@@ -456,43 +457,10 @@ import { MeshoptDecoder } from "../vendor/meshopt/meshopt_decoder.module.js";
   // 大笑：照参考视频的演法 —— 站着笑到抖 → 越笑越后仰 → 笑岔气往后倒下 →
   // 四脚朝天左右滚 → 缓过来自己爬回站姿。
   // 村民模型都是单网格、没有骨骼，所以整段用整体旋转 + 按身高补偿落地高度来演。
-  function seg(t, a, b) { return Math.min(1, Math.max(0, (t - a) / (b - a))); }
-  function easeOut(x) { var p = 1 - Math.min(1, Math.max(0, x)); return 1 - p * p * p; }
-  function easeIn(x) { var p = Math.min(1, Math.max(0, x)); return p * p; }
-
   function applyLaugh(t) {
     var H = rig.h, D = rig.d;
-    var lean = 0, roll = 0, shake = 0, squash = 0, lift = 0, turn = 0;
-
-    if (t < 1.7) {
-      // ① 站着笑：肚子一鼓一瘪，笑得直抖，越笑越往后仰
-      lean = 0.26 * easeOut(seg(t, 0, 0.6)) + 0.1 * easeOut(seg(t, 0.6, 1.7));
-      shake = (0.016 + 0.06 * seg(t, 0.4, 1.0)) * Math.sin(t * Math.PI * 2 * 5.6);
-      var beat = Math.max(0, Math.sin(t * Math.PI * 2 * 2.8));
-      squash = 0.06 * beat;
-      lift = 0.045 * beat;
-    } else if (t < 2.3) {
-      // ② 笑到站不住，往侧后方一歪，越倒越快
-      var p = easeIn(seg(t, 1.7, 2.25));
-      lean = 0.36 + 0.14 * p;
-      roll = 1.45 * p;
-      shake = 0.025 * (1 - p) * Math.sin(t * Math.PI * 2 * 6.4);
-    } else if (t < 3.6) {
-      // ③ 侧躺在地上还在笑，滚来滚去、小肚子一抽一抽
-      lean = 0.5 + 0.05 * Math.sin((t - 2.3) * Math.PI * 2 * 1.4);
-      roll = 1.45 + 0.17 * Math.sin((t - 2.3) * Math.PI * 2 * 0.8);
-      turn = 0.14 * Math.sin((t - 2.3) * Math.PI * 2 * 0.55);
-      lift = 0.022 * Math.max(0, Math.sin((t - 2.3) * Math.PI * 2 * 3));
-    } else if (t < 4.4) {
-      // ④ 缓过来，撑着爬起来（带一点回弹）
-      var q = easeOut(seg(t, 3.6, 4.3));
-      lean = 0.5 * (1 - q);
-      roll = 1.45 * (1 - q);
-      turn = 0.1 * (1 - q);
-    } else {
-      // ⑤ 站稳，收个尾声
-      lean = 0.04 * Math.max(0, Math.sin((t - 4.4) * Math.PI * 2 * 4)) * (1 - seg(t, 4.4, 4.7));
-    }
+    var pose = getLaughPose(t);
+    var lean = pose.lean, roll = pose.roll, shake = pose.shake, squash = pose.squash, lift = pose.lift, turn = pose.turn;
 
     var ang = Math.max(0, lean);
     rig.centered.rotation.x = rig.baseRot.x - ang + shake;
@@ -659,7 +627,7 @@ import { MeshoptDecoder } from "../vendor/meshopt/meshopt_decoder.module.js";
     refreshSoundBtn();
   }
 
-  // ---------- 浏览器扩展桌宠 ----------
+  // ---------- 奶家村站内桌宠 ----------
   function syncPetButton() {
     document.getElementById("pinBtn").textContent = browserPetState && browserPetState.enabled && browserPetState.id === currentId ? "↩ 收回桌宠" : "🐾 变桌宠";
   }
@@ -668,9 +636,9 @@ import { MeshoptDecoder } from "../vendor/meshopt/meshopt_decoder.module.js";
     button.disabled = true;
     try {
       var outside = browserPetState && browserPetState.enabled && browserPetState.id === currentId;
-      if (outside) await window.NaijiacunPetBridge.stop();
-      else await window.NaijiacunPetBridge.start({ id: currentId, mode: "3d", size: 200 });
-      setStatus(outside ? "桌宠已收回。" : "已开启跨网页桌宠，右键角色可切换或收回。");
+      if (outside) await window.NaijiacunSitePet.stop();
+      else await window.NaijiacunSitePet.start({ id: currentId, mode: "3d", size: 200 });
+      setStatus(outside ? "桌宠已收回。" : "已请出站内桌宠，点角色上方「⋯」可切换或收回。");
     } catch (e) { setStatus(e.message); }
     finally { button.disabled = false; syncPetButton(); }
   }
@@ -713,8 +681,8 @@ import { MeshoptDecoder } from "../vendor/meshopt/meshopt_decoder.module.js";
   };
   document.getElementById("resetBtn").onclick = resetView;
   document.getElementById("pinBtn").onclick = togglePin;
-  window.addEventListener("naijiacun-pet-state", function (event) { browserPetState = event.detail; syncPetButton(); });
-  window.NaijiacunPetBridge.probe();
+  window.addEventListener("naijiacun-site-pet-state", function (event) { browserPetState = event.detail; syncPetButton(); });
+  browserPetState = window.NaijiacunSitePet.getState();
   window.addEventListener("pagehide", function (e) {
     ++loadVersion;
     stopAction();

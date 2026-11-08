@@ -1,4 +1,5 @@
 import * as T from '../vendor/three/three.module.min.js';
+import { getLaughPose } from './pet-laugh.js?v=site-pets-1';
 
 const smooth = (a, b, x) => T.MathUtils.smoothstep(x, a, b);
 // Measurements are fractions of each model's standing height. The waving hand,
@@ -175,5 +176,18 @@ export function createPetMotion(source, id) {
     }
     root.updateMatrixWorld(true);
   }
-  return { root, bones: named, skeleton, meshes, bounds, kind, reset, update, get time() { return time; } };
+  const halfSize = bounds.getSize(new T.Vector3()).multiplyScalar(.5), bodyCenter = bounds.getCenter(new T.Vector3());
+  const rotation = new T.Matrix4(), transformedCenter = new T.Vector3();
+  function laugh(t) {
+    reset();
+    const pose = getLaughPose(t), angle = Math.max(0, pose.lean);
+    root.rotation.set(-angle + pose.shake, pose.turn, pose.roll);
+    root.scale.set(1 + pose.squash * .7, 1 - pose.squash, 1 + pose.squash * .7);
+    const e = rotation.makeRotationFromEuler(root.rotation).elements;
+    const extent = Math.abs(e[1]) * halfSize.x * root.scale.x + Math.abs(e[5]) * halfSize.y * root.scale.y + Math.abs(e[9]) * halfSize.z * root.scale.z;
+    transformedCenter.copy(bodyCenter).multiply(root.scale).applyMatrix4(rotation);
+    root.position.set(bodyCenter.x, bounds.min.y + extent + pose.lift, bodyCenter.z - halfSize.y * Math.sin(angle) * .55).sub(transformedCenter);
+    root.updateMatrixWorld(true);
+  }
+  return { root, bones: named, skeleton, meshes, bounds, kind, reset, update, laugh, get time() { return time; } };
 }

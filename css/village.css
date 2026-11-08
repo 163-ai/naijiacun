@@ -50,6 +50,8 @@ button:disabled { cursor: not-allowed; }
 .hero-actions .btn { padding: 12px 24px; font-size: 17px; font-weight: 800; min-height: 51px; border-radius: 15px; }
 .hero-actions .primary { min-width: 228px; display: inline-flex; justify-content: space-between; gap: 25px; }
 .hero-actions .ghost { background: #fff7e7a8; border: 1.5px solid #91482d; color: #763724; }
+.home-page .hero-pet-start { margin-top: 13px; padding: 7px 13px; border: 1px solid #b98159; border-radius: 99px; background: #fff8e9dc; color: #87432d; font: inherit; font-size: 12px; font-weight: 700; line-height: 1.4; cursor: pointer; }
+.home-page .hero-pet-start:hover { background: #f6e4c8; }
 .btn.primary { background: linear-gradient(#a74f30, #873c28); border-color: #8a4029; box-shadow: inset 0 1px 0 #eab88099, 0 3px 4px #7b43221c; }
 .home-page .stats { justify-content: flex-start; gap: 20px; margin: 24px 0 0; }
 .home-page .stat { display: flex; gap: 5px; align-items: baseline; min-width: 0; }
@@ -167,7 +169,8 @@ button:disabled { cursor: not-allowed; }
   .hero-actions { position: absolute; top: 400px; left: 0; right: 0; justify-content: center; }
   .hero-actions .primary { width: 100%; min-height: 49px; font-size: 18px; padding: 11px 23px; }
   .hero-actions .ghost { display: none; }
-  .home-page .stats { position: absolute; top: 462px; left: 0; right: 0; justify-content: center; gap: 16px; margin: 0; }
+  .home-page .stats { position: absolute; top: 462px; left: 0; right: 116px; justify-content: center; gap: 9px; margin: 0; }
+  .home-page .hero-pet-start { position: absolute; top: 456px; right: 0; margin: 0; padding: 6px 8px; font-size: 10px; }
   .home-page .stat b { font-size: 14px; }
   .home-page .stat span { font-size: 10px; }
   .hero-scene { top: 131px; height: 266px; }

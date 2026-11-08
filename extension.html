@@ -3,35 +3,71 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>浏览器桌宠 · 安装与使用 · 奶家村</title>
+<meta name="description" content="无需安装，选一位奶家村村民悬浮陪伴。逛图鉴、拆盲盒、聊天和玩小游戏时，它都能跟着你。">
+<title>全站村民桌宠 · 奶家村</title>
 <link rel="stylesheet" href="css/style.css?v=village-1">
-<link rel="stylesheet" href="css/pet.css?v=browser-pets-1">
+<link rel="stylesheet" href="css/pet.css?v=site-pets-1">
 <link rel="stylesheet" href="css/village.css?v=village-1">
+<script type="importmap">{"imports":{"three":"./vendor/three/three.module.min.js"}}</script>
+<style>
+  .site-pet-intro { display: grid; grid-template-columns: 1.1fr 1fr; align-items: center; gap: 26px; }
+  .site-pet-intro h2 { margin: 0 0 13px; color: #603b27; font: 800 clamp(26px,3vw,38px)/1.45 "KaiTi","STKaiti",serif; }
+  .site-pet-intro p { color: var(--ink-2); font-size: 13px; }
+  .site-pet-intro .pet-btn { margin: 8px 0 0; font-size: 14px; padding: 10px 19px; }
+  .site-pet-preview { position: relative; display: flex; align-items: flex-end; justify-content: center; min-width: 0; padding: 20px 0; border-bottom: 1px solid #dec69e; }
+  .site-pet-preview::after { content: ""; position: absolute; left: 8%; right: 8%; bottom: 15px; height: 18px; border-radius: 50%; background: #9d79451c; }
+  .site-pet-preview img { position: relative; z-index: 1; width: 37%; height: 180px; object-fit: contain; }
+  .site-pet-preview .companion { width: 33%; height: 154px; margin-left: -6%; }
+  .site-pet-facts { margin: 18px 0 23px; padding-bottom: 20px; border-bottom: 1px solid var(--line); color: #85623e; font-size: 12px; }
+  .site-pet-steps { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 18px; margin: 0; padding: 0 !important; list-style: none; counter-reset: pet-step; }
+  .site-pet-steps li { position: relative; padding-left: 30px; counter-increment: pet-step; }
+  .site-pet-steps li::before { content: counter(pet-step); position: absolute; left: 0; top: 2px; width: 22px; height: 22px; border: 1px solid #cba776; border-radius: 50%; color: #8b452f; font-size: 12px; font-weight: 700; text-align: center; line-height: 21px; }
+  .site-pet-steps strong { color: #65422e; font-size: 14px; }
+  .site-pet-steps p { margin: 7px 0 0; color: var(--ink-2); font-size: 12px; }
+  .site-pet-scope { margin: 25px 0 0; padding: 12px 15px; border: 1px solid #e3cfab; border-radius: 9px; background: #f5e9d3; color: #786043; font-size: 12px; }
+  .site-pet-scope strong { color: #86442e; }
+  @media (max-width: 600px) {
+    .site-pet-intro { grid-template-columns: 1fr; gap: 6px; }
+    .site-pet-intro h2 { font-size: 30px; }
+    .site-pet-preview { padding-block: 6px 16px; }
+    .site-pet-preview img { height: 160px; }
+    .site-pet-preview .companion { height: 134px; }
+    .site-pet-steps { grid-template-columns: 1fr; gap: 18px; }
+    .site-pet-facts { font-size: 11px; }
+  }
+</style>
 </head>
 <body class="village-theme pet-page">
 <main class="pet-wrap">
-  <header class="pet-head"><div><span class="pet-kicker">把村民带到别的网页</span><h1>浏览器村民桌宠</h1><p>安装一次，之后在奶家村点「变桌宠」就能呼出。</p></div><a class="pet-back" href="pet.html">← 回桌宠小院</a></header>
+  <header class="pet-head">
+    <div><span class="pet-kicker">不装扩展也能玩</span><h1>全站村民桌宠</h1><p>点一下，让村民陪你逛奶家村。</p></div>
+    <a class="pet-back" href="pet.html">← 回桌宠小院</a>
+  </header>
   <article class="pet-extension-guide">
-    <p class="guide-status">开发预览版 · 当前尚未上架扩展商店，先提供本机可加载版本。分享链接可以体验网页内桌宠；跨网页陪伴需要首次安装扩展。</p>
-    <h2>本机首次启用</h2>
-    <ol>
-      <li>打开 Edge 的扩展管理页 <code>edge://extensions</code>，或 Chrome 的 <code>chrome://extensions</code>。</li>
-      <li>开启「开发人员模式」，选择「加载解压缩的扩展」，选中已构建的 <code>browser-extension/dist</code> 文件夹。本次本机版本已准备好；从源码构建可参考<a href="https://github.com/163-ai/naijiacun/tree/main/browser-extension">项目说明</a>。</li>
-      <li>确认扩展对普通网站的访问权限，然后刷新奶家村网页。</li>
+    <section class="site-pet-intro" aria-labelledby="sitePetIntroTitle">
+      <div>
+        <h2 id="sitePetIntroTitle">把一位村民，<br>请到页面上。</h2>
+        <p>不用下载，不用安装。选一位喜欢的村民，马上一起逛村。</p>
+        <a class="pet-btn primary" href="pet.html?pet=1">立即请出村民 →</a>
+      </div>
+      <div class="site-pet-preview" aria-hidden="true">
+        <img src="assets/characters/3d/nailong-waving-pet.webp" alt="" width="180" height="180" decoding="async">
+        <img src="assets/characters/3d/naiwa-pet.webp" alt="" width="180" height="180" decoding="async">
+        <img class="companion" src="assets/characters/xiaocao-cutout.webp" alt="" width="154" height="154" decoding="async">
+      </div>
+    </section>
+    <p class="site-pet-facts">10 位村民可选 · 9 款真实 3D · 小草使用透明 2D 形象</p>
+    <ol class="site-pet-steps">
+      <li><strong>选一位伙伴</strong><p>在桌宠小院挑村民，平面和真实 3D 随你切换。</p></li>
+      <li><strong>点「变桌宠」</strong><p>村民会悬浮在页面上。拖动身体安放，点上方「⋯」切换、跑动或收回。</p></li>
+      <li><strong>继续逛村</strong><p>图鉴、盲盒、聊天、3D 展台和小游戏，翻页也会继续陪伴。</p></li>
     </ol>
-    <p>扩展需要在你访问的普通网页里显示角色。它只保存村民、模式、大小和位置等桌宠设置，不收集网页内容或浏览记录。</p>
-    <h2>让村民陪你逛网页</h2>
-    <ol>
-      <li>在桌宠小院选择村民，选择「平面」或「真 3D」，再点「变桌宠」。</li>
-      <li>换到其他普通网页，桌宠会继续出现。按住角色可拖动，右键打开角色与模式菜单。</li>
-      <li>用扩展菜单暂停活动或收回桌宠；也可以回奶家村点「收回桌宠」。</li>
-    </ol>
-    <p>所有十位村民都能选择。九位使用真实 3D 形象，小草保留人物和牌子的透明 2D 形象；奶蛋滚动、袋鼠蹦跳，其他村民按各自造型活动。</p>
-    <p>浏览器内部设置页、扩展商店等受限页面不显示桌宠；离开浏览器切到其他应用时也不会显示。</p>
-    <p>在某些内嵌视频或嵌入页面区域，角色可能无法直接拖动或右键；可通过浏览器工具栏的扩展菜单切换或收回。</p>
-    <a class="pet-btn primary" href="pet.html">去选一位村民 →</a>
+    <p class="site-pet-scope"><strong>陪伴范围是奶家村网站内。</strong>离开奶家村网站后不会显示，也不会悬浮到其他应用上。手机也可以直接打开网页体验。</p>
   </article>
 </main>
+<script src="js/data.js?v=site-pets-1"></script>
+<script src="js/3d-models.js?v=site-pets-1"></script>
+<script src="js/site-pet.js?v=site-pets-1"></script>
 <script src="js/village.js?v=village-1"></script>
 </body>
 </html>

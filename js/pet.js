@@ -239,6 +239,7 @@
       var quick = Date.now() - p.at < 320;
       if (!p.moved && quick) {
         self.talk();
+        if (self.renderView && self.renderView.playAction) self.renderView.playAction("laugh");
       } else {
         self._setState("idle");
         self._schedule();
