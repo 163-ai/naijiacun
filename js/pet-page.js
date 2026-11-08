@@ -174,8 +174,6 @@
   window.addEventListener("naijiacun-site-pet-state", function (event) {
     sitePetState = event.detail;
     syncExtensionButton();
-    var status = document.getElementById("extensionStatus");
-    if (status) status.textContent = sitePetState.enabled ? "村民已来到页面上，逛奶家村时会继续陪伴。" : "无需安装，点「变桌宠」即可在奶家村内陪伴。";
   });
   syncExtensionButton();
   setNote("先选一位村民。可拖动、聊天，或切到真实 3D 后跑一跑。");

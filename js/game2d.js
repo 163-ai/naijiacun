@@ -33,12 +33,12 @@ const CAST = {
   },
   naiwa: {
     name: "奶蛙", h: 1.62, model: true,
-    img: "assets/characters/naiwa.png",
+    img: "assets/characters/naiwa.webp",
     desc: "梨形身体、绿色虹膜大眼、张嘴大笑。出生方式是一次 AI 翻车，如今靠“齁齁齁”统治评论区。"
   },
   niulai: {
     name: "牛来", h: 1.55, model: true, node: "NIU_LAI",
-    img: "assets/characters/niulai.png",
+    img: "assets/characters/niulai.webp",
     desc: "建模粗糙的黄色小牛，五年手搓，一句“妈妈，牛来！”被股民当成涨停许愿池。"
   },
   baobaolong: {
@@ -48,7 +48,7 @@ const CAST = {
   },
   capybara: {
     name: "卡皮巴拉", h: 1.45, model: true,
-    img: "assets/characters/capybara.png",
+    img: "assets/characters/capybara.webp",
     desc: "水豚，方头小圆耳，永远半眯眼。全网情绪稳定代言人。"
   },
   xiaoqi: {
