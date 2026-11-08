@@ -4,6 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>3D 形象展台 · 奶家村</title>
+  <link rel="modulepreload" href="vendor/three/three.module.min.js">
+  <link rel="modulepreload" href="vendor/three/GLTFLoader.js">
+  <link rel="modulepreload" href="vendor/meshopt/meshopt_decoder.module.js">
+  <link rel="preload" as="fetch" href="assets/models/nailong-waving.glb?v=waving-1">
+  <link rel="preload" as="image" href="assets/characters/3d/nailong-waving-pet.webp?v=waving-1">
   <link rel="stylesheet" href="css/style.css?v=village-1">
   <link rel="stylesheet" href="css/pet.css?v=browser-pets-1">
   <link rel="stylesheet" href="css/pet3d.css?v=loading-1">
@@ -105,7 +110,7 @@
   <script src="js/data.js?v=browser-pets-1"></script>
   <script src="js/3d-models.js?v=waving-1"></script>
   <script src="js/site-pet.js?v=site-pets-1"></script>
-  <script type="module" src="js/pet3d.js?v=site-pets-1"></script>
+  <script type="module" src="js/pet3d.js?v=site-pets-2"></script>
   <script src="js/village.js?v=village-1"></script>
   <script>
     window.addEventListener("load", function () {

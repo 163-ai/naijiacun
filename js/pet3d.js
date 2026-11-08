@@ -297,6 +297,8 @@ import { getLaughPose } from "./pet-laugh.js?v=site-pets-1";
       loading.hidden = true;
       loading.classList.add("hidden");
       setStatus(name + " · 完整模型已加载 · 拖动旋转查看");
+      prefetched.add(id);
+      prefetchRest();
     } catch (e) {
       if (version !== loadVersion || controller.signal.aborted || e.name === "AbortError") return;
       showError(name + "模型加载失败，可以重试或选择其他角色。");
@@ -305,6 +307,27 @@ import { getLaughPose } from "./pet-laugh.js?v=site-pets-1";
     }
   }
   retry.onclick = function () { setCharacter(currentId); };
+
+  // ---------- 后台预取：首个模型展示完后，低优先级把其余村民模型下载进 HTTP 缓存，
+  // 之后点谁都是秒开。省流量模式（Save-Data）下不预取。 ----------
+  var prefetched = new Set(), prefetchTimer = 0;
+  function prefetchRest() {
+    if (navigator.connection && navigator.connection.saveData) return;
+    clearTimeout(prefetchTimer);
+    prefetchTimer = setTimeout(function step() {
+      if (pendingLoad) { prefetchTimer = setTimeout(step, 1500); return; }
+      var nextId = null;
+      for (var i = 0; i < LIST.length; i++) {
+        if (PACK[LIST[i].id] && !prefetched.has(LIST[i].id)) { nextId = LIST[i].id; break; }
+      }
+      if (!nextId) return;
+      prefetched.add(nextId);
+      fetch(new URL(PACK[nextId].file, window.location.href), { priority: "low" })
+        .catch(function () { prefetched.delete(nextId); })
+        .then(step);
+    }, 2500);
+  }
+
 
   // ---------- 旋转、缩放与方向 ----------
   function resize() {
