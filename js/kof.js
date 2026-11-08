@@ -235,11 +235,20 @@ function buildStage() {
     rg.addColorStop(1, "rgba(255,170,90,0)");
     g.fillStyle = rg; g.fillRect(0, 0, w, w);
   });
+  ringTex = tex(256, 256, (g, w) => {
+    g.strokeStyle = "rgba(255,238,180,.95)";
+    g.lineWidth = 13;
+    g.beginPath(); g.arc(w / 2, w / 2, w * .36, 0, 7); g.stroke();
+    g.strokeStyle = "rgba(255,180,90,.5)";
+    g.lineWidth = 5;
+    g.beginPath(); g.arc(w / 2, w / 2, w * .43, 0, 7); g.stroke();
+  });
 
   ready = true;
 }
 
 let sparkTex = null;
+let ringTex = null;
 let bgMesh = null;
 
 /* =========================================================
@@ -254,7 +263,7 @@ function makeFighter(key, root, o) {
     hp: o.hp, maxHp: o.maxHp, hpLag: o.hp,
     lv: o.lv, atk: o.atk || 1,
     state: "idle", st: 0,
-    act: null, actT: 0, hitDone: false,
+    act: null, actT: 0, hitDone: false, impactDone: false,
     hitstun: 0, blocking: false, onGround: true,
     combo: 0, comboT: 0,
     meter: 0, ko: false,
@@ -286,6 +295,11 @@ Fight.start = async function (opts) {
   if (E && E.root && E.root.parent) E.root.parent.remove(E.root);
   for (const p of parts) { if (p.s.parent) p.s.parent.remove(p.s); p.s.material.dispose(); }
   parts.length = 0;
+  for (const p of fx) {
+    if (p.mesh) { p.mesh.parent?.remove(p.mesh); p.mesh.geometry.dispose(); p.mesh.material.dispose(); }
+    else { if (p.s.parent) p.s.parent.remove(p.s); p.s.material.dispose(); }
+  }
+  fx.length = 0;
   P = E = null;
   parts.length = 0;
   timer = ROUND_TIME;
@@ -430,10 +444,97 @@ function startMove(f, mv) {
   f.act = mv;
   f.actT = 0;
   f.hitDone = false;
+  f.impactDone = false;
   f.state = "attack";
   f.vx = 0;
-  sfx(mv.id === "special" ? "special" : "swing");
+  if (mv.id === "special") {
+    sfx("ultCharge");
+    startChargeFx(f, mv.startup);
+  } else {
+    sfx(mv.id === "heavy" ? "swingHeavy" : "swing");
+  }
   return true;
+}
+
+/* =========================================================
+   大招特效：蓄力光晕 → 砸地冲击波
+   ========================================================= */
+const fx = [];                   // { s/mesh, t, life, kind, follow }
+function addFx(o) { fx.push(o); }
+function stepFx(dt) {
+  for (let i = fx.length - 1; i >= 0; i--) {
+    const p = fx[i];
+    p.t += dt;
+    const k = p.t / p.life;
+    if (k >= 1) {
+      if (p.mesh) {
+        p.mesh.parent?.remove(p.mesh);
+        p.mesh.geometry.dispose(); p.mesh.material.dispose();
+      } else {
+        if (p.s.parent) p.s.parent.remove(p.s);
+        p.s.material.dispose();
+      }
+      fx.splice(i, 1);
+      continue;
+    }
+    if (p.kind === "charge") {
+      // 蓄力：光晕跟着人，越攒越亮越大，还往上飘粒子
+      if (p.follow) p.s.position.set(p.follow.x + p.dx, p.follow.y + p.dy, .5);
+      const pulse = 1 + Math.sin(p.t * 26) * .12;
+      p.s.scale.setScalar(p.r * (0.6 + k * .9) * pulse);
+      p.s.material.opacity = .35 + k * .55;
+      if (Math.random() < .5) {
+        const sp = new T.Sprite(p.s.material.clone());
+        sp.position.set(p.s.position.x + rnd(-.4, .4), p.s.position.y + rnd(-.6, .2), .45);
+        sp.scale.setScalar(.16);
+        scene.add(sp);
+        addFx({ s: sp, t: 0, life: .4, kind: "rise", vy: 2.4 });
+      }
+    } else if (p.kind === "rise") {
+      p.s.position.y += p.vy * dt;
+      p.s.material.opacity = (1 - k) * .8;
+    } else if (p.kind === "ring") {
+      // 冲击波：圆环从落点扩散
+      p.mesh.scale.setScalar(.3 + k * p.r * 2.2);
+      p.mesh.material.opacity = (1 - k) * .9;
+      p.mesh.position.x = p.x;
+    } else if (p.kind === "flash") {
+      p.s.material.opacity = (1 - k);
+      p.s.scale.setScalar(p.r * (1 + k * 1.6));
+    }
+  }
+}
+
+function startChargeFx(f, dur) {
+  const m = new T.SpriteMaterial({
+    map: sparkTex, transparent: true, depthWrite: false,
+    blending: T.AdditiveBlending, opacity: .4, color: 0x9fd8ff
+  });
+  const s = new T.Sprite(m);
+  s.scale.setScalar(.8);
+  scene.add(s);
+  addFx({ s, t: 0, life: dur + .05, kind: "charge", follow: f, dx: 0, dy: .95, r: 1.5 });
+}
+
+function ultImpact(x, y) {
+  // 冲击波圆环
+  const ring = new T.Mesh(
+    new T.PlaneGeometry(1, 1),
+    new T.MeshBasicMaterial({ map: ringTex, transparent: true, depthWrite: false, blending: T.AdditiveBlending, opacity: .9 })
+  );
+  ring.position.set(x, y - .75, .55);
+  scene.add(ring);
+  addFx({ mesh: ring, s: ring.material, t: 0, life: .45, kind: "ring", x, r: 2.6 });
+  // 白闪
+  const m = new T.SpriteMaterial({
+    map: sparkTex, transparent: true, depthWrite: false,
+    blending: T.AdditiveBlending, opacity: .95, color: 0xcfe9ff
+  });
+  const s = new T.Sprite(m);
+  s.position.set(x, y, .6);
+  s.scale.setScalar(1.4);
+  scene.add(s);
+  addFx({ s, t: 0, life: .3, kind: "flash", r: 1.4 });
 }
 
 function jump(f) {
@@ -458,6 +559,13 @@ function stepFighter(f, dt) {
     f.actT += dt;
     const mv = f.act;
     const total = mv.startup + mv.active + mv.recovery;
+    // 大招砸到地上的那一下：不管打没打中都要有冲击波，气势得出来
+    if (mv.id === "special" && !f.impactDone && f.actT >= mv.startup + .02) {
+      f.impactDone = true;
+      ultImpact(f.x + f.facing * .85, .75);
+      sfx("ultSlam");
+      shake = Math.max(shake, .5);
+    }
     if (f.actT >= total) { f.act = null; f.state = f.onGround ? "idle" : "jump"; }
   }
 
@@ -503,10 +611,18 @@ function applyHit(a, d, mv) {
   if (!blocked) {
     a.combo = a.comboT > 0 ? a.combo + 1 : 1;
     a.comboT = 1.05;
-    hitStop = Math.max(hitStop, mv.id === "special" ? .09 : .055);
+    const big = mv.id === "heavy" || mv.id === "special";
+    hitStop = Math.max(hitStop, mv.id === "special" ? .11 : big ? .075 : .05);
     shake = Math.max(shake, mv.shake);
     spark((a.x + d.x) / 2 + dir * .2, 1.0 + (d.y || 0), mv.sparkR);
-    sfx("hit");
+    if (big) {
+      // 重击/大招：火星更密，大招再加一层白闪
+      for (let i = 0; i < (mv.id === "special" ? 10 : 5); i++) {
+        spark((a.x + d.x) / 2 + rnd(-.5, .5), 1.0 + rnd(-.4, .6), mv.sparkR * .5);
+      }
+      if (mv.id === "special") ultImpact((a.x + d.x) / 2, 1.0);
+    }
+    sfx(mv.id === "special" ? "ultHit" : big ? "hitHeavy" : "hit");
   } else {
     a.combo = 0; a.comboT = 0;
     hitStop = Math.max(hitStop, .035);
@@ -804,42 +920,144 @@ function updateCamera(dt) {
 
 /* =========================================================
    姿态
+   有骨骼的角色（绝大多数）：四肢由 creature.js 的关节驱动，
+   轻击=刺拳、重击=拉臂蓄力再抡、大招=双臂举过头顶蓄力后砸下；
+   没骨骼的（几何拼的角色）：退回整体倾斜的老演法。
    ========================================================= */
+const seg = (t, a, b) => clamp((t - a) / (b - a || 1e-6), 0, 1);
+const smooth = x => x * x * (3 - 2 * x);
+
+// 有骨骼时的攻击关节目标：返回 name -> [x,y,z]（弧度）
+function attackTargets(mv, t) {
+  const su = mv.startup, ac = mv.active, rc = mv.recovery;
+  if (mv.id === "light") {
+    // 刺拳：出手那一下又快又直，收手干脆
+    const ext = t < su ? smooth(seg(t, su * .4, su))
+      : t < su + ac ? 1
+      : 1 - smooth(seg(t, su + ac, su + ac + rc * .7));
+    return {
+      armRight: [-1.62 * ext + -.75 * (1 - ext), 0, -.55 + .45 * ext],
+      body: [.04 * ext, -.3 * ext, 0],
+      head: [-.06 + .12 * ext, 0, 0]
+    };
+  }
+  if (mv.id === "heavy") {
+    // 重拳：整个起手都在拉臂后仰蓄力，判定帧抡出去，收招慢慢喘
+    if (t < su) {
+      const w = smooth(seg(t, 0, su));
+      return {
+        armRight: [-.75 + 1.45 * w, 0, -.55 - .1 * w],
+        armLeft: [-.9 - .3 * w, 0, .5 + .25 * w],
+        body: [-.16 * w, .3 * w, 0],
+        head: [-.06 - .14 * w, 0, 0],
+        hipLeft: [-.12 - .18 * w, 0, 0],
+        kneeLeft: [.22 + .2 * w, 0, 0]
+      };
+    }
+    if (t < su + ac) {
+      const hit = smooth(seg(t, 0, ac * .55));
+      return {
+        armRight: [.7 - 2.6 * hit, 0, -.65 + .5 * hit],
+        armLeft: [-1.2 + .3 * hit, 0, .75 - .25 * hit],
+        body: [-.16 + .5 * hit, .3 - .65 * hit, 0],
+        head: [-.2 + .24 * hit, 0, 0]
+      };
+    }
+    const back = smooth(seg(t, 0, rc));
+    return {
+      armRight: [-1.9 + 1.15 * back, 0, -.15 - .4 * back],
+      body: [.34 - .27 * back, -.35 + .35 * back, 0],
+      head: [.04 - .1 * back, 0, 0]
+    };
+  }
+  // 大招：蓄力时双臂举过头顶往后仰，判定帧整个人砸下去
+  if (t < su) {
+    const w = smooth(seg(t, 0, su));
+    return {
+      armRight: [-.75 - 1.75 * w, 0, -.55 - .5 * w],
+      armLeft: [-.9 - 1.6 * w, 0, .5 + .5 * w],
+      body: [-.3 * w, 0, 0],
+      head: [-.06 - .3 * w, 0, 0],
+      hipLeft: [-.12 - .3 * w, 0, 0],
+      hipRight: [.1 - .2 * w, 0, 0],
+      kneeLeft: [.22 + .3 * w, 0, 0],
+      kneeRight: [-.06 + .1 * w, 0, 0]
+    };
+  }
+  if (t < su + ac) {
+    const hit = smooth(seg(t, 0, ac * .4));
+    return {
+      armRight: [-2.5 + 1.3 * hit, 0, -1.05 + .55 * hit],
+      armLeft: [-2.5 + 1.3 * hit, 0, 1.05 - .55 * hit],
+      body: [-.3 + .72 * hit, 0, 0],
+      head: [-.36 + .45 * hit, 0, 0]
+    };
+  }
+  const back = smooth(seg(t, 0, rc * .6));
+  return {
+    armRight: [-1.2 + .45 * back, 0, -.5],
+    armLeft: [-1.2 + .3 * back, 0, .5],
+    body: [.42 - .35 * back, 0, 0],
+    head: [.09 - .15 * back, 0, 0]
+  };
+}
+
 function poseFighter(f, dt) {
   const r = f.root;
   r.position.x = f.x;
   r.position.y = f.y;
   const t = performance.now() / 1000;
+  const anim = r.userData && r.userData.anim;
 
   if (f.ko) {
+    if (anim) anim.update("hurt", { k: 0 });
     r.rotation.z = lerp(r.rotation.z, -f.facing * 1.35, 1 - Math.pow(.02, dt));
     r.position.y = f.y;
     return;
   }
   if (f.hitstun > 0) {
-    r.rotation.x = lerp(r.rotation.x, -.22, 1 - Math.pow(.001, dt));
+    if (anim) anim.update("hurt", { k: clamp(1 - f.hitstun / .33, 0, 1) });
+    r.rotation.x = lerp(r.rotation.x, anim ? -.1 : -.22, 1 - Math.pow(.001, dt));
     return;
   }
   if (f.act) {
     const mv = f.act;
     const k = f.actT / (mv.startup + mv.active + mv.recovery);
-    const lunge = f.actT > mv.startup * .6 && f.actT < mv.startup + mv.active ? .28 : 0;
+    const lunge = f.actT > mv.startup * .6 && f.actT < mv.startup + mv.active
+      ? (mv.id === "light" ? .2 : mv.id === "heavy" ? .38 : .55) : 0;
     r.position.x = f.x + f.facing * lunge;
-    r.rotation.x = lerp(r.rotation.x, -.34 * Math.sin(Math.min(1, k * 1.6) * Math.PI), 1 - Math.pow(.02, dt));
+    if (anim && anim.kind === "biped") {
+      anim.reset();
+      anim.pose(attackTargets(mv, f.actT), 1);
+      r.updateMatrixWorld(true);
+      r.rotation.x = lerp(r.rotation.x, 0, 1 - Math.pow(.02, dt));
+    } else {
+      r.rotation.x = lerp(r.rotation.x, -.34 * Math.sin(Math.min(1, k * 1.6) * Math.PI), 1 - Math.pow(.02, dt));
+    }
     return;
   }
   if (!f.onGround) {
+    if (anim) anim.update("fightIdle", { t, guard: false });
     r.rotation.x = lerp(r.rotation.x, .12, 1 - Math.pow(.05, dt));
     return;
   }
   if (f.state === "walk") {
-    r.rotation.z = Math.sin(f.walkPhase) * .07;
-    r.position.y = Math.abs(Math.sin(f.walkPhase * 2)) * .06;
+    if (anim) {
+      anim.update("walk", { phase: f.walkPhase });
+    } else {
+      r.rotation.z = Math.sin(f.walkPhase) * .07;
+    }
+    r.position.y = Math.abs(Math.sin(f.walkPhase * 2)) * .05;
   } else {
-    r.rotation.z = lerp(r.rotation.z, 0, 1 - Math.pow(.02, dt));
-    r.position.y = Math.sin(t * 2.2 + (f.isPlayer ? 0 : 1.6)) * .018;
+    if (anim) {
+      anim.update("fightIdle", { t });
+    } else {
+      r.rotation.z = lerp(r.rotation.z, 0, 1 - Math.pow(.02, dt));
+    }
+    r.position.y = Math.sin(t * 2.2 + (f.isPlayer ? 0 : 1.6)) * .015;
   }
   r.rotation.x = lerp(r.rotation.x, 0, 1 - Math.pow(.02, dt));
+  if (!anim) r.rotation.z = lerp(r.rotation.z, 0, 1 - Math.pow(.02, dt));
 }
 
 /* =========================================================
@@ -849,6 +1067,7 @@ Fight.update = function (dtRaw) {
   if (!Fight.on || !P || !E) return;
   dtRaw = Math.min(.05, dtRaw);
   Fight.tickFlash(dtRaw);
+  stepFx(dtRaw);
 
   // 开场
   if (phase === "intro") {

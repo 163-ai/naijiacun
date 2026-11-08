@@ -4,13 +4,15 @@
 import * as T from "three";
 import { GLTFLoader } from "../vendor/three/GLTFLoader.js";
 import { MeshoptDecoder } from "../vendor/meshopt/meshopt_decoder.module.js";
-import { Fight } from "./kof.js";
+import { createPetMotion } from "./pet-motion.js";
+import { makeAnimator } from "./creature.js?v=57";
+import { Fight } from "./kof.js?v=57";
 import {
   TS, TI, VILLAGE, HOUSE, SHOP, STATION, ARCHIVE, MAPS,
   tileAt, setSolid, solidAt, markAt, mapTexture, toTile, toWorld
 } from "./tiles.js";
 import { Farm, CROPS, PLOT } from "./farm.js";
-import { portrait, speakerKey, PLAYER_KEY } from "./portraits.js";
+import { portrait, moodFilter, speakerKey, PLAYER_KEY } from "./portraits.js?v=57";
 import { NPCS, DESK_OFFICER, bountyOf } from "./villagers.js";
 import { Gomoku } from "./gomoku.js";
 
@@ -136,10 +138,11 @@ function ac() {
   if (actx && actx.state === "suspended") actx.resume();
   return actx;
 }
-function blip(freq, dur, type, gain) {
+function blip(freq, dur, type, gain, slideTo) {
   const a = ac(); if (!a || state.muted) return;
   const o = a.createOscillator(), g = a.createGain();
   o.type = type || "sine"; o.frequency.value = freq;
+  if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, a.currentTime + dur);
   g.gain.setValueAtTime(0, a.currentTime);
   g.gain.linearRampToValueAtTime(gain || .04, a.currentTime + .012);
   g.gain.exponentialRampToValueAtTime(.0001, a.currentTime + dur);
@@ -149,10 +152,16 @@ function blip(freq, dur, type, gain) {
 function sfx(kind) {
   switch (kind) {
     case "swing": blip(680, .05, "square", .022); break;
+    case "swingHeavy": blip(220, .12, "sawtooth", .03, 90); break;
     case "hit": blip(180, .1, "square", .05); blip(90, .14, "sine", .05); break;
+    case "hitHeavy": blip(120, .16, "square", .06); blip(60, .22, "sine", .07); blip(300, .05, "square", .03); break;
     case "block": blip(420, .06, "triangle", .03); break;
     case "jump": blip(520, .08, "sine", .025); break;
     case "special": blip(240, .3, "sawtooth", .045); break;
+    // 大招三连：蓄力上扫 → 砸地闷响 → 命中爆点
+    case "ultCharge": blip(140, .18, "sawtooth", .04, 720); blip(280, .18, "sine", .025, 1200); break;
+    case "ultSlam": blip(70, .34, "sine", .09, 38); blip(46, .4, "sine", .07); blip(180, .1, "square", .04); break;
+    case "ultHit": blip(60, .4, "sine", .08, 30); blip(130, .2, "square", .05); blip(900, .12, "sawtooth", .03, 200); break;
     case "ko": blip(120, .5, "sawtooth", .06); break;
     case "intro": blip(440, .12, "sine", .04); break;
     case "fight": blip(660, .2, "square", .045); break;
@@ -1015,8 +1024,16 @@ function normalize(obj, targetH) {
   return holder;
 }
 
-function cloneSkinned(root) {
-  const clone = root.clone(true);
+// 克隆出的角色挂上骨骼动画驱动（没绑上骨骼就返回原样，走整体颠簸的老路）
+function withAnim(actor) {
+  try {
+    const anim = makeAnimator(actor);
+    if (anim) actor.userData.anim = anim;
+  } catch (e) { /* 动画是锦上添花，失败不影响显示 */ }
+  return actor;
+}
+
+function cloneSkinned(root) {  const clone = root.clone(true);
   const src = [], dst = [];
   root.traverse(o => src.push(o));
   clone.traverse(o => dst.push(o));
@@ -1160,10 +1177,24 @@ async function buildModelPivot(key, c, entry) {
     }
   }
   if (entry.yaw) root.rotation.y += entry.yaw;
-  const holder = normalize(root, c.h);
   const pivot = new T.Group();
-  pivot.add(holder);
-  pivot.userData.holder = holder;
+  // 优先走程序化绑骨骼（展台/桌宠同一条管线），走路/战斗才有四肢动作；
+  // 绑不上的角色退回静态模型，只是动画退化成整体颠簸
+  try {
+    const rig = createPetMotion(root, key);
+    rig.root.scale.setScalar(c.h / 2);
+    rig.root.traverse(o => {
+      if (o.isMesh) {
+        o.castShadow = true; o.receiveShadow = true;
+        if (o.material && "envMapIntensity" in o.material) o.material.envMapIntensity = 1;
+      }
+    });
+    pivot.add(rig.root);
+  } catch (e) {
+    console.warn("[game] 骨骼绑定失败，退回静态模型：" + key, e);
+    pivot.add(normalize(root, c.h));
+  }
+  pivot.userData.holder = pivot.children[0];
   return pivot;
 }
 
@@ -1172,14 +1203,14 @@ async function getActor(key) {
   if (!c) return null;
   if (loaded.has(key)) {
     const cached = loaded.get(key);
-    return cached ? cloneSkinned(cached) : makeBillboard(key);
+    return cached ? withAnim(cloneSkinned(cached)) : makeBillboard(key);
   }
   const entry = PACK[key];
   if (c.model && entry) {
     try {
       const pivot = await buildModelPivot(key, c, entry);
       loaded.set(key, pivot);
-      return cloneSkinned(pivot);
+      return withAnim(cloneSkinned(pivot));
     } catch (err) {
       console.warn("[game] 模型加载失败，改用立牌：" + key, err);
       loaded.set(key, null);
@@ -1392,18 +1423,28 @@ function update(dt) {
   }
   if (battleGrace > 0) battleGrace -= dt;
 
-  playerObj.position.set(player.x, 0, player.z);
-  // 朝向平滑
+  playerObj.position.set(player.x, sleepPose.on ? playerObj.position.y : 0, player.z);
   const cur = playerObj.rotation.y;
   let diff = ((player.heading - cur + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
   playerObj.rotation.y = cur + diff * Math.min(1, dt * 14);
 
-  // 走路上下颠
-  if (!playerObj.userData.isBillboard) {
+  if (sleepPose.on) {
+    // 躺下时主循环不许碰姿势：这里每帧覆盖 y/rotation 会把人按回地板里（穿模根因）
+  } else if (!playerObj.userData.isBillboard) {
     const t = performance.now() / 1000;
-    const bob = player.moving ? Math.abs(Math.sin(player.phase)) * .075 : Math.sin(t * 1.6) * .014;
-    playerObj.position.y = bob;
-    playerObj.rotation.z = player.moving ? Math.sin(player.phase) * .04 : 0;
+    const pActor = playerObj.children[0];
+    const anim = pActor && pActor.userData.anim;
+    if (anim) {
+      // 有骨骼：腿摆臂摆，脚步颠簸只留一点点衬托
+      anim.update(player.moving ? "walk" : "idle", { t, phase: player.phase });
+      playerObj.position.y = player.moving ? Math.abs(Math.sin(player.phase)) * .04 : Math.sin(t * 1.6) * .008;
+      playerObj.rotation.z = player.moving ? Math.sin(player.phase) * .018 : 0;
+    } else {
+      // 没骨骼：整体上下颠
+      const bob = player.moving ? Math.abs(Math.sin(player.phase)) * .075 : Math.sin(t * 1.6) * .014;
+      playerObj.position.y = bob;
+      playerObj.rotation.z = player.moving ? Math.sin(player.phase) * .04 : 0;
+    }
   }
 
   // 面前那一格的光标：每格都能指，指到的那格就是按 E 会动的那格
@@ -1557,26 +1598,30 @@ function showWho(who, mood) {
   const key = speakerKey(who);
   if (!key) { L.classList.remove("show", "on"); R.classList.remove("show", "on"); return; }
   const m = mood || "normal";
+  const mooded = (img, k, mm) => {
+    img.src = portrait(k, mm);
+    img.style.filter = moodFilter(mm);
+  };
   if (key === PLAYER_KEY) {
     const peer = dlg.peer && speakerKey(dlg.peer);
     if (peer) {
       L.classList.add("show");
       L.classList.remove("on");
-      $("#ptLImg").src = portrait(peer, "normal");
+      mooded($("#ptLImg"), peer, "normal");
       $("#ptLName").textContent = dlg.peer;
     } else {
       L.classList.remove("show", "on");
     }
     R.classList.add("show", "on");
-    $("#ptRImg").src = portrait(PLAYER_KEY, m);
+    mooded($("#ptRImg"), PLAYER_KEY, m);
     $("#ptRName").textContent = "奶龙";
   } else {
     L.classList.add("show", "on");
-    $("#ptLImg").src = portrait(key, m);
+    mooded($("#ptLImg"), key, m);
     $("#ptLName").textContent = who;
     R.classList.add("show");
     R.classList.remove("on");
-    $("#ptRImg").src = portrait(PLAYER_KEY, "normal");
+    mooded($("#ptRImg"), PLAYER_KEY, "normal");
     $("#ptRName").textContent = "奶龙";
   }
 }
@@ -1872,7 +1917,9 @@ function npcUpdate(dt) {
         n.walking = true;
       }
     }
-    n.obj.position.set(n.x, n.walking ? Math.abs(Math.sin(now * 5 + n.bob)) * .05 : 0, n.z);
+    const anim = n.obj.children[0] && n.obj.children[0].userData.anim;
+    if (anim) anim.update(n.walking ? "walk" : "idle", { t: now + n.bob, phase: now * 9 + n.bob });
+    n.obj.position.set(n.x, n.walking ? Math.abs(Math.sin(now * 9 + n.bob)) * (anim ? .035 : .05) : 0, n.z);
   }
 }
 
@@ -1984,11 +2031,27 @@ function lieDown() {
   player.x = cx;
   player.z = cz + .95;
   player.moving = false;
-  playerObj.position.set(cx, .12, cz + .95);
+  // 面朝上躺平：+Y(头) → -Z(枕头)，+Z(脸) → +Y(朝天)
   playerObj.rotation.set(-Math.PI / 2, 0, 0);
-  // 被子盖到腰，只露个头
+  playerObj.position.set(cx, 0, cz + .95);
+  playerObj.updateMatrixWorld(true);
+  // 按包围盒实测落位：不靠猜高度，模型多厚都不会插进床垫
+  const box = new T.Box3().setFromObject(playerObj);
+  // 头落在枕头一侧（床沿内 0.35），身上盖被子，只露头
+  const zShift = (cz - 1.15) - box.min.z;
+  const xShift = cx - (box.min.x + box.max.x) / 2;
+  playerObj.position.x += xShift;
+  playerObj.position.z += zShift;
+  // 主循环每帧会用 player.x/z 重设位置，把位移同步回去才不会被覆盖
+  player.x = playerObj.position.x;
+  player.z = playerObj.position.z;
+  playerObj.updateMatrixWorld(true);
+  const box2 = new T.Box3().setFromObject(playerObj);
+  // 床垫面在 y≈0，稍微压进去 0.06 读起来像陷进软垫
+  playerObj.position.y += .06 - box2.min.y;
+  // 被子盖到脖子：被子中心挪到身体中段
   const q = quiltMesh();
-  q.position.set(cx, .02, cz + .15);
+  q.position.set(cx, .02, (box2.min.z + box2.max.z) / 2 + .28);
   q.visible = true;
   updateCamera();
 }

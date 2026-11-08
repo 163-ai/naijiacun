@@ -356,7 +356,34 @@ function draw(key, mood) {
   return c;
 }
 
+// 3D 模型直出的渲染半身像（assets/characters/3d/，由当前展示模型渲染），
+// 比手绘更像本人；有渲染图的角色优先用，没有的回退 canvas 手绘。
+const AVATARS3D = {
+  nailong: "nailong-waving", naiwa: "naiwa", baobaolong: "baobaolong",
+  xiaoqi: "xiaoqi", niulai: "niulai", capybara: "capybara",
+  naicha: "naicha", naidan: "naidan", feidudu: "feidudu"
+};
+
+// 3D 渲染图是固定表情，心情用滤镜轻涂：开心提亮、生气偏红、担忧降饱和
+const MOOD_FILTER = {
+  normal: "",
+  happy: "saturate(1.18) brightness(1.07)",
+  angry: "saturate(1.3) sepia(.22) hue-rotate(-18deg) contrast(1.05)",
+  worry: "saturate(.68) brightness(.96)"
+};
+
+export function portrait3d(key) {
+  const f = AVATARS3D[key];
+  return f ? "assets/characters/3d/" + f + "-avatar.webp?v=pt3d-1" : null;
+}
+
+export function moodFilter(mood) {
+  return MOOD_FILTER[MOODS[mood] ? mood : "normal"] || "";
+}
+
 export function portrait(key, mood = "normal") {
+  const url3d = portrait3d(key);
+  if (url3d) return url3d;
   const k = key + ":" + mood;
   if (CACHE.has(k)) return CACHE.get(k);
   const url = draw(key, MOODS[mood] ? mood : "normal").toDataURL("image/png");
