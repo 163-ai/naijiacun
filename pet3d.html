@@ -8,8 +8,8 @@
   <link rel="modulepreload" href="vendor/three/three.module.min.js">
   <link rel="modulepreload" href="vendor/three/GLTFLoader.js">
   <link rel="modulepreload" href="vendor/meshopt/meshopt_decoder.module.js">
-  <link rel="preload" as="fetch" href="assets/models/nailong-waving.glb?v=mini-1" crossorigin="anonymous">
-  <link rel="preload" as="image" href="assets/characters/3d/nailong-waving-pet.webp?v=waving-1">
+  <link rel="preload" as="fetch" href="https://testingcf.jsdelivr.net/gh/163-ai/naijiacun@main/assets/models/nailong-waving.glb" crossorigin="anonymous">
+  <link rel="preload" as="image" href="assets/characters/3d/nailong-waving-pet-sm.webp?v=waving-1">
   <link rel="stylesheet" href="css/style.css?v=village-1">
   <link rel="stylesheet" href="css/pet.css?v=browser-pets-1">
   <link rel="stylesheet" href="css/pet3d.css?v=angry-1">
@@ -37,7 +37,7 @@
         </div>
         <div id="loading" class="p3-loading" role="status" aria-live="polite">
           <img id="modelPreview" class="p3-preview" alt="" decoding="async" draggable="false"
-               src="assets/characters/3d/nailong-waving-pet.webp?v=waving-1">
+               src="assets/characters/3d/nailong-waving-pet-sm.webp?v=waving-1">
           <div class="p3-load-copy">
             <strong id="loadLabel">正在加载模型…</strong>
             <progress id="loadProgress" max="100" aria-label="模型下载进度"></progress>
@@ -109,9 +109,9 @@
   </main>
 
   <script src="js/data.js?v=browser-pets-1"></script>
-  <script src="js/3d-models.js?v=mini-1"></script>
+  <script src="js/3d-models.js?v=mini-2"></script>
   <script src="js/site-pet.js?v=fast-pet-2"></script>
-  <script type="module" src="js/pet3d.js?v=fast-open-2"></script>
+  <script type="module" src="js/pet3d.js?v=fast-open-3"></script>
   <script src="js/village.js?v=village-1"></script>
   <script>
     window.addEventListener("load", function () {

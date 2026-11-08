@@ -78,6 +78,10 @@ import { getLaughPose } from "./pet-laugh.js?v=site-pets-1";
   var audioEl = null, bubbleTimer = 0, browserPetState = null;
 
   function byId(id) { return LIST.find(function (p) { return p.id === id; }); }
+  // 加载占位图只显示几秒、最大也就 300px 宽，没必要下 140-210KB 的原图（-pet-sm 约 8KB）。
+  function smallPreview(url) {
+    return url ? url.replace(/-pet\.webp(?=$|\?)/, "-pet-sm.webp") : url;
+  }
   function toggleBtn(id, on) {
     var el = document.getElementById(id);
     el.setAttribute("aria-pressed", String(on));
@@ -200,7 +204,7 @@ import { getLaughPose } from "./pet-laugh.js?v=site-pets-1";
     loading.hidden = false;
     loading.classList.remove("hidden");
     var person = byId(id), name = person ? person.name : id;
-    var preview = person && (person.petImage || person.image);
+    var preview = person && smallPreview(person.petImage || person.image);
     modelPreview.hidden = !preview;
     if (preview) { modelPreview.src = preview; modelPreview.alt = name; }
     loadLabel.textContent = "正在下载" + name + "…";
@@ -218,9 +222,27 @@ import { getLaughPose } from "./pet-laugh.js?v=site-pets-1";
     try {
       var root = modelCache.get(id);
       if (!root) {
-        var fileURL = new URL(entry.file, window.location.href);
-        var response = await fetch(fileURL.href, { signal: controller.signal });
-        if (!response.ok) throw new Error("HTTP " + response.status);
+        var localURL = new URL(entry.file, window.location.href).href;
+        // 模型优先走 CDN；CDN 不通或 4 秒内没响应就退回本站，避免一直空等。
+        var sources = entry.cdn ? [entry.cdn, localURL] : [localURL];
+        var fileURL = null, response = null;
+        for (var si = 0; si < sources.length; si++) {
+          var attemptCtl = new AbortController();
+          var relay = function () { attemptCtl.abort(); };
+          controller.signal.addEventListener("abort", relay);
+          var watchdog = si < sources.length - 1 ? setTimeout(function () { attemptCtl.abort(); }, 4000) : 0;
+          try {
+            var attempt = await fetch(sources[si], { signal: attemptCtl.signal });
+            if (attempt.ok) { response = attempt; fileURL = new URL(sources[si]); }
+          } catch (e) {
+            if (controller.signal.aborted) throw e;
+          } finally {
+            clearTimeout(watchdog);
+            controller.signal.removeEventListener("abort", relay);
+          }
+          if (response) break;
+        }
+        if (!response) throw new Error("模型下载失败");
         var encoding = response.headers.get("Content-Encoding");
         var total = !encoding || encoding === "identity" ? Number(response.headers.get("Content-Length")) : 0;
         var received = 0, lastProgress = -Infinity, chunks = [];
@@ -338,7 +360,7 @@ import { getLaughPose } from "./pet-laugh.js?v=site-pets-1";
       prefetched.add(nextId);
       var controller = new AbortController(), version = prefetchVersion;
       prefetchLoad = { id: nextId, controller: controller };
-      fetch(new URL(PACK[nextId].file, window.location.href), { priority: "low", signal: controller.signal })
+      fetch(PACK[nextId].cdn || new URL(PACK[nextId].file, window.location.href), { priority: "low", signal: controller.signal })
         .then(function (response) { if (response.ok) return response.arrayBuffer(); })
         .catch(function () { /* 本轮跳过失败文件；主动选中时仍可正常下载和重试。 */ })
         .then(function () {
