@@ -140,11 +140,13 @@
   // ---------- 请求 ----------
   function chatURL() {
     if (CFG.mode === "proxy") {
-      // 代理地址可能带查询串（如 ?sharecode=xxx），要把路径插到查询串前面
-      var pb = (CFG.proxyBase || "").trim().replace(/\/+$/, "");
+      // 代理地址可能带查询串（如 ?sharecode=xxx），要把路径插到查询串前面；
+      // 路径末尾的斜杠先去掉，否则会拼出 host//api/chat 这种双斜杠
+      var pb = (CFG.proxyBase || "").trim();
       var q = pb.indexOf("?");
-      if (q === -1) return pb + "/api/chat";
-      return pb.slice(0, q) + "/api/chat" + pb.slice(q);
+      var head = (q === -1 ? pb : pb.slice(0, q)).replace(/\/+$/, "");
+      var tail = q === -1 ? "" : pb.slice(q);
+      return head + "/api/chat" + tail;
     }
     return (CFG.base || "").replace(/\/+$/, "") + "/chat/completions";
   }
