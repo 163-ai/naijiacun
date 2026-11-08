@@ -79,7 +79,7 @@
     depthBtn.title = available ? "切换平面与可活动的真实 3D" : "小草使用透明抠图形象";
     pet.el.dataset.renderMode = mode;
   }
-  var rendererReady = import("./pet-renderer.js?v=site-pets-1").then(function (module) {
+  var rendererReady = import("./pet-renderer.js?v=fast-pet-1").then(function (module) {
     pet.bodyEl.replaceChildren();
     renderView = new module.PetRenderer(pet.bodyEl, {
       catalog: catalog,
@@ -103,7 +103,7 @@
       btn.className = "pet-chip" + (p.id === current ? " active" : "");
       btn.dataset.id = p.id;
       btn.innerHTML =
-        '<span class="mini">' + window.NaijiacunPet.figureHTML(p.id) + "</span>" +
+        '<span class="mini">' + window.NaijiacunPet.figureHTML(p.id, true) + "</span>" +
         "<span>" + p.name + "</span>";
       btn.addEventListener("click", function () {
         current = p.id;
@@ -188,7 +188,7 @@
     finally { pinBtn.disabled = false; syncExtensionButton(); }
   });
   if (new URLSearchParams(location.search).get("pet") === "1" && !sitePetState.enabled) {
-    rendererReady.then(function (view) { if (view) pinBtn.click(); });
+    pinBtn.click();
   }
   window.addEventListener("pagehide", function (event) { if (!event.persisted) pet.destroy(); });
 

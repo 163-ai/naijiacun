@@ -187,6 +187,7 @@ import { getLaughPose } from "./pet-laugh.js?v=site-pets-1";
   async function setCharacter(id) {
     var entry = PACK[id];
     if (!entry || (currentId === id && (pendingLoad || model))) return;
+    stopPrefetch();
     var version = ++loadVersion;
     if (pendingLoad) pendingLoad.abort();
     var controller = new AbortController();
@@ -308,24 +309,47 @@ import { getLaughPose } from "./pet-laugh.js?v=site-pets-1";
   }
   retry.onclick = function () { setCharacter(currentId); };
 
-  // ---------- 后台预取：首个模型展示完后，低优先级把其余村民模型下载进 HTTP 缓存，
-  // 之后点谁都是秒开。省流量模式（Save-Data）下不预取。 ----------
-  var prefetched = new Set(), prefetchTimer = 0;
+  // 首个模型展示后才逐个暖缓存；完整读完一个，再等空闲，避免同时占满下载。
+  var prefetched = new Set(), prefetchTimer = 0, prefetchLoad = null, prefetchVersion = 0;
+  function canPrefetch() {
+    var connection = navigator.connection;
+    return !document.hidden && !(connection && (connection.saveData || ["slow-2g", "2g", "3g"].includes(connection.effectiveType)));
+  }
+  function stopPrefetch() {
+    clearTimeout(prefetchTimer); prefetchTimer = 0; ++prefetchVersion;
+    if (prefetchLoad) {
+      prefetched.delete(prefetchLoad.id);
+      prefetchLoad.controller.abort();
+      prefetchLoad = null;
+    }
+  }
   function prefetchRest() {
-    if (navigator.connection && navigator.connection.saveData) return;
     clearTimeout(prefetchTimer);
+    if (!canPrefetch() || prefetchLoad) return;
     prefetchTimer = setTimeout(function step() {
-      if (pendingLoad) { prefetchTimer = setTimeout(step, 1500); return; }
+      prefetchTimer = 0;
+      if (!canPrefetch()) return;
+      if (pendingLoad || prefetchLoad) { prefetchRest(); return; }
       var nextId = null;
       for (var i = 0; i < LIST.length; i++) {
         if (PACK[LIST[i].id] && !prefetched.has(LIST[i].id)) { nextId = LIST[i].id; break; }
       }
       if (!nextId) return;
       prefetched.add(nextId);
-      fetch(new URL(PACK[nextId].file, window.location.href), { priority: "low" })
-        .catch(function () { prefetched.delete(nextId); })
-        .then(step);
+      var controller = new AbortController(), version = prefetchVersion;
+      prefetchLoad = { id: nextId, controller: controller };
+      fetch(new URL(PACK[nextId].file, window.location.href), { priority: "low", signal: controller.signal })
+        .then(function (response) { if (response.ok) return response.arrayBuffer(); })
+        .catch(function () { /* 本轮跳过失败文件；主动选中时仍可正常下载和重试。 */ })
+        .then(function () {
+          if (prefetchLoad && prefetchLoad.controller === controller) prefetchLoad = null;
+          if (version === prefetchVersion) prefetchRest();
+        });
     }, 2500);
+  }
+  document.addEventListener("visibilitychange", function () { if (document.hidden) stopPrefetch(); else prefetchRest(); });
+  if (navigator.connection && navigator.connection.addEventListener) {
+    navigator.connection.addEventListener("change", function () { if (canPrefetch()) prefetchRest(); else stopPrefetch(); });
   }
 
 
@@ -799,6 +823,7 @@ import { getLaughPose } from "./pet-laugh.js?v=site-pets-1";
   window.addEventListener("naijiacun-site-pet-state", function (event) { browserPetState = event.detail; syncPetButton(); });
   browserPetState = window.NaijiacunSitePet.getState();
   window.addEventListener("pagehide", function (e) {
+    stopPrefetch();
     ++loadVersion;
     stopAction();
     if (pendingLoad) { pendingLoad.abort(); pendingLoad = null; }
@@ -812,6 +837,7 @@ import { getLaughPose } from "./pet-laugh.js?v=site-pets-1";
   });
   window.addEventListener("pageshow", function () {
     if (!model && !pendingLoad && currentId) setCharacter(currentId);
+    else if (model) prefetchRest();
   });
 
   var lastFrame = performance.now();

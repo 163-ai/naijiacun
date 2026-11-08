@@ -1,7 +1,15 @@
-import * as T from '../vendor/three/three.module.min.js';
-import { GLTFLoader } from '../vendor/three/GLTFLoader.js';
-import { createPetMotion } from './pet-motion.js?v=site-pets-1';
 import { getLaughPose, LAUGH_DURATION } from './pet-laugh.js?v=site-pets-1';
+
+let modules3D;
+function load3D() {
+  modules3D ||= Promise.all([
+    import('../vendor/three/three.module.min.js'),
+    import('../vendor/three/GLTFLoader.js'),
+    import('./pet-motion.js?v=site-pets-1')
+  ]).then(([T, loader, motion]) => ({ T, GLTFLoader: loader.GLTFLoader, createPetMotion: motion.createPetMotion }))
+    .catch(error => { modules3D = null; throw error; });
+  return modules3D;
+}
 
 function disposeModel(root) {
   const geometries = new Set(), materials = new Set(), textures = new Set(), skeletons = new Set(), bitmaps = new Set();
@@ -29,7 +37,7 @@ export class PetRenderer {
     this._meshoptDecoder = meshoptDecoder;
     this.id = ''; this.mode = '2d'; this._requestedMode = '2d';
     this._motion = 'idle'; this._facing = 1; this._time = 0; this._version = 0; this._destroyed = false;
-    this._action = null; this._actionBox = new T.Box3();
+    this._action = null; this._actionBox = null;
     this._pixel = new Uint8Array(4);
     this.host.style.position = 'relative';
     this.setSize(180);
@@ -68,7 +76,7 @@ export class PetRenderer {
   setFacing(direction) { this._facing = direction < 0 ? -1 : 1; }
 
   setSize(height) {
-    this._height = T.MathUtils.clamp(Number(height) || 180, 48, 720);
+    this._height = Math.min(720, Math.max(48, Number(height) || 180));
     this._width = this._height * .9;
     this.host.style.width = this._width + 'px'; this.host.style.height = this._height + 'px';
     if (this._renderer) {
@@ -98,10 +106,11 @@ export class PetRenderer {
     const person = this.catalog.find(entry => entry.id === this.id);
     this.mode = this._requestedMode === '3d' && person.model ? '3d' : '2d';
     if (this.mode === '2d') {
-      const image = new Image(); image.crossOrigin = 'anonymous'; image.decoding = 'async'; image.alt = '';
+      const image = new Image(), imageURL = new URL(this.resolveAsset(person.image), globalThis.location.href);
+      if (imageURL.origin !== globalThis.location.origin) image.crossOrigin = 'anonymous';
+      image.decoding = 'async'; image.alt = '';
       image.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;pointer-events:none;user-select:none;transform-origin:50% 95%;';
-      // Both the website and extension resolve these to their own local origin.
-      image.src = this.resolveAsset(person.image);
+      image.src = imageURL.href;
       try { await image.decode(); }
       catch (error) {
         if (this._destroyed || version !== this._version) return this.mode;
@@ -119,18 +128,24 @@ export class PetRenderer {
     }
     const controller = new AbortController(); this._abort = controller;
     const url = this.resolveAsset(person.model);
-    let bytes;
+    let bytes, modules, decoder;
     try {
-      const response = await fetch(url, { signal: controller.signal });
-      if (!response.ok) throw new Error('3D 模型加载失败：' + response.status);
-      bytes = await response.arrayBuffer();
+      [bytes, modules, decoder] = await Promise.all([
+        fetch(url, { signal: controller.signal }).then(response => {
+          if (!response.ok) throw new Error('3D 模型加载失败：' + response.status);
+          return response.arrayBuffer();
+        }),
+        load3D(),
+        this._meshoptDecoder || import('../vendor/meshopt/meshopt_decoder.module.js').then(module => module.MeshoptDecoder)
+      ]);
     } catch (error) {
+      controller.abort();
       if (this._destroyed || version !== this._version || error.name === 'AbortError') return this.mode;
       throw error;
     }
     if (this._destroyed || version !== this._version) return this.mode;
-    const decoder = this._meshoptDecoder || (await import('../vendor/meshopt/meshopt_decoder.module.js')).MeshoptDecoder;
-    if (this._destroyed || version !== this._version) return this.mode;
+    const { T, GLTFLoader, createPetMotion } = modules;
+    this._three = T; this._actionBox ||= new T.Box3();
     const loader = new GLTFLoader().setMeshoptDecoder(decoder);
     let gltf;
     try { gltf = await loader.parseAsync(bytes, new URL('.', new URL(url, globalThis.location.href)).href); }
@@ -165,6 +180,7 @@ export class PetRenderer {
 
   _fitCamera(actionBounds) {
     if (!this._rig || !this._camera) return;
+    const T = this._three;
     const size = this._rig.bounds.getSize(new T.Vector3());
     // Enough room for raised hands, long feet, the hop apex and a quarter turn.
     const width = Math.hypot(size.x, size.z) * 1.12;

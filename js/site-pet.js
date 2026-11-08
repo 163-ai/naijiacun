@@ -36,7 +36,7 @@
       if (view) { var old = view; view = null; old.destroy(); }
       return;
     }
-    moduleReady = moduleReady || import("./site-pet-view.js?v=site-pets-1").catch(function (error) { moduleReady = null; throw error; });
+    moduleReady = moduleReady || import("./site-pet-view.js?v=fast-pet-1").catch(function (error) { moduleReady = null; throw error; });
     var module = await moduleReady;
     if (version !== revision || !state.enabled || document.hidden) return;
     if (!view) {

@@ -47,13 +47,13 @@
   // 2.5D：用同一张原始 PNG 叠 4 层（1 层正面 + 3 层沿 Z 轴后退的暗层），
   // 旋转时露出"厚度"，正面看仍是原图本身——不生成、不修改任何形象素材。
   // SVG / emoji 兜底只叠一层，避免 SVG 内部 id 重复。
-  function figureHTML(id) {
+  function figureHTML(id, lowPriority) {
     var p = findPerson(id);
 
     if (p && (p.petImage || p.image)) {
       var src = new URL(p.petImage || p.image, document.baseURI).href;
       var img = function (alt) {
-        return '<img class="pet-img' + (p.petImage ? ' pet-img--full' : '') + '" src="' + src + '" alt="' + alt + '" draggable="false">';
+        return '<img class="pet-img' + (p.petImage ? ' pet-img--full' : '') + '" src="' + src + '" alt="' + alt + '" draggable="false"' + (lowPriority ? ' fetchpriority="low" decoding="async"' : '') + '>';
       };
       return '<div class="pet-depth" style="--pet-mask:url(\'' + src + '\')">' +
         '<div class="pet-slab pet-slab--b3">' + img("") + '</div>' +

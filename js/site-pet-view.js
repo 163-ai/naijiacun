@@ -1,4 +1,4 @@
-import { PetRenderer } from './pet-renderer.js?v=site-pets-1';
+import { PetRenderer } from './pet-renderer.js?v=fast-pet-1';
 
 export function createSitePet({ catalog, onChange }) {
   const host = document.createElement('div');
