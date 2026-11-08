@@ -46,7 +46,15 @@
       });
       view = module.createSitePet({ catalog: catalog, onChange: change });
     }
-    await view.applyState(state);
+    // 慢网下先以平面形象出场，不触发 6MB 的 GLB 下载（保存的偏好不变，网速恢复后仍是 3D）
+    await view.applyState(state.mode === "3d" && slowNetwork() ? { ...state, mode: "2d" } : state);
+  }
+  function slowNetwork() {
+    var c = navigator.connection;
+    if (!c) return false;
+    if (c.saveData) return true;
+    if (/^(slow-2g|2g|3g)$/.test(c.effectiveType || "")) return true;
+    return typeof c.downlink === "number" && c.downlink > 0 && c.downlink < 2.5;
   }
   function renderState() {
     var task = paint(), version = revision;
