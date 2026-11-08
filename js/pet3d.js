@@ -675,15 +675,15 @@ import { MeshoptDecoder } from "../vendor/meshopt/meshopt_decoder.module.js";
       stage.classList.add("in-pip");
       resize();
       var button = document.getElementById("pinBtn");
-      button.textContent = "📌 收回小窗";
+      button.textContent = "📌 收回浏览器小窗";
       pipWindow.addEventListener("pagehide", function () {
         document.querySelector(".p3-main").insertBefore(stage, document.querySelector(".p3-side"));
         stage.classList.remove("in-pip");
         pipWindow = null;
-        button.textContent = "📌 置顶小窗";
+        button.textContent = "📌 浏览器小窗";
         resize();
       });
-    } catch (e) { setStatus("小窗暂时无法打开，请允许浏览器打开小窗。"); }
+    } catch (e) { setStatus("浏览器小窗暂时无法打开，请允许浏览器打开小窗。"); }
   }
 
   LIST.forEach(function (person) {
@@ -725,8 +725,7 @@ import { MeshoptDecoder } from "../vendor/meshopt/meshopt_decoder.module.js";
   document.getElementById("resetBtn").onclick = resetView;
   document.getElementById("pinBtn").onclick = togglePin;
   if (!("documentPictureInPicture" in window)) {
-    document.getElementById("pinBtn").disabled = true;
-    document.getElementById("pinBtn").title = "当前浏览器不支持置顶小窗";
+    document.getElementById("pinBtn").hidden = true;
   }
   window.addEventListener("pagehide", function (e) {
     ++loadVersion;

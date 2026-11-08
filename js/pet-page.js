@@ -1,6 +1,6 @@
 // 奶家村 · 桌宠页面控制
 //
-// 只做三件事：把角色列表画出来、把宠物挂上舞台、接上「置顶小窗」按钮。
+// 只做三件事：把角色列表画出来、把宠物挂上舞台、接上「浏览器小窗」按钮。
 // 宠物本身的行为（走路、瞌睡、拖动、说话）都在 js/pet.js 里。
 
 (function () {
@@ -116,16 +116,14 @@
     pet.setSize(parseInt(sizeRange.value, 10));
   });
 
-  // ---------- 置顶小窗 ----------
+  // ---------- 浏览器小窗 ----------
   var pinned = false;
 
   if (!window.NaijiacunPet.pinSupported()) {
-    pinBtn.disabled = true;
-    pinBtn.textContent = "📌 置顶小窗（不支持）";
-    setNote("当前浏览器不支持置顶小窗。用 Edge 或 Chrome 116 以上版本打开这个页面就能用了；" +
-      "在这里也可以直接拖着它玩。");
+    pinBtn.hidden = true;
+    setNote("点一下它试试。下载 Windows 透明桌宠，就能让角色浮在桌面上。");
   } else {
-    setNote("点一下它试试。点「置顶小窗」可以让它浮在其他窗口上面。");
+    setNote("点一下它试试。浏览器小窗会保留背景和来源栏；透明桌宠请下载 Windows 版。");
   }
 
   pinBtn.addEventListener("click", function () {
@@ -137,20 +135,20 @@
     window.NaijiacunPet.openPin(pet, stage)
       .then(function () {
         pinned = true;
-        pinBtn.textContent = "📌 已在置顶小窗";
-        setNote("桌宠已经搬到置顶小窗，可以拖到屏幕任何位置。关掉那个小窗，它就会自动回来。");
+        pinBtn.textContent = "📌 已在浏览器小窗";
+        setNote("浏览器小窗已打开，会保留背景和来源栏。关掉小窗，角色就会回到页面。");
 
         pet.onUnpin = function () {
           pinned = false;
           pinBtn.disabled = false;
-          pinBtn.textContent = "📌 置顶小窗";
-          setNote("小窗已关闭，桌宠回到这个页面了。");
+          pinBtn.textContent = "📌 浏览器小窗";
+          setNote("浏览器小窗已关闭，桌宠回到这个页面了。");
         };
       })
       .catch(function (err) {
         pinBtn.disabled = false;
-        pinBtn.textContent = "📌 置顶小窗";
-        setNote("打开置顶小窗失败：" + (err && err.message ? err.message : "未知原因") +
+        pinBtn.textContent = "📌 浏览器小窗";
+        setNote("打开浏览器小窗失败：" + (err && err.message ? err.message : "未知原因") +
           "。这种小窗需要浏览器支持，并且必须在点击后立刻触发。", "warn");
       });
   });

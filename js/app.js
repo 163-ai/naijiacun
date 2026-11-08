@@ -379,38 +379,37 @@
     document.getElementById("boxTouch").disabled = busy || revealed;
     var button = document.getElementById("boxOpenBtn");
     button.disabled = busy;
-    button.textContent = busy ? "正在开盒……" : revealed ? "↻ 再拆一个，继续离谱 →" : "🎁 拆一个，看看是啥 →";
-    var status = "不用做选择，交给你的奶运气。";
+    button.textContent = busy ? "正在拆开……" : revealed ? "再拆一盒 →" : "拆开包裹 →";
+    document.getElementById("boxArrival").textContent = revealed ? (boxIsNew ? "首次遇见" : "又见面啦") : "村口来件";
+    document.getElementById("boxTitle").textContent = revealed ? boxResult.name + "来串门啦！" : "今天，你会遇见谁？";
+    document.getElementById("boxIntro").classList.toggle("hidden", revealed);
+    var status = "也可以点一下盒子。";
     if (boxPhase === "shaking") status = "听听，这盒里好像有动静……";
     if (boxPhase === "opening") status = "奶味封印正在解除！";
-    if (revealed) status = boxResult.name + "来啦 · " + (boxIsNew ? "新的精神状态！" : "重复抽取也会记录哦");
+    if (revealed) status = boxResult.name + "来串门啦！" + (boxIsNew ? "首次遇见，已加入本机收集。" : "又见面啦，这次相遇也记下了。");
     document.getElementById("boxStatus").textContent = status;
-    document.getElementById("boxPoolNote").textContent = "当前筛选池 " + boxPool.length + " 位 · 每位等概率 · 可重复抽取 · 免费";
-    document.getElementById("boxInventoryCount").textContent = "本机已拆 " + total + " 盒 · 收集 " + collected + " 位村民";
+    document.getElementById("boxPoolNote").textContent = "当前池 " + boxPool.length + " 位村民 · 等概率 · 可重复 · 免费";
+    document.getElementById("boxInventoryCount").textContent = "本机已拆 " + total + " 盒 · 已收集 " + collected + "/" + allPeople().length + " 位";
     document.getElementById("boxReveal").classList.toggle("hidden", !revealed);
+    document.getElementById("boxResultLabel").classList.toggle("hidden", !revealed);
     document.getElementById("boxResultActions").classList.toggle("hidden", !revealed);
     document.getElementById("boxOwnedNote").classList.toggle("hidden", !revealed);
     if (!revealed) {
-      document.getElementById("boxReveal").innerHTML = "";
+      document.getElementById("boxCharacter").innerHTML = "";
+      document.getElementById("boxResultLabel").innerHTML = "";
       return;
     }
-    var confetti = "";
-    var colors = ["#ffcd42", "#508dd9", "#f38c90", "#97b898"];
-    for (var i = 0; i < 22; i++) {
-      confetti += '<i style="--x:' + ((i * 53) % 350 - 175) + 'px;--y:' +
-        (-50 - (i * 29) % 220) + 'px;--turn:' + (i * 67) + 'deg;--delay:' +
-        ((i % 4) * 40) + 'ms;background:' + colors[i % 4] + '"></i>';
-    }
-    document.getElementById("boxReveal").innerHTML =
-      '<div class="box-confetti" aria-hidden="true">' + confetti + '</div>' +
-      '<div class="box-reveal-card"><div class="box-reveal-card-top"><span>拆到了！</span><span>' +
-        (boxIsNew ? "NEW · 新朋友" : "又见面啦") + '</span></div>' +
-        '<div class="box-reveal-image">' + avatarHTML(boxResult) + '</div>' +
-        '<h3 class="box-reveal-name">' + escapeHTML(boxResult.name) + '<span aria-hidden="true">✧</span></h3>' +
-        '<p>' + escapeHTML(boxResult.title || boxResult.category) + '</p></div>';
+    var image = boxResult.petImage || boxResult.image;
+    document.getElementById("boxCharacter").innerHTML = image
+      ? '<img src="' + escapeHTML(image) + '" alt="' + escapeHTML(boxResult.name) + '的全身形象" loading="lazy" decoding="async" width="720" height="900">'
+      : avatarHTML(boxResult);
+    document.getElementById("boxResultLabel").innerHTML =
+      '<div class="parcel-label-name"><h3>' + escapeHTML(boxResult.name) + '</h3><span>' + escapeHTML(boxResult.category) + '</span></div>' +
+      '<p>“' + escapeHTML(boxResult.quote || boxResult.title || "新朋友来串门啦。") + '”</p>';
     document.getElementById("boxAudioBtn").classList.toggle("hidden", !boxResult.clip);
-    document.getElementById("boxOwnedNote").textContent = "你在这台设备上拆到 TA " + boxInventory[boxResult.id] + " 次";
+    document.getElementById("boxOwnedNote").textContent = "✓ 已加入本机收集 · 累计遇见 " + boxInventory[boxResult.id] + " 次";
     refreshClipButtons();
+    document.getElementById("boxAudioBtn").textContent = clipCurrentId === boxResult.id ? "■ 停止原声" : "▶ 听原声";
   }
 
   function openBlindBox() {
@@ -422,6 +421,10 @@
     boxInventory = boxInventory || readBoxInventory();
     boxResult = null;
     boxPhase = "idle";
+    ["boxParcelClosed", "boxParcelOpen"].forEach(function (id) {
+      var image = document.getElementById(id);
+      if (!image.hasAttribute("src")) image.src = image.dataset.src;
+    });
     renderBlindBox();
     document.getElementById("blindBoxModal").classList.remove("hidden");
     document.getElementById("boxOpenBtn").focus();

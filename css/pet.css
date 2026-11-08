@@ -321,6 +321,11 @@ body.pet-page { margin: 0; min-height: 100vh; background: var(--bg, #f8f2e5); }
 .pet-btn[aria-pressed="true"] { border-color: var(--green); background: var(--green-soft); color: var(--green); }
 .pet-btn.primary { background: linear-gradient(#9a4b36, #823d2f); border-color: var(--green, #823d2f); color: #fff9e9; box-shadow: inset 0 1px 0 #e9bf4640, 0 3px 0 #5d2d2024; }
 .pet-btn.primary:hover:not(:disabled) { background: #6b3026; color: #fff9e9; }
+.pet-btn[hidden], .p3-btn[hidden] { display: none; }
+.pet-download { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 18px; margin-top: 18px; padding: 14px 16px; border: 1px solid var(--line); border-left: 3px solid var(--green, #823d2f); border-radius: 10px; background: var(--surface, #fffbf2); }
+.pet-download .pet-btn { flex-shrink: 0; }
+.pet-download p { flex: 1 1 300px; margin: 0; color: var(--ink-2); font-size: 12px; line-height: 1.8; }
+.pet-browser-note { grid-column: 1 / -1; margin: 0; color: var(--ink-3); font-size: 10px; }
 .pet-size { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-left: auto; font-size: 12px; color: var(--ink-2); }
 .pet-size input { width: 120px; min-width: 0; accent-color: var(--green, #823d2f); cursor: pointer; }
 
@@ -372,6 +377,9 @@ body.pet-page { margin: 0; min-height: 100vh; background: var(--bg, #f8f2e5); }
   .pet-head h1 { font-size: 29px; }
   .pet-head p { font-size: 12px; max-width: 290px; }
   .pet-back { padding: 7px 9px; font-size: 10px; margin-top: 2px; }
+  .pet-download { gap: 9px; margin-top: 14px; padding: 12px; }
+  .pet-download .pet-btn { padding-inline: 14px; }
+  .pet-download p { font-size: 11px; }
   .pet-roster { padding-top: 15px; }
   .pet-section-head { margin-bottom: 7px; }
   .pet-section-head h2 { font-size: 13px; }

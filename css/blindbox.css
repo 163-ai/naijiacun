@@ -1,0 +1,209 @@
+/* 村口来件：仅用于盲盒，沿用图鉴的青瓦、纸色和木红。 */
+#blindBoxModal { padding: 16px; }
+#blindBoxModal .box-modal-card {
+  max-width: 580px;
+  max-height: calc(100dvh - 32px);
+  padding: 0;
+  border: 1px solid #c6a77b;
+  border-radius: 23px;
+  background: #fff4df;
+  box-shadow: 0 20px 80px #1b2e2866, inset 0 0 0 5px #fffaf0;
+  scrollbar-width: thin;
+  scrollbar-color: #bc9868 #f8ebd5;
+  overscroll-behavior: contain;
+}
+#blindBoxModal .box-close {
+  position: absolute;
+  top: 11px;
+  right: 14px;
+  z-index: 10;
+  width: 32px;
+  height: 32px;
+  border: 1px solid #f2e6c260;
+  background: #29483d88;
+  color: #fff5dd;
+  font-size: 19px;
+}
+#blindBoxModal .parcel-roof {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 57px;
+  padding: 4px 22px 8px;
+  border-bottom: 4px solid #75442b;
+  color: #fff3d3;
+  background: repeating-linear-gradient(114deg, #203c33 0 2px, #4b6758 3px, #64816b 7px, #496755 13px, #2c4b3d 25px, #1b372d 30px, #244334 32px);
+  text-shadow: 0 2px 2px #15291e;
+  font: 800 29px/1 "KaiTi", "STKaiti", serif;
+  letter-spacing: 2px;
+}
+#blindBoxModal .parcel-roof::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -2px;
+  height: 10px;
+  background: radial-gradient(ellipse at 50% 0, transparent 57%, #9aa98c90 60% 67%, #203831 72%);
+  background-size: 28px 12px;
+}
+#blindBoxModal .parcel-roof svg { width: 36px; height: 29px; color: #e2bf77; }
+#blindBoxModal .box-studio {
+  padding: 20px 24px 21px;
+  color: #3c2c1c;
+  background: radial-gradient(ellipse at 50% 35%, #fffdf1 0, #fff6e5 40%, #f6e6cb 100%);
+}
+#blindBoxModal .box-studio::before {
+  z-index: -1;
+  opacity: .22;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 160 160' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' opacity='.22' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 160px 160px;
+}
+#blindBoxModal .parcel-heading { position: relative; z-index: 2; text-align: center; }
+#blindBoxModal .parcel-stamp {
+  display: inline-block;
+  margin: 0 0 8px;
+  padding: 3px 21px 4px;
+  border-radius: 48% 14% 42% 16% / 23% 45% 24% 48%;
+  background: #a1482b;
+  color: #fff5df;
+  box-shadow: inset 0 0 0 2px #fff4d81f;
+  font: 700 20px/1.3 "KaiTi", "STKaiti", serif;
+  letter-spacing: 3px;
+  transform: rotate(-2deg);
+}
+#blindBoxModal .parcel-stamp::before,
+#blindBoxModal .parcel-stamp::after { content: "〃"; position: absolute; color: #aa542d; font-size: 25px; top: 4px; }
+#blindBoxModal .parcel-stamp::before { left: -29px; transform: rotate(-35deg); }
+#blindBoxModal .parcel-stamp::after { right: -29px; transform: rotate(35deg); }
+#blindBoxModal #boxTitle {
+  position: relative;
+  margin: 0;
+  color: #302c22;
+  font: 800 36px/1.35 "KaiTi", "STKaiti", "Microsoft YaHei", serif;
+  letter-spacing: 1px;
+  overflow-wrap: anywhere;
+}
+#blindBoxModal #boxTitle::after { content: ""; position: absolute; bottom: -5px; right: 13%; width: 75px; height: 6px; border-top: 3px solid #dca344; border-radius: 50%; transform: rotate(-4deg); }
+#blindBoxModal .parcel-intro { margin: 12px 0 0; font-size: 14px; color: #6e533b; }
+#blindBoxModal .box-stage {
+  height: 265px;
+  padding: 0;
+  perspective: none;
+  margin: 2px -8px 4px;
+}
+#blindBoxModal .box-stage::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: 92%;
+  height: 85px;
+  transform: translateX(-50%);
+  border: 1px solid #b8935c20;
+  border-radius: 50%;
+  background: repeating-radial-gradient(ellipse at center, #f4dfbb30 0 15px, #ac855a24 16px 17px, #fff1d750 18px 34px);
+  box-shadow: 0 8px 17px #b1916130;
+}
+#blindBoxModal .box-touch {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 340px;
+  height: 300px;
+  max-width: 100%;
+  transform: translate(-50%, -50%);
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 18px;
+  padding: 0;
+}
+#blindBoxModal .box-touch:focus-visible { outline: 3px solid #a9632f; outline-offset: -16px; }
+#blindBoxModal .parcel-closed { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 9px 5px #69441f24); transition: transform .2s; }
+#blindBoxModal .idle .box-touch:hover .parcel-closed { transform: translateY(-5px) rotate(-2deg); }
+#blindBoxModal .shaking .parcel-closed { animation: parcel-shake .65s both; }
+#blindBoxModal .opening .parcel-closed { animation: parcel-unseal .75s ease-in both; }
+#blindBoxModal .revealed .box-touch { visibility: hidden; }
+#blindBoxModal .revealed .box-stage { height: 285px; margin-top: 8px; }
+#blindBoxModal .box-revealed-wrap { position: absolute; inset: 0; display: block; z-index: 4; pointer-events: none; }
+#blindBoxModal .box-revealed-wrap::before { content: ""; position: absolute; inset: 5% 5% 12%; background: radial-gradient(ellipse at 50% 65%, #f3c95b60, #fbe7b422 52%, transparent 72%); }
+#blindBoxModal .parcel-open { position: absolute; width: 350px; max-width: 100%; height: auto; left: 50%; bottom: -12px; transform: translateX(-50%); }
+#blindBoxModal .parcel-character { position: absolute; left: 50%; bottom: 26px; height: 260px; width: 260px; max-width: 85%; transform: translateX(-50%); display: grid; place-items: center; animation: parcel-arrival .5s cubic-bezier(.2,.7,.2,1.1) both; }
+#blindBoxModal .parcel-character img,
+#blindBoxModal .parcel-character svg { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 7px 4px #68471e2e); }
+#blindBoxModal .parcel-character .avatar-emoji { font-size: 125px; }
+#blindBoxModal .parcel-label {
+  position: relative;
+  z-index: 5;
+  margin: -3px 12px 13px;
+  padding: 10px 15px 11px;
+  border: 1px solid #b67f42;
+  border-radius: 18px 8px 18px 8px;
+  background: linear-gradient(110deg, #fffaed, #fbe8cb);
+  box-shadow: inset 0 0 0 3px #fff8e8, inset 0 0 0 4px #d7b07d80, 0 4px 10px #a67e3b12;
+  text-align: center;
+  animation: parcel-label .35s ease-out both;
+}
+#blindBoxModal .parcel-label-name { display: flex; justify-content: center; align-items: center; gap: 15px; flex-wrap: wrap; }
+#blindBoxModal .parcel-label-name h3 { margin: 0; font: 800 29px/1.2 "KaiTi", "STKaiti", serif; color: #4c2c18; }
+#blindBoxModal .parcel-label-name span { padding: 2px 12px; border: 1px solid #bc935c; border-radius: 20px; font-size: 12px; color: #724623; }
+#blindBoxModal .parcel-label p { margin: 7px 0 0; font-size: 12px; line-height: 1.6; color: #5c432b; overflow-wrap: anywhere; }
+#blindBoxModal .box-open-controls { padding: 0 16px; gap: 11px; }
+#blindBoxModal .box-open-button { order: 0; width: 100%; min-width: 0; min-height: 51px; padding: 8px 18px; border: 1px solid #873a20; border-radius: 16px; background: linear-gradient(#b5522c, #94391f); color: #fff9e9; box-shadow: inset 0 1px 0 #ffd49b7a, 0 3px 0 #6b321e, 0 6px 10px #a5704224; font: 800 25px/1.4 "KaiTi", "STKaiti", serif; letter-spacing: 2px; }
+#blindBoxModal .box-open-button:not(:disabled):hover { background: linear-gradient(#c36137, #a04425); transform: translateY(-2px); }
+#blindBoxModal .box-open-button:not(:disabled):active { transform: translateY(2px); box-shadow: inset 0 1px 0 #ffd49b7a; }
+#blindBoxModal .box-open-button:disabled { opacity: .78; }
+#blindBoxModal .box-opening-status { order: 1; min-height: 18px; color: #846247; font-size: 12px; line-height: 1.5; }
+#blindBoxModal .revealed .box-opening-status { position: absolute; width: 1px; height: 1px; min-height: 0; overflow: hidden; clip-path: inset(50%); }
+#blindBoxModal .box-result-actions { order: 1; width: 100%; gap: 12px; flex-wrap: nowrap; }
+#blindBoxModal .box-result-actions .btn { flex: 1; min-height: 38px; padding: 6px 8px; border: 1px solid #b77b44; border-radius: 12px; background: #fff6e5; box-shadow: inset 0 0 0 2px #fffaf1; color: #6f351f; font-size: 13px; font-weight: 700; }
+#blindBoxModal .box-result-actions .btn:hover { background: #f5e2c2; }
+#blindBoxModal .box-open-button:focus-visible,
+#blindBoxModal .box-result-actions button:focus-visible { outline: 3px solid #496b57; outline-offset: 4px; }
+#blindBoxModal .box-owned-note { order: 2; font-size: 12px; color: #79583b; line-height: 1.5; }
+#blindBoxModal .parcel-record { order: 3; width: 100%; padding-top: 11px; border-top: 1px solid #c8a27070; text-align: center; }
+#blindBoxModal .box-draw-note,
+#blindBoxModal .box-inventory-count { color: #785c40; font-size: 12px; line-height: 1.6; }
+#blindBoxModal .box-inventory-count { margin-top: 3px; }
+#blindBoxModal .parcel-confetti { position: absolute; inset: 0; }
+#blindBoxModal .parcel-confetti i { position: absolute; width: 7px; height: 14px; border-radius: 1px; background: #cba24b; animation: parcel-confetti .9s ease-out both; }
+#blindBoxModal .parcel-confetti i:nth-child(1) { left: 18%; top: 20%; transform: rotate(35deg); }
+#blindBoxModal .parcel-confetti i:nth-child(2) { right: 19%; top: 33%; background: #729d87; transform: rotate(-20deg); }
+#blindBoxModal .parcel-confetti i:nth-child(3) { left: 13%; top: 57%; background: #b16643; transform: rotate(65deg); }
+#blindBoxModal .parcel-confetti i:nth-child(4) { right: 13%; top: 64%; transform: rotate(50deg); }
+#blindBoxModal .parcel-confetti i:nth-child(5) { left: 28%; top: 5%; background: #719e89; transform: rotate(-30deg); }
+#blindBoxModal .parcel-confetti i:nth-child(6) { right: 30%; top: 9%; background: #c28557; transform: rotate(25deg); }
+@keyframes parcel-shake { 0%, 100% { transform: rotate(0); } 18%, 50%, 82% { transform: translateX(-5px) rotate(-5deg); } 34%, 66% { transform: translateX(5px) rotate(4deg); } }
+@keyframes parcel-unseal { 0% { transform: translateY(0) scale(1); opacity: 1; } 40% { transform: translateY(-12px) scale(1.04) rotate(-2deg); opacity: 1; } 100% { transform: translateY(25px) scale(.9); opacity: 0; } }
+@keyframes parcel-arrival { from { opacity: 0; transform: translate(-50%, 35px) scale(.85); } to { opacity: 1; transform: translate(-50%, 0) scale(1); } }
+@keyframes parcel-label { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes parcel-confetti { from { opacity: 0; margin-top: 30px; } 30%, 80% { opacity: 1; } to { opacity: .5; margin-top: -5px; } }
+@media (max-width: 560px) {
+  #blindBoxModal { padding: 10px; }
+  #blindBoxModal .box-modal-card { max-height: calc(100dvh - 20px); border-radius: 20px; }
+  #blindBoxModal .parcel-roof { min-height: 52px; padding-left: 17px; font-size: 26px; }
+  #blindBoxModal .box-studio { padding: 18px 14px 19px; }
+  #blindBoxModal #boxTitle { font-size: 29px; letter-spacing: 0; }
+  #blindBoxModal .parcel-stamp { font-size: 18px; margin-bottom: 8px; }
+  #blindBoxModal .parcel-intro { font-size: 12px; margin-top: 12px; }
+  #blindBoxModal .box-stage { height: 248px; margin-top: 3px; }
+  #blindBoxModal .box-touch { width: 300px; height: 286px; }
+  #blindBoxModal .revealed .box-stage { height: 267px; margin-top: 9px; }
+  #blindBoxModal .parcel-character { height: 245px; width: 245px; bottom: 19px; }
+  #blindBoxModal .parcel-open { width: 320px; bottom: -16px; }
+  #blindBoxModal .parcel-label { margin: -2px 3px 13px; padding: 10px 11px; }
+  #blindBoxModal .parcel-label-name h3 { font-size: 27px; }
+  #blindBoxModal .parcel-label-name { gap: 11px; }
+  #blindBoxModal .parcel-label-name span { font-size: 11px; padding-inline: 9px; }
+  #blindBoxModal .parcel-label p { font-size: 11px; }
+  #blindBoxModal .box-open-controls { padding: 0 6px; gap: 10px; }
+  #blindBoxModal .box-open-button { min-height: 48px; font-size: 23px; }
+  #blindBoxModal .box-draw-note,
+  #blindBoxModal .box-inventory-count { font-size: 11px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #blindBoxModal *, #blindBoxModal *::before, #blindBoxModal *::after { animation: none !important; transition: none !important; }
+}

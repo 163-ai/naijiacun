@@ -4,9 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>桌宠模式 · 奶家村</title>
-<meta name="description" content="把奶家村的角色变成一只会走会瞌睡的桌宠，还能浮在其他窗口上面。">
+<meta name="description" content="下载奶家村 Windows 透明桌宠，让村民浮在桌面上；也能在网页小院里拖动、聊天。">
 <link rel="stylesheet" href="css/style.css?v=village-1">
-<link rel="stylesheet" href="css/pet.css?v=village-1">
+<link rel="stylesheet" href="css/pet.css?v=desktop-1">
 <link rel="stylesheet" href="css/village.css?v=village-1">
 </head>
 <body class="village-theme pet-page">
@@ -16,10 +16,15 @@
   <div>
     <span class="pet-kicker">村里的慢时光</span>
     <h1>桌宠陪伴</h1>
-    <p>领一位村民来小院坐坐。拖一拖、聊两句，也能让它住进桌面小窗。</p>
+    <p>领一位村民来小院坐坐。拖一拖、聊两句，也能下载透明桌宠陪在桌面上。</p>
   </div>
   <a class="pet-back" href="index.html">← 回村民名册</a>
 </header>
+
+<section class="pet-download" aria-label="Windows 透明桌宠下载">
+  <a class="pet-btn primary" href="downloads/naijiacun-pet-windows.zip" download>↓ Windows 透明桌宠</a>
+  <p>Windows 免安装 · 解压后双击运行，拖动移动，右键切换或退出。</p>
+</section>
 
 <section class="pet-roster" aria-labelledby="petRosterTitle">
   <div class="pet-section-head">
@@ -30,7 +35,7 @@
 </section>
 
 <div class="pet-toolbar" aria-label="桌宠操作">
-  <button class="pet-btn primary" id="pinBtn">📌 置顶小窗</button>
+  <button class="pet-btn" id="pinBtn" title="浏览器置顶小窗，会保留背景和来源栏">📌 浏览器小窗</button>
   <button class="pet-btn" id="talkBtn">💬 说句话</button>
   <button class="pet-btn" id="wanderBtn">🚶 随便走走</button>
   <button class="pet-btn" id="depthBtn" aria-pressed="true" title="切换 2.5D 立体 / 平面">🧊 立体感</button>
@@ -65,7 +70,7 @@
 <script src="js/tts.js?v=village-1"></script>
 <script src="js/chat.js?v=lossless-1"></script>
 <script src="js/pet.js?v=user-models-9"></script>
-<script src="js/pet-page.js"></script>
+<script src="js/pet-page.js?v=desktop-1"></script>
 <script src="js/village.js?v=village-1"></script>
 </body>
 </html>

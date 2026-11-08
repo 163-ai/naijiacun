@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>3D 形象展台 · 奶家村</title>
   <link rel="stylesheet" href="css/style.css?v=village-1">
+  <link rel="stylesheet" href="css/pet.css?v=desktop-1">
   <link rel="stylesheet" href="css/pet3d.css?v=loading-1">
   <link rel="stylesheet" href="css/pet3d-actions.css?v=laugh-1">
   <link rel="stylesheet" href="css/village.css?v=village-1">
@@ -19,6 +20,11 @@
       </div>
       <a class="p3-back" href="pet.html">← 回桌宠小院</a>
     </header>
+
+    <section class="pet-download" aria-label="Windows 透明桌宠下载">
+      <a class="pet-btn primary" href="downloads/naijiacun-pet-windows.zip" download>↓ Windows 透明桌宠</a>
+      <p>Windows 免安装 · 解压后双击运行，拖动移动，右键切换或退出。</p>
+    </section>
 
     <div class="p3-main">
       <div id="stage" class="p3-stage">
@@ -79,7 +85,8 @@
           <button class="p3-btn" id="talkBtn">🔊 说句话</button>
           <button class="p3-btn" id="clipBtn">🎵 原声</button>
           <button class="p3-btn" id="resetBtn">↩️ 复位视角</button>
-          <button class="p3-btn primary" id="pinBtn">📌 置顶小窗</button>
+          <button class="p3-btn" id="pinBtn" title="浏览器置顶小窗，会保留背景和来源栏">📌 浏览器小窗</button>
+          <p class="pet-browser-note">浏览器小窗会保留背景和来源栏。</p>
         </div>
         <p id="status" class="p3-status">准备中…</p>
 
@@ -97,7 +104,7 @@
   <script type="importmap">{"imports":{"three":"./vendor/three/three.module.min.js"}}</script>
   <script src="js/data.js?v=lossless-1"></script>
   <script src="js/3d-models.js?v=lossless-1"></script>
-  <script type="module" src="js/pet3d.js?v=laugh-1"></script>
+  <script type="module" src="js/pet3d.js?v=desktop-1"></script>
   <script src="js/village.js?v=village-1"></script>
   <script>
     window.addEventListener("load", function () {
