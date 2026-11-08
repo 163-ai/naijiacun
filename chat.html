@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>和村民聊两句 · 奶家村</title>
   <link rel="stylesheet" href="css/style.css?v=village-1">
-  <link rel="stylesheet" href="css/chat.css?v=village-1">
+  <link rel="stylesheet" href="css/chat.css?v=voice-quota-1">
   <link rel="stylesheet" href="css/village.css?v=village-1">
 </head>
 <body class="village-theme chat-page">
@@ -15,7 +15,7 @@
         <a class="ch-back" href="index.html">村民图鉴 /</a>
         <p class="ch-eyebrow">村口茶话会 <span>VILLAGE TEAHOUSE</span></p>
         <h1>和村民，坐下聊两句。</h1>
-        <p class="ch-intro">挑一位熟面孔，说说今天的新鲜事。点一下朗读，还能听听他的声音。</p>
+        <p class="ch-intro">挑一位熟面孔，说说今天的新鲜事。点一下朗读，还能听听他的声音——每人免费送 5 句角色原声。</p>
       </div>
       <div class="ch-head-note">
         <span class="ch-note-mark" aria-hidden="true">“</span>
@@ -37,6 +37,7 @@
             <span id="chDesc">黄色大肚子的呆萌小恐龙</span>
           </div>
           <div class="ch-actions">
+            <button id="quotaChip" class="ch-quota" type="button" hidden>🎁 真人音色 5/5</button>
             <button id="speakBtn" class="ch-tool on" type="button" aria-pressed="true" title="收到回复后自动朗读">🔊 朗读</button>
             <button id="clearBtn" class="ch-tool" type="button" title="清空这个角色的聊天记录">🧹 清空</button>
             <button id="cfgBtn" class="ch-tool" type="button" title="配置大模型接口与语音">⚙️ 设置</button>
@@ -97,16 +98,27 @@
       </fieldset>
 
       <fieldset>
-        <legend>02 / 角色语音 · 可选</legend>
+        <legend>02 / 角色语音 · 真人原声</legend>
+        <p class="ch-quota-line" id="quotaLine"></p>
+
         <label class="ch-field">
-          <span>语音代理地址</span>
-          <input id="ttsBase" type="text" spellcheck="false" placeholder="https://naijiacun-tts.xxx.workers.dev">
+          <span>我的 Key</span>
+          <input id="sfKeyInput" type="password" spellcheck="false" autocomplete="off" placeholder="sk-…（留空 = 用站点免费额度 / 系统语音）">
         </label>
+
+        <div class="ch-keyrow">
+          <button id="testSfBtn" class="ch-tool" type="button">测试这个 Key</button>
+          <a href="https://cloud.siliconflow.cn/account/ak" target="_blank" rel="noopener">没有 Key？硅基流动免费注册 →</a>
+        </div>
+
         <label class="ch-field">
-          <span>Breeze Key</span>
-          <input id="ttsKey" type="password" spellcheck="false" autocomplete="off" placeholder="brz_…">
+          <span>代理地址</span>
+          <input id="ttsBase" type="text" spellcheck="false" placeholder="留空 = 用站点自带的语音代理">
         </label>
-        <p class="ch-hint">配置后使用角色音色；未配置时使用浏览器朗读。与图鉴页、桌宠的语音设置共用。</p>
+
+        <p class="ch-hint">这里填<b>硅基流动</b>的 Key（<code>sk-</code> 开头，注册就送免费额度），只存在你自己的浏览器里，不会上传。
+          不填也能用：站点每人送<b>5 句</b>角色原声，用完后自动换成系统默认语音，聊天本身一直免费。
+          和图鉴页、桌宠的语音设置共用同一份配置。</p>
       </fieldset>
 
       <div class="ch-dlg-foot">
@@ -118,8 +130,8 @@
   </dialog>
 
   <script src="js/data.js?v=waving-1"></script>
-  <script src="js/tts.js?v=village-1"></script>
-  <script src="js/chat.js?v=lossless-1"></script>
+  <script src="js/tts.js?v=voice-quota-1"></script>
+  <script src="js/chat.js?v=voice-quota-1"></script>
   <script src="js/village.js?v=village-1"></script>
 </body>
 </html>
