@@ -106,3 +106,9 @@
   .p3-fx span { animation-duration: .01s; }
   .p3-act, .p3-cat, .p3-sound { transition: none !important; }
 }
+
+/* 底部快捷导航是 fixed 的：给展台页留出安全距离，
+   否则「笑到躺下」时角色会被导航条挡住一半。 */
+@media (max-width: 720px) {
+  .p3-page .p3-wrap { padding-bottom: 96px; }
+}

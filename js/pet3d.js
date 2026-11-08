@@ -361,7 +361,7 @@ import { MeshoptDecoder } from "../vendor/meshopt/meshopt_decoder.module.js";
   // ---------- 动作系统：骨骼实时驱动，不依赖模型自带动画 ----------
   // 模型自带的 7 段动画只动头部（幅度 0.03~0.14），当不了「大笑／鞠躬」，
   // 因此这里直接按骨骼摆姿势：动作幅度可控、每个模型都能复用。
-  var rig = null, active = null, activeStart = 0, laughAudio = null;
+  var rig = null, active = null, activeStart = 0, laughAudio = null, frozen = null;
   var soundOn = true;
   try { soundOn = localStorage.getItem("p3-sound") !== "off"; } catch (e) {}
 
@@ -382,11 +382,18 @@ import { MeshoptDecoder } from "../vendor/meshopt/meshopt_decoder.module.js";
       };
     });
     var centered = root.children[0];
+    var box = new T.Box3().setFromObject(centered);
+    var size = new T.Vector3();
+    box.getSize(size);
     rig = {
       root: root, centered: centered, bones: bones, rest: rest,
       baseY: centered.position.y,
+      baseZ: centered.position.z,
       baseRot: centered.rotation.clone(),
-      baseScale: centered.scale.clone()
+      baseScale: centered.scale.clone(),
+      // 身高 / 厚度：用于「笑到躺下」时按身体尺寸把模型稳稳放到地面上
+      h: Math.max(0.5, size.y),
+      d: Math.max(0.2, size.z)
     };
   }
 
@@ -396,6 +403,7 @@ import { MeshoptDecoder } from "../vendor/meshopt/meshopt_decoder.module.js";
       rig.bones[name].quaternion.copy(rig.rest[name].q);
     });
     rig.centered.position.y = rig.baseY;
+    rig.centered.position.z = rig.baseZ;
     rig.centered.rotation.copy(rig.baseRot);
     rig.centered.scale.copy(rig.baseScale);
   }
@@ -436,34 +444,61 @@ import { MeshoptDecoder } from "../vendor/meshopt/meshopt_decoder.module.js";
     setTimeout(function () { if (box) box.innerHTML = ""; }, 3200);
   }
 
-  // 大笑：上身后仰 + 跟着笑点上下颠 + 左右晃 + 肚子一鼓一瘪
-  // 当前村民模型都是单网格、无骨骼，所以用整体变换来演；将来换成带骨骼的模型会自动叠加脊柱/头/手臂
-  function applyLaugh(t, env, wave) {
-    var beat = Math.max(0, wave);
-    var wobble = 0.085 * wave * env;
-    if (rig.bones.Spine) {
-      rotWorld("Spine", [[[1, 0, 0], -0.24 * env + wobble], [[0, 0, 1], 0.05 * wave * env]]);
-      if (rig.bones.Chest) rotWorld("Chest", [[[1, 0, 0], -0.14 * env + wobble * 0.8], [[0, 1, 0], 0.05 * wave * env]]);
-      if (rig.bones.Head) {
-        rotWorld("Head", [[[1, 0, 0], 0.3 * env - 0.14 * wave * env], [[0, 1, 0], -0.06 * wave * env]]);
-      }
-      if (rig.bones.LeftArm && rig.bones.RightArm) {
-        rotWorld("LeftArm", [[[0, 1, 0], -0.5 * env], [[1, 0, 0], (-0.02 - 0.06 * wave) * env]]);
-        rotWorld("RightArm", [[[0, 1, 0], 0.5 * env], [[1, 0, 0], (-0.02 - 0.06 * wave) * env]]);
-        if (rig.bones.LeftForeArm) rotWorld("LeftForeArm", [[[0, 0, 1], -0.2 * env]]);
-        if (rig.bones.RightForeArm) rotWorld("RightForeArm", [[[0, 0, 1], 0.2 * env]]);
-      }
+  // 大笑：照参考视频的演法 —— 站着笑到抖 → 越笑越后仰 → 笑岔气往后倒下 →
+  // 四脚朝天左右滚 → 缓过来自己爬回站姿。
+  // 村民模型都是单网格、没有骨骼，所以整段用整体旋转 + 按身高补偿落地高度来演。
+  function seg(t, a, b) { return Math.min(1, Math.max(0, (t - a) / (b - a))); }
+  function easeOut(x) { var p = 1 - Math.min(1, Math.max(0, x)); return 1 - p * p * p; }
+  function easeIn(x) { var p = Math.min(1, Math.max(0, x)); return p * p; }
+
+  function applyLaugh(t) {
+    var H = rig.h, D = rig.d;
+    var lean = 0, roll = 0, shake = 0, squash = 0, lift = 0, turn = 0;
+
+    if (t < 1.9) {
+      // ① 站着笑：肚子一鼓一瘪，越笑越往后仰
+      lean = 0.24 * easeOut(seg(t, 0, 0.65)) + 0.18 * easeOut(seg(t, 0.65, 1.9));
+      shake = (0.018 + 0.065 * seg(t, 0.5, 1.1)) * Math.sin(t * Math.PI * 2 * 5.6);
+      var beat = Math.max(0, Math.sin(t * Math.PI * 2 * 2.8));
+      squash = 0.062 * beat;
+      lift = 0.05 * beat;
+    } else if (t < 2.5) {
+      // ② 笑岔气，整个人往后栽（越倒越快，像真的失去平衡）
+      var p = easeIn(seg(t, 1.9, 2.45));
+      lean = 0.42 + (1.55 - 0.42) * p;
+      shake = 0.03 * (1 - p) * Math.sin(t * Math.PI * 2 * 6.4);
+    } else if (t < 3.6) {
+      // ③ 四脚朝天躺着，还在笑：蹬腿 + 左右打滚
+      var r = seg(t, 2.5, 3.6);
+      lean = 1.55 + 0.03 * Math.sin((t - 2.5) * Math.PI * 2 * 1.6);
+      roll = 0.2 * Math.sin((t - 2.5) * Math.PI * 2 * 0.85) * (1 - 0.35 * r);
+      // 躺下时身子稍微斜一点，别让脸被肚子完全挡住
+      turn = 0.55 * easeOut(r);
+      lift = 0.028 * Math.max(0, Math.sin((t - 2.5) * Math.PI * 2 * 3.2));
+    } else if (t < 4.5) {
+      // ④ 缓过来，翻身爬回站姿（带一点回弹）
+      var q = easeOut(seg(t, 3.6, 4.4));
+      lean = 1.55 * (1 - q) - 0.05 * Math.sin(Math.PI * seg(t, 4.3, 4.5));
+      roll = 0.16 * (1 - q) * Math.sin((t - 3.6) * Math.PI * 2 * 0.8);
+      turn = 0.55 * (1 - q);
     } else {
-      // 无骨骼：整体后仰 + 侧晃
-      rig.centered.rotation.x = rig.baseRot.x - 0.27 * env + wobble;
-      rig.centered.rotation.z = rig.baseRot.z + 0.075 * wave * env;
+      // ⑤ 站稳，收个尾声
+      lean = 0.05 * Math.max(0, Math.sin((t - 4.5) * Math.PI * 5)) * (1 - seg(t, 4.5, 4.7));
     }
-    rig.centered.position.y = rig.baseY + 0.09 * env * beat;
-    var squash = 0.07 * env * beat;
+
+    var ang = Math.max(0, lean);
+    rig.centered.rotation.x = rig.baseRot.x - ang + shake;
+    rig.centered.rotation.z = rig.baseRot.z + roll;
+    rig.centered.rotation.y = rig.baseRot.y + turn;
+    // 支点放在脚底：转多少度，就把中心按身高补偿回来；躺下时再把身体厚度垫回去
+    var dy = -(H / 2) * (1 - Math.cos(ang)) + (D / 2) * Math.sin(ang);
+    var dz = -(H / 2) * Math.sin(ang) * 0.55;
+    rig.centered.position.y = rig.baseY + dy + lift;
+    rig.centered.position.z = rig.baseZ + dz;
     rig.centered.scale.set(
-      rig.baseScale.x * (1 + squash),
+      rig.baseScale.x * (1 + squash * 0.7),
       rig.baseScale.y * (1 - squash),
-      rig.baseScale.z * (1 + squash)
+      rig.baseScale.z * (1 + squash * 0.7)
     );
   }
 
@@ -488,7 +523,7 @@ import { MeshoptDecoder } from "../vendor/meshopt/meshopt_decoder.module.js";
 
 
   var ACTIONS = {
-    laugh: { label: "捧腹大笑", ms: 3450, rampIn: 0.4, rampOut: 0.5, freq: 3.5, sound: "audio/laugh.mp3", bubble: "哈哈哈哈哈——", fx: true, apply: applyLaugh },
+    laugh: { label: "捧腹大笑", ms: 4700, rampIn: 0.01, rampOut: 0.01, freq: 1, sound: "audio/laugh.mp3?v=2", bubble: "哈哈哈哈哈哈——笑岔气了", fx: true, apply: applyLaugh },
     jump: { label: "蹦一下", ms: 1500, rampIn: 0.05, rampOut: 0.05, freq: 1, apply: applyJump }
   };
 
@@ -516,6 +551,16 @@ import { MeshoptDecoder } from "../vendor/meshopt/meshopt_decoder.module.js";
       bubble.classList.remove("hidden");
     }
     if (def.fx) burstLaugh();
+    // 手机上动作区在展台上方，点完先滚到展台，别让人对着按钮看不到角色
+    if (window.matchMedia && window.matchMedia("(max-width: 720px)").matches) {
+      var stageEl = document.getElementById("stage");
+      if (stageEl) {
+        var sr = stageEl.getBoundingClientRect();
+        if (sr.bottom > window.innerHeight - 96 || sr.top < 60) {
+          stageEl.scrollIntoView({ block: "center", behavior: "smooth" });
+        }
+      }
+    }
     if (def.sound && soundOn) {
       var audio = new Audio(def.sound);
       laughAudio = audio;
@@ -537,8 +582,8 @@ import { MeshoptDecoder } from "../vendor/meshopt/meshopt_decoder.module.js";
 
   function updateAction(now) {
     if (!active || !rig) return;
-    var t = (now - activeStart) / 1000;
-    if (t >= active.ms / 1000) { stopAction(); return; }
+    var t = frozen != null ? frozen : (now - activeStart) / 1000;
+    if (frozen == null && t >= active.ms / 1000) { stopAction(); return; }
     active.apply(t, envelope(t, active), Math.sin(t * Math.PI * 2 * (active.freq || 1)));
   }
 
@@ -567,12 +612,12 @@ import { MeshoptDecoder } from "../vendor/meshopt/meshopt_decoder.module.js";
     if (!rig) { note2.textContent = ""; return; }
     if (!rig.bones.Spine) {
       note2.textContent = mood
-        ? "这个村民是整块模型、没有骨骼，大笑会整体后仰、跟着节拍抖。声音可以随时关掉。"
+        ? "照视频里的演法：站着笑到抖，越笑越后仰，笑岔气直接往后躺倒、四脚朝天滚两下再爬起来。"
         : "蹦一下：原地跳起再落回，不带动骨骼。";
       return;
     }
     note2.textContent = mood
-      ? "点一下，它会后仰大笑、跟着节拍直抖。声音可以随时关掉。"
+      ? "点一下：笑到抖、笑到后仰，然后整个人往后躺倒滚两下再爬起来。"
       : "蹦一下：原地跳起再落回。";
   }
 
@@ -716,6 +761,7 @@ import { MeshoptDecoder } from "../vendor/meshopt/meshopt_decoder.module.js";
     model: function () { return model; },
     currentId: function () { return currentId; },
     act: function (name, withSound) {
+      frozen = null;
       if (withSound === false) soundOn = false;
       playAction(name);
       return !!(active && active.label === (ACTIONS[name] || {}).label);
@@ -727,9 +773,11 @@ import { MeshoptDecoder } from "../vendor/meshopt/meshopt_decoder.module.js";
       active = def;
       activeStart = performance.now() - t * 1000;
       def.apply(t, 1, Math.sin(t * Math.PI * 2 * (def.freq || 1)));
+      frozen = t;                       // 定格在这一帧，方便截图比对
+      renderer.render(scene, camera);
       return true;
     },
-    stopAction: function () { stopAction(); },
+    stopAction: function () { frozen = null; stopAction(); },
     rig: function () { return rig; },
     bones: function () { return rig ? Object.keys(rig.bones) : []; }
   };
