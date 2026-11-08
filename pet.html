@@ -4,10 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>桌宠模式 · 奶家村</title>
-<meta name="description" content="下载奶家村 Windows 透明桌宠，让村民浮在桌面上；也能在网页小院里拖动、聊天。">
+<meta name="description" content="十位村民的跨网页桌宠：透明平面与真实3D活动，浏览器扩展让它陪你逛网页。">
 <link rel="stylesheet" href="css/style.css?v=village-1">
-<link rel="stylesheet" href="css/pet.css?v=desktop-1">
+<link rel="stylesheet" href="css/pet.css?v=browser-pets-1">
 <link rel="stylesheet" href="css/village.css?v=village-1">
+<script type="importmap">{"imports":{"three":"./vendor/three/three.module.min.js"}}</script>
 </head>
 <body class="village-theme pet-page">
 
@@ -16,14 +17,14 @@
   <div>
     <span class="pet-kicker">村里的慢时光</span>
     <h1>桌宠陪伴</h1>
-    <p>领一位村民来小院坐坐。拖一拖、聊两句，也能下载透明桌宠陪在桌面上。</p>
+    <p>领一位村民来小院坐坐。切换真实 3D，跑一跑，再陪你逛别的网页。</p>
   </div>
   <a class="pet-back" href="index.html">← 回村民名册</a>
 </header>
 
-<section class="pet-download" aria-label="Windows 透明桌宠下载">
-  <a class="pet-btn primary" href="downloads/naijiacun-pet-windows.zip" download>↓ Windows 透明桌宠</a>
-  <p>Windows 免安装 · 解压后双击运行，拖动移动，右键切换或退出。</p>
+<section class="pet-download" aria-label="浏览器桌宠扩展">
+  <a class="pet-btn primary" href="extension.html">浏览器扩展 · 安装与使用 ↗</a>
+  <p id="extensionStatus">一次启用 Chrome / Edge 扩展，所有村民都能在普通网页间陪伴。当前为开发预览版。</p>
 </section>
 
 <section class="pet-roster" aria-labelledby="petRosterTitle">
@@ -35,10 +36,10 @@
 </section>
 
 <div class="pet-toolbar" aria-label="桌宠操作">
-  <button class="pet-btn" id="pinBtn" title="浏览器置顶小窗，会保留背景和来源栏">📌 浏览器小窗</button>
+  <button class="pet-btn primary" id="pinBtn" title="将当前村民交给浏览器扩展，跨网页陪伴">🐾 变桌宠</button>
   <button class="pet-btn" id="talkBtn">💬 说句话</button>
-  <button class="pet-btn" id="wanderBtn">🚶 随便走走</button>
-  <button class="pet-btn" id="depthBtn" aria-pressed="true" title="切换 2.5D 立体 / 平面">🧊 立体感</button>
+  <button class="pet-btn" id="wanderBtn">🏃 跑一跑</button>
+  <button class="pet-btn" id="depthBtn" aria-pressed="false" title="切换为可活动的真实3D形象">▫️ 平面</button>
   <a class="pet-btn" href="pet3d.html" title="真 WebGL 3D 网格，可拖拽 360° 旋转">🌀 真 3D 版</a>
   <label class="pet-size">大小
     <input type="range" id="sizeRange" min="80" max="220" step="4" value="132">
@@ -65,12 +66,14 @@
 <p class="pet-note" id="petNote">点一下它试试。</p>
 </main>
 
-<script src="js/data.js?v=waving-1"></script>
+<script src="js/data.js?v=browser-pets-1"></script>
+<script src="js/3d-models.js?v=waving-1"></script>
 <script src="js/avatars.js?v=waving-1"></script>
 <script src="js/tts.js?v=village-1"></script>
 <script src="js/chat.js?v=lossless-1"></script>
-<script src="js/pet.js?v=user-models-9"></script>
-<script src="js/pet-page.js?v=desktop-1"></script>
+<script src="js/pet.js?v=browser-pets-1"></script>
+<script src="js/pet-extension-bridge.js?v=browser-pets-1"></script>
+<script src="js/pet-page.js?v=browser-pets-1"></script>
 <script src="js/village.js?v=village-1"></script>
 </body>
 </html>

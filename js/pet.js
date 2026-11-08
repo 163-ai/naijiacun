@@ -99,6 +99,7 @@
     this.destroyed = false;
     this.pinned = false;
     this.depth = true;
+    this.renderView = null;
     // 2.5D 视角：x/y 是当前角度，tx/ty 是目标角度，lift 是离地高度
     this.gaze = { x: 0, y: 0, tx: 0, ty: 0, lift: 0 };
 
@@ -334,7 +335,8 @@
     }, 3000);
   };
 
-  Pet.prototype._walkTo = function () {
+  Pet.prototype._walkTo = function (gait) {
+    this.gait = gait || "walk";
     var b = this._bounds();
     var tries = 0;
     var tx = this.x;
@@ -358,6 +360,7 @@
   Pet.prototype._tick = function () {
     var self = this;
     var last = Date.now();
+    var lastRender = last;
 
     function frame() {
       if (self.destroyed) return;
@@ -369,7 +372,7 @@
         var dx = self.tx - self.x;
         var dy = self.ty - self.y;
         var dist = Math.sqrt(dx * dx + dy * dy);
-        var step = WALK_SPEED * dt;
+        var step = WALK_SPEED * (self.gait === "run" ? 1.8 : 1) * dt;
 
         if (dist <= step || dist < 1) {
           self.x = self.tx;
@@ -402,6 +405,15 @@
         b.setProperty("--tilt", (self.state === "walk" ? Math.sin(t * 9) * 3 : 0).toFixed(2) + "deg");
         b.setProperty("--shadow-x", (-g.x * 0.45).toFixed(1) + "px");
         b.setProperty("--shadow-scale", (1 + g.lift / 130).toFixed(3));
+      }
+
+      if (self.renderView && !self.board.ownerDocument.hidden && self.el.style.visibility !== "hidden" && now - lastRender >= 32) {
+        var motion = self.state === "walk" ? self.gait : self.state === "drag" ? "dragged" : "idle";
+        if (motion !== self._viewMotion) { self.renderView.setMotion(motion); self._viewMotion = motion; }
+        self.renderView.setFacing(self.facing);
+        self.renderView.update(Math.min(0.08, (now - lastRender) / 1000));
+        self.el.dataset.renderMode = self.renderView.mode;
+        lastRender = now;
       }
 
       self.frame = self.host.requestAnimationFrame(frame);
@@ -446,21 +458,33 @@
 
   Pet.prototype.setCharacter = function (id) {
     this.id = id;
-    this.bodyEl.innerHTML = figureHTML(id);
+    var result;
+    if (this.renderView) result = this.renderView.setCharacter(id);
+    else this.bodyEl.innerHTML = figureHTML(id);
     this.talk();
+    return result;
+  };
+
+  Pet.prototype.setRenderer = function (view) {
+    this.renderView = view;
+    this.el.dataset.petRenderer = "true";
+    this.setDepth(false);
+    view.setSize(this.size);
+    return view.setCharacter(this.id);
   };
 
   Pet.prototype.setSize = function (px) {
     this.size = px;
     this.el.style.width = px + "px";
     this.el.style.height = px + "px";
+    if (this.renderView) this.renderView.setSize(px);
     this._clampIntoBoard();
   };
 
   // 让它自己随便走走（页面上「随便走走」按钮用）
   Pet.prototype.wander = function () {
     this.wake();
-    this._walkTo();
+    this._walkTo("run");
     this._schedule();
   };
 
@@ -490,6 +514,7 @@
 
   Pet.prototype.destroy = function () {
     this.destroyed = true;
+    if (this.renderView) this.renderView.destroy();
     this._unbindGaze();
     clearTimeout(this.nextTimer);
     clearTimeout(this.bubbleTimer);

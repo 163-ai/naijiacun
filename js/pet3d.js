@@ -74,7 +74,7 @@ import { MeshoptDecoder } from "../vendor/meshopt/meshopt_decoder.module.js";
   var zoom = 1, fitDistance = 4.7;
   var dragging = false, lastX = 0, lastY = 0;
   var autoSpin = true, wireframe = false;
-  var audioEl = null, bubbleTimer = 0, pipWindow = null;
+  var audioEl = null, bubbleTimer = 0, browserPetState = null;
 
   function byId(id) { return LIST.find(function (p) { return p.id === id; }); }
   function toggleBtn(id, on) {
@@ -191,6 +191,7 @@ import { MeshoptDecoder } from "../vendor/meshopt/meshopt_decoder.module.js";
     var controller = new AbortController();
     pendingLoad = controller;
     currentId = id;
+    syncPetButton();
     stopAudio();
     if (model) { scene.remove(model); model = null; }
     fallback.classList.add("hidden");
@@ -658,32 +659,20 @@ import { MeshoptDecoder } from "../vendor/meshopt/meshopt_decoder.module.js";
     refreshSoundBtn();
   }
 
-  // ---------- 置顶小窗 ----------
+  // ---------- 浏览器扩展桌宠 ----------
+  function syncPetButton() {
+    document.getElementById("pinBtn").textContent = browserPetState && browserPetState.enabled && browserPetState.id === currentId ? "↩ 收回桌宠" : "🐾 变桌宠";
+  }
   async function togglePin() {
-    if (!("documentPictureInPicture" in window)) return;
-    if (pipWindow) { pipWindow.close(); return; }
+    var button = document.getElementById("pinBtn");
+    button.disabled = true;
     try {
-      pipWindow = await window.documentPictureInPicture.requestWindow({ width: 420, height: 460 });
-      pipWindow.document.body.style.cssText = "margin:0;background:#faf7f2;overflow:hidden";
-      ["css/style.css?v=village-1", "css/pet3d.css?v=loading-1"].forEach(function (href) {
-        var link = pipWindow.document.createElement("link");
-        link.rel = "stylesheet";
-        link.href = new URL(href, window.location.href).href;
-        pipWindow.document.head.appendChild(link);
-      });
-      pipWindow.document.body.appendChild(stage);
-      stage.classList.add("in-pip");
-      resize();
-      var button = document.getElementById("pinBtn");
-      button.textContent = "📌 收回浏览器小窗";
-      pipWindow.addEventListener("pagehide", function () {
-        document.querySelector(".p3-main").insertBefore(stage, document.querySelector(".p3-side"));
-        stage.classList.remove("in-pip");
-        pipWindow = null;
-        button.textContent = "📌 浏览器小窗";
-        resize();
-      });
-    } catch (e) { setStatus("浏览器小窗暂时无法打开，请允许浏览器打开小窗。"); }
+      var outside = browserPetState && browserPetState.enabled && browserPetState.id === currentId;
+      if (outside) await window.NaijiacunPetBridge.stop();
+      else await window.NaijiacunPetBridge.start({ id: currentId, mode: "3d", size: 200 });
+      setStatus(outside ? "桌宠已收回。" : "已开启跨网页桌宠，右键角色可切换或收回。");
+    } catch (e) { setStatus(e.message); }
+    finally { button.disabled = false; syncPetButton(); }
   }
 
   LIST.forEach(function (person) {
@@ -724,9 +713,8 @@ import { MeshoptDecoder } from "../vendor/meshopt/meshopt_decoder.module.js";
   };
   document.getElementById("resetBtn").onclick = resetView;
   document.getElementById("pinBtn").onclick = togglePin;
-  if (!("documentPictureInPicture" in window)) {
-    document.getElementById("pinBtn").hidden = true;
-  }
+  window.addEventListener("naijiacun-pet-state", function (event) { browserPetState = event.detail; syncPetButton(); });
+  window.NaijiacunPetBridge.probe();
   window.addEventListener("pagehide", function (e) {
     ++loadVersion;
     stopAction();

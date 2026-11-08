@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>奶家村桌宠</title><link rel="stylesheet" href="popup.css"></head>
+<body>
+  <header><span class="sprout" aria-hidden="true">🌱</span><div><h1>村民小口袋</h1><p>陪你逛逛每一页</p></div><span class="seal">奶家村</span></header>
+  <p id="status" role="status">正在打开小口袋…</p>
+  <label for="villager">今天和谁一起？</label><select id="villager" disabled></select>
+  <div class="modes" aria-label="显示模式"><button type="button" data-mode="2d" disabled>透明平面</button><button type="button" data-mode="3d" disabled>真实 3D</button></div>
+  <p id="mode-note" class="note"></p>
+  <label class="size-label" for="size">大小 <output id="size-value">200 px</output></label><input id="size" type="range" min="100" max="360" step="10" value="200" disabled>
+  <label class="check"><input id="activity" type="checkbox" checked disabled><span>自由活动 <small>取消勾选即可暂停</small></span></label>
+  <label for="motion">活动方式</label><select id="motion" disabled><option value="auto">随心散步</option><option value="idle">原地休息</option><option value="walk">慢慢走</option><option value="run">跑一跑</option></select>
+  <div class="actions"><button id="start" type="button" disabled>请到网页上</button><button id="stop" type="button" disabled>收回</button></div>
+  <p id="page-note" class="note"></p>
+  <footer>拖动身体安放 · 右键打开小口袋<br>透明处可点击网页，切换网页会记住位置<br><a href="https://163-ai.github.io/naijiacun/pet.html" target="_blank" rel="noopener">打开奶家村 ↗</a></footer>
+  <script type="module" src="popup.js"></script>
+</body></html>

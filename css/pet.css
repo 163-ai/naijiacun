@@ -45,6 +45,10 @@
   perspective-origin: 50% 44%;
 }
 
+.pet[data-pet-renderer] > .pet-inner > .pet-body { transform: none; animation: none; perspective: none; margin-inline: auto; }
+.pet[data-pet-renderer] .pet-body canvas { display: block; width: 100%; height: 100%; }
+.pet[data-pet-renderer][data-render-mode="3d"] .pet-inner { animation: none; transform: none; }
+
 .pet-body svg,
 .pet-body .pet-img {
   display: block;
@@ -326,6 +330,11 @@ body.pet-page { margin: 0; min-height: 100vh; background: var(--bg, #f8f2e5); }
 .pet-download .pet-btn { flex-shrink: 0; }
 .pet-download p { flex: 1 1 300px; margin: 0; color: var(--ink-2); font-size: 12px; line-height: 1.8; }
 .pet-browser-note { grid-column: 1 / -1; margin: 0; color: var(--ink-3); font-size: 10px; }
+.pet-extension-guide { max-width: 860px; margin: 30px auto 70px; padding: 24px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); line-height: 1.9; }
+.pet-extension-guide h2 { margin: 20px 0 7px; font-size: 19px; }
+.pet-extension-guide ol { padding-left: 25px; }
+.pet-extension-guide code { overflow-wrap: anywhere; color: var(--green); }
+.pet-extension-guide .guide-status { padding: 10px 14px; border-radius: 8px; background: var(--green-soft); }
 .pet-size { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-left: auto; font-size: 12px; color: var(--ink-2); }
 .pet-size input { width: 120px; min-width: 0; accent-color: var(--green, #823d2f); cursor: pointer; }
 

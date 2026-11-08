@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "奶家村 · 跨网页桌宠",
+  "description": "十位村民陪你逛网页：九位真实 3D，小草透明平面。拖动安放，空白处可穿透。",
+  "version": "1.0.0",
+  "minimum_chrome_version": "120",
+  "permissions": ["storage"],
+  "background": { "service_worker": "service-worker.js", "type": "module" },
+  "action": { "default_title": "奶家村桌宠", "default_popup": "popup.html" },
+  "content_scripts": [{
+    "matches": ["http://*/*", "https://*/*"],
+    "js": ["content-entry.js"],
+    "run_at": "document_idle",
+    "all_frames": false
+  }],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';"
+  },
+  "web_accessible_resources": [{
+    "resources": [
+      "overlay.js", "state.js", "catalog.js", "meshopt-proxy.js", "model-buffer.js", "js/pet-renderer.js", "js/pet-motion.js",
+      "vendor/three/three.module.min.js", "vendor/three/three.core.min.js",
+      "vendor/three/GLTFLoader.js", "vendor/three/BufferGeometryUtils.js",
+      "vendor/meshopt/meshopt_decoder.module.js",
+      "assets/models/*.glb", "assets/characters/3d/*-pet.webp", "assets/characters/xiaocao-cutout.webp"
+    ],
+    "matches": ["http://*/*", "https://*/*"]
+  }]
+}

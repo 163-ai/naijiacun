@@ -1,7 +1,6 @@
 // 奶家村 · 桌宠页面控制
 //
-// 只做三件事：把角色列表画出来、把宠物挂上舞台、接上「浏览器小窗」按钮。
-// 宠物本身的行为（走路、瞌睡、拖动、说话）都在 js/pet.js 里。
+// 小院预览、真实 3D 活动与浏览器扩展入口；聊天沿用共享接口。
 
 (function () {
   "use strict";
@@ -63,6 +62,34 @@
       if (window.NaijiacunTTS) window.NaijiacunTTS.speak(text, id);
     }
   });
+  pet.setDepth(false);
+  var renderView = null;
+  var wants3D = false;
+  var extensionState = null;
+  var catalog = PEOPLE.map(function (p) {
+    var model = window.N3D_MODELS && window.N3D_MODELS[p.id];
+    return { id: p.id, name: p.name, image: p.petImage || p.image, model: model && model.file };
+  });
+  function syncMode() {
+    var available = catalog.some(function (p) { return p.id === pet.id && p.model; });
+    var mode = renderView ? renderView.mode : "2d";
+    depthBtn.textContent = available ? (mode === "3d" ? "🧊 真 3D" : "▫️ 平面") : "▫️ 小草 2D";
+    depthBtn.setAttribute("aria-pressed", String(mode === "3d"));
+    depthBtn.setAttribute("aria-disabled", String(!available));
+    depthBtn.title = available ? "切换平面与可活动的真实 3D" : "小草使用透明抠图形象";
+    pet.el.dataset.renderMode = mode;
+  }
+  var rendererReady = import("./pet-renderer.js?v=browser-pets-1").then(function (module) {
+    pet.bodyEl.replaceChildren();
+    renderView = new module.PetRenderer(pet.bodyEl, {
+      catalog: catalog,
+      resolveAsset: function (path) { return new URL(path, document.baseURI).href; }
+    });
+    pet.setRenderer(renderView).then(syncMode).catch(function (error) {
+      if (error.name !== "AbortError") setNote("形象加载失败：" + error.message, "warn");
+    });
+    return renderView;
+  }).catch(function (error) { setNote("形象加载失败：" + error.message, "warn"); return null; });
 
   // ---------- 角色切换 ----------
   var current = pet.id;
@@ -80,7 +107,19 @@
         "<span>" + p.name + "</span>";
       btn.addEventListener("click", function () {
         current = p.id;
-        pet.setCharacter(p.id);
+        Promise.resolve(pet.setCharacter(p.id)).then(syncMode).catch(async function (error) {
+          if (error.name === "AbortError" || pet.id !== p.id) return;
+          wants3D = false;
+          try {
+            if (renderView) await renderView.setMode("2d");
+            if (pet.id !== p.id) return;
+            syncMode();
+            setNote("3D 形象加载失败：" + error.message + "。已切换平面，可再次点击 3D 重试。", "warn");
+          } catch (fallbackError) {
+            if (pet.id === p.id) { syncMode(); setNote("形象加载失败：" + fallbackError.message, "warn"); }
+          }
+        });
+        syncExtensionButton();
         Array.prototype.forEach.call(charBar.children, function (c) {
           c.classList.toggle("active", c.dataset.id === current);
         });
@@ -100,58 +139,57 @@
     pet.wander();
   });
 
-  // 2.5D 立体 / 平面切换（默认立体）
-  var depthOn = true;
-  depthBtn.addEventListener("click", function () {
-    depthOn = !depthOn;
-    pet.setDepth(depthOn);
-    depthBtn.setAttribute("aria-pressed", String(depthOn));
-    depthBtn.textContent = depthOn ? "🧊 立体感" : "▫️ 平面";
-    setNote(depthOn
-      ? "移动鼠标它会转头看你；拖起来会离地，影子跟着变。"
-      : "已切回平面模式，形象和原来完全一致。");
+  // 只在用户选择 3D 时下载当前角色模型。
+  depthBtn.addEventListener("click", async function () {
+    if (!catalog.some(function (p) { return p.id === pet.id && p.model; })) {
+      setNote("小草保留透明的半身形象，也可以跟随你逛网页。"); return;
+    }
+    depthBtn.disabled = true;
+    try {
+      var view = await rendererReady;
+      if (!view) return;
+      wants3D = !wants3D;
+      setNote(wants3D ? "正在准备这位村民的 3D 形象……" : "已切换平面形象。");
+      await view.setMode(wants3D ? "3d" : "2d");
+      syncMode();
+      setNote(view.mode === "3d" ? "现在是真实 3D。点「跑一跑」，看看这位村民怎么活动。" : "已切换平面形象。");
+    } catch (error) {
+      wants3D = false;
+      setNote("3D 加载失败：" + error.message + "。可再次点击重试。", "warn");
+      if (renderView) await renderView.setMode("2d");
+      syncMode();
+    } finally { depthBtn.disabled = false; }
   });
 
   sizeRange.addEventListener("input", function () {
     pet.setSize(parseInt(sizeRange.value, 10));
   });
 
-  // ---------- 浏览器小窗 ----------
-  var pinned = false;
-
-  if (!window.NaijiacunPet.pinSupported()) {
-    pinBtn.hidden = true;
-    setNote("点一下它试试。下载 Windows 透明桌宠，就能让角色浮在桌面上。");
-  } else {
-    setNote("点一下它试试。浏览器小窗会保留背景和来源栏；透明桌宠请下载 Windows 版。");
+  // ---------- 跨网页桌宠 ----------
+  function syncExtensionButton() {
+    var outside = !!(extensionState && extensionState.enabled && extensionState.id === pet.id);
+    pinBtn.textContent = outside ? "↩ 收回桌宠" : "🐾 变桌宠";
+    pet.el.style.visibility = outside ? "hidden" : "";
   }
-
-  pinBtn.addEventListener("click", function () {
-    if (pinned) return;
-
-    pinBtn.disabled = true;
-    pinBtn.textContent = "📌 正在打开…";
-
-    window.NaijiacunPet.openPin(pet, stage)
-      .then(function () {
-        pinned = true;
-        pinBtn.textContent = "📌 已在浏览器小窗";
-        setNote("浏览器小窗已打开，会保留背景和来源栏。关掉小窗，角色就会回到页面。");
-
-        pet.onUnpin = function () {
-          pinned = false;
-          pinBtn.disabled = false;
-          pinBtn.textContent = "📌 浏览器小窗";
-          setNote("浏览器小窗已关闭，桌宠回到这个页面了。");
-        };
-      })
-      .catch(function (err) {
-        pinBtn.disabled = false;
-        pinBtn.textContent = "📌 浏览器小窗";
-        setNote("打开浏览器小窗失败：" + (err && err.message ? err.message : "未知原因") +
-          "。这种小窗需要浏览器支持，并且必须在点击后立刻触发。", "warn");
-      });
+  window.addEventListener("naijiacun-pet-state", function (event) {
+    extensionState = event.detail;
+    syncExtensionButton();
+    var status = document.getElementById("extensionStatus");
+    if (status) status.textContent = "扩展已连接 · 换个普通网页也能继续陪伴。";
   });
+  window.NaijiacunPetBridge.probe();
+  setNote("先选一位村民。可拖动、聊天，或切到真实 3D 后跑一跑。");
+  pinBtn.addEventListener("click", async function () {
+    pinBtn.disabled = true;
+    try {
+      var outside = extensionState && extensionState.enabled && extensionState.id === pet.id;
+      if (outside) await window.NaijiacunPetBridge.stop();
+      else await window.NaijiacunPetBridge.start({ id: pet.id, mode: renderView ? renderView.mode : "2d", size: pet.size });
+      setNote(outside ? "桌宠回到小院了。" : "已变成跨网页桌宠。拖动可移动，右键可切换村民或收回。");
+    } catch (error) { setNote(error.message, "warn"); }
+    finally { pinBtn.disabled = false; syncExtensionButton(); }
+  });
+  window.addEventListener("pagehide", function (event) { if (!event.persisted) pet.destroy(); });
 
   // ---------- 和桌宠聊天 ----------
   // 逻辑都在 js/chat.js（window.NaijiacunChat），这里只负责把回复画到
@@ -195,8 +233,9 @@
     // 切角色时更新输入提示
     var origSet = pet.setCharacter.bind(pet);
     pet.setCharacter = function (id) {
-      origSet(id);
+      var result = origSet(id);
       refreshChatHint();
+      return result;
     };
 
     chatForm.addEventListener("submit", function (e) {

@@ -160,7 +160,7 @@ const PEOPLE = [
     id: "xiaocao",
     name: "小草",
     emoji: "🌱",
-    image: "assets/characters/xiaocao.webp",
+    image: "assets/characters/xiaocao-cutout.webp?v=browser-pets-1",
     clip: "audio/xiaocao.mp3",
     category: "本站原创",
     title: "举着「太棒了」的元气应援担当",
