@@ -9,6 +9,27 @@
 想管理这个代理服务：WorkBuddy「设置 — 数据管理 — 应用」。
 想换模型 / 换 Key：改代理服务目录里的 `server.js` 后重新发布。
 
+## 站点和接口现在共用一个链接
+
+仓库是私有的，GitHub Pages 对外一律 404（`There isn't a GitHub Pages site here`），
+所以对外分享的是 WorkBuddy 上的同一个服务：
+
+**https://naijiacun-chat.app.workbuddy.host/?sharecode=LJAS5NSXQO**
+
+它同时干两件事，靠 `~/WorkBuddy/naijacun-app/` 这个目录发布：
+
+```
+naijacun-app/
+├── server.js     ← 代理（含额度逻辑，含密钥，别提交）
+├── package.json
+└── www/          ← 站点静态文件（仓库的副本，发布前重新同步）
+```
+
+- `/api/chat`、`/api/sf-tts`、`/health` 走接口，其余路径按静态文件回，找不到给 404 页。
+- 页面和接口同源，语音请求不用再处理跨域。
+- 站点改动后的发布流程：`git push` → 把仓库内容重新拷进 `www/` →
+  在 WorkBuddy「设置 — 数据管理 — 应用」里重新发布 `naijacun-app`。
+
 ## 语音的免费额度（每人 5 句）
 
 访客不填 Key 时，`/api/sf-tts` 用站长的 `SF_KEY` 合成，**每个访客一共 5 句**：

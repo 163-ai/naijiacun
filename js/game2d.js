@@ -3,6 +3,7 @@
 // 树木房屋是简单几何按坐标摆放，人物仍然是仓库里的 GLB 完整模型。
 import * as T from "three";
 import { GLTFLoader } from "../vendor/three/GLTFLoader.js";
+import { MeshoptDecoder } from "../vendor/meshopt/meshopt_decoder.module.js";
 import { Fight } from "./kof.js";
 import {
   TS, TI, VILLAGE, HOUSE, SHOP, STATION, ARCHIVE, MAPS,
@@ -990,6 +991,8 @@ function buildProps() {
    ========================================================= */
 const PACK = window.N3D_MODELS || {};
 const gltfLoader = new GLTFLoader();
+// 模型是 meshopt 压缩过的，不配解压器会全部解析失败，退化成 2D 立牌
+gltfLoader.setMeshoptDecoder(MeshoptDecoder);
 const loaded = new Map();
 const texLoader = new T.TextureLoader();
 
@@ -1085,6 +1088,82 @@ function makeBillboard(key) {
   sh.position.y = .02;
   pivot.add(sh);
   pivot.userData.isBillboard = true;
+  noteBillboard(key, pivot);
+  return pivot;
+}
+
+const billboardUsers = new Map();   // key -> Set(pivot)：正在拿立牌顶替的实例
+const modelRetryT = new Map();      // key -> 重试定时器
+const retried = new Map();          // key -> 已重试次数
+const modelFailToasted = new Set(); // 每个 key 只弹一次降级提示
+const lastErrs = [];                // 最近几次模型失败的原因（诊断用）
+
+function noteBillboard(key, pivot) {
+  if (!billboardUsers.has(key)) billboardUsers.set(key, new Set());
+  billboardUsers.get(key).add(pivot);
+}
+
+function failReason(err) {
+  const s = String((err && err.message) || err || "");
+  if (/Failed to fetch|NetworkError|ERR_NETWORK|ERR_INTERNET/i.test(s)) return "网络没连上";
+  if (/404|NotFound/i.test(s)) return "文件不存在";
+  if (/WebGL|context/i.test(s)) return "显卡/WebGL 不支持";
+  return s.split("\n")[0].slice(0, 50) || "未知原因";
+}
+
+function toastModelFail(key, err) {
+  if (modelFailToasted.has(key)) return;
+  modelFailToasted.add(key);
+  toast("「" + CAST[key].name + "」的 3D 模型没加载上（" + failReason(err) + "），先用纸片顶着，后台自动重试");
+}
+
+// 立牌换回真模型：清掉 sprite 和伪阴影，把 3D 克隆塞回原来的组
+function upgradeBillboard(pv, modelPivot) {
+  pv.clear();
+  delete pv.userData.isBillboard;
+  pv.add(cloneSkinned(modelPivot));
+  if (pv.parent === playerObj) playerObj.userData.isBillboard = false;
+}
+
+function queueModelRetry(key, delay = 4000) {
+  clearTimeout(modelRetryT.get(key));
+  const c = CAST[key], entry = PACK[key];
+  if (!c || !entry) return;
+  modelRetryT.set(key, setTimeout(async () => {
+    if (loaded.get(key)) return;                       // 别处已经修好了
+    try {
+      const pivot = await buildModelPivot(key, c, entry);
+      loaded.set(key, pivot);
+      const users = billboardUsers.get(key);
+      if (users) { users.forEach(pv => upgradeBillboard(pv, pivot)); billboardUsers.delete(key); }
+      toast("「" + c.name + "」的 3D 模型加载好了");
+    } catch (e) {
+      const n = (retried.get(key) || 0) + 1;
+      retried.set(key, n);
+      lastErrs.push(key + "#" + n + " " + failReason(e));
+      if (n < 4) queueModelRetry(key, Math.min(delay * 2, 30000));
+      else console.warn("[game] 模型重试 4 次仍失败：" + key, e);
+    }
+  }, delay));
+}
+
+async function buildModelPivot(key, c, entry) {
+  const gltf = await gltfLoader.loadAsync(entry.file);
+  let root = gltf.scene;
+  const nodeName = c.node || entry.node;
+  if (nodeName) {
+    const sub = root.getObjectByName(nodeName);
+    if (sub) {
+      const wrap = new T.Group();
+      wrap.attach(sub);
+      root = wrap;
+    }
+  }
+  if (entry.yaw) root.rotation.y += entry.yaw;
+  const holder = normalize(root, c.h);
+  const pivot = new T.Group();
+  pivot.add(holder);
+  pivot.userData.holder = holder;
   return pivot;
 }
 
@@ -1098,27 +1177,14 @@ async function getActor(key) {
   const entry = PACK[key];
   if (c.model && entry) {
     try {
-      const gltf = await gltfLoader.loadAsync(entry.file);
-      let root = gltf.scene;
-      const nodeName = c.node || entry.node;
-      if (nodeName) {
-        const sub = root.getObjectByName(nodeName);
-        if (sub) {
-          const wrap = new T.Group();
-          wrap.attach(sub);
-          root = wrap;
-        }
-      }
-      if (entry.yaw) root.rotation.y += entry.yaw;
-      const holder = normalize(root, c.h);
-      const pivot = new T.Group();
-      pivot.add(holder);
-      pivot.userData.holder = holder;
+      const pivot = await buildModelPivot(key, c, entry);
       loaded.set(key, pivot);
       return cloneSkinned(pivot);
     } catch (err) {
       console.warn("[game] 模型加载失败，改用立牌：" + key, err);
       loaded.set(key, null);
+      toastModelFail(key, err);
+      queueModelRetry(key);
       return makeBillboard(key);
     }
   }
@@ -2577,6 +2643,13 @@ if (location.search.indexOf("debug") >= 0) {
     blocked, toast, interact, tileAhead, aimCell, enterRoom, leaveRoom, rooms, MAPS, cursor, scene,
     npcs, npcNear, talk, runAct, questProgress, bountyMenu,
     qiyetTalk, qiyetWin, qiyetLose, Gomoku, lieDown, getUp, sleepPose,
+    modelDbg: () => ({
+      loadedNailong: loaded.get("nailong") ? "3d" : (loaded.has("nailong") ? "billboard" : "unset"),
+      billboards: [...billboardUsers.entries()].map(([k, s]) => k + ":" + s.size),
+      lastErrs,
+      retried: [...retried.entries()],
+      packNailong: PACK.nailong ? PACK.nailong.file : null
+    }),
     get MAP() { return MAP; }, get roomName() { return roomName; },
     markAt() { const g = tileAhead(); return g ? { tx: g.tx, tz: g.tz, type: g.type, mark: g.mark, plot: g.plot } : null; },
     tileAt: (x, z) => { const t = toTile(MAP, x, z); return tileAt(MAP, t.tx, t.tz); },

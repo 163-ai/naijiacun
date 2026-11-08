@@ -357,10 +357,13 @@
 
   // 代理地址可能带查询串（例如 ?sharecode=xxx），路径要插在查询串前面
   function endpointURL(path) {
-    var base = String(CONFIG.endpoint || "").trim().replace(/\/+$/, "");
+    var base = String(CONFIG.endpoint || "").trim();
     var q = base.indexOf("?");
-    if (q === -1) return base + path;
-    return base.slice(0, q) + path + base.slice(q);
+    // 站点链接是 https://host/?sharecode=xxx，拼接口时要把 sharecode 留在查询串里，
+    // 同时去掉路径末尾的斜杠，否则会拼出 host//api/... 这种双斜杠
+    var head = (q === -1 ? base : base.slice(0, q)).replace(/\/+$/, "");
+    var tail = q === -1 ? "" : base.slice(q);
+    return head + path + tail;
   }
 
   // 云端返回的都是成品音频：出错时后端会回 JSON，正常时是二进制
