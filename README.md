@@ -1,5 +1,9 @@
 # 奶家村 · 网络热门虚拟形象图鉴
 
+> **在线体验：[https://163-ai.github.io/naijiacun/](https://163-ai.github.io/naijiacun/)**
+>
+> 手机、电脑浏览器直接打开，即可进入奶家村首页。
+
 一个关于网络热门虚拟形象（奶龙、奶蛙、卡皮巴拉…）的互动图鉴。纯静态、零依赖，打开浏览器就能用。
 
 全站采用“村口牌坊＋村民名册”主题：首页展示角色全身图，桌宠、3D、聊天和形象总表共用青瓦导航、纸色背景与手机底栏。公共外观在 `css/village.css`，导航与盲盒/设置深链接在 `js/village.js`；主视觉背景位于 `assets/design/`。
@@ -317,7 +321,7 @@ npx serve .
 
 1. 仓库 Settings → Pages
 2. Source 选择 `main` 分支 / `(root)` 目录
-3. 稍等片刻，访问 `https://163-ai.github.io/naijacun/`
+3. 稍等片刻，访问 [https://163-ai.github.io/naijiacun/](https://163-ai.github.io/naijiacun/)
 
 ## 许可
 
