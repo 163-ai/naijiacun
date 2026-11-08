@@ -60,7 +60,7 @@
       '<td class="g-quote">' + esc(p.title) + "</td>" +
       '<td class="g-quote">' + esc(p.quote) + "</td>" +
       '<td class="g-voice">' + voiceCell(p) + "</td>" +
-      '<td class="g-origin">' + esc(p.origin || "—") + "</td>";
+      '<td class="g-origin"><div class="g-origin-in">' + esc(p.origin || "—") + "</div></td>";
     body.appendChild(tr);
   });
 
