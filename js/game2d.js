@@ -1033,21 +1033,6 @@ function withAnim(actor) {
   return actor;
 }
 
-function cloneSkinned(root) {  const clone = root.clone(true);
-  const src = [], dst = [];
-  root.traverse(o => src.push(o));
-  clone.traverse(o => dst.push(o));
-  if (src.length !== dst.length) return clone;
-  const map = new Map();
-  src.forEach((o, i) => map.set(o, dst[i]));
-  src.forEach((o, i) => {
-    if (o.isSkinnedMesh && o.skeleton) {
-      const bones = o.skeleton.bones.map(b => map.get(b) || b);
-      dst[i].bind(new T.Skeleton(bones, o.skeleton.boneInverses), o.bindMatrix);
-    }
-  });
-  return clone;
-}
 
 // 把立绘四周的透明边裁掉，否则立牌会比 3D 模型小一圈
 function trimTexture(img) {
@@ -1081,6 +1066,7 @@ function trimTexture(img) {
 function makeBillboard(key) {
   const c = CAST[key];
   const pivot = new T.Group();
+  pivot.userData.modelKey = key;     // 模型重试成功后 upgradeBillboard 靠它重建 rig
 
   const sp = new T.Sprite(new T.SpriteMaterial({
     transparent: true, depthWrite: false, alphaTest: .02, opacity: 0
@@ -1135,10 +1121,12 @@ function toastModelFail(key, err) {
 }
 
 // 立牌换回真模型：清掉 sprite 和伪阴影，把 3D 克隆塞回原来的组
-function upgradeBillboard(pv, modelPivot) {
+function upgradeBillboard(pv) {
   pv.clear();
   delete pv.userData.isBillboard;
-  pv.add(cloneSkinned(modelPivot));
+  const key = pv.userData.modelKey;
+  const c = CAST[key], entry = PACK[key];
+  if (c && entry && srcScenes.has(key)) pv.add(buildRig(key, c, entry));
   if (pv.parent === playerObj) playerObj.userData.isBillboard = false;
 }
 
@@ -1147,12 +1135,12 @@ function queueModelRetry(key, delay = 4000) {
   const c = CAST[key], entry = PACK[key];
   if (!c || !entry) return;
   modelRetryT.set(key, setTimeout(async () => {
-    if (loaded.get(key)) return;                       // 别处已经修好了
+    if (loaded.get(key) !== null) return;              // 别处已经修好了
     try {
-      const pivot = await buildModelPivot(key, c, entry);
-      loaded.set(key, pivot);
+      await ensureSrc(key, entry);
+      loaded.set(key, true);
       const users = billboardUsers.get(key);
-      if (users) { users.forEach(pv => upgradeBillboard(pv, pivot)); billboardUsers.delete(key); }
+      if (users) { users.forEach(pv => upgradeBillboard(pv)); billboardUsers.delete(key); }
       toast("「" + c.name + "」的 3D 模型加载好了");
     } catch (e) {
       const n = (retried.get(key) || 0) + 1;
@@ -1164,36 +1152,38 @@ function queueModelRetry(key, delay = 4000) {
   }, delay));
 }
 
-async function buildModelPivot(key, c, entry) {
-  const gltf = await gltfLoader.loadAsync(entry.file);
-  let root = gltf.scene;
+
+// 共享只读的 glTF 源场景：每个角色只加载一次文件。
+// 角色 rig 每次都用 createPetMotion 现建——跟展台/桌宠同一条管线。
+// 之前走 cloneSkinned 克隆蒙皮骨架，boneInverses 对不上克隆的世界矩阵，
+// 骨骼动画整体失效，网格还被拧翻（角色一直倒置渲染，躺下才露馅）。
+const srcScenes = new Map();        // key -> gltf.scene
+async function ensureSrc(key, entry) {
+  if (!srcScenes.has(key)) {
+    const gltf = await gltfLoader.loadAsync(entry.file);
+    srcScenes.set(key, gltf.scene);
+  }
+  return srcScenes.get(key);
+}
+
+function buildRig(key, c, entry) {
+  let root = srcScenes.get(key);
   const nodeName = c.node || entry.node;
   if (nodeName) {
     const sub = root.getObjectByName(nodeName);
-    if (sub) {
-      const wrap = new T.Group();
-      wrap.attach(sub);
-      root = wrap;
+    if (sub) root = sub;             // 只读引用，不动共享源
+  }
+  const rig = createPetMotion(root, key);
+  rig.root.scale.setScalar(c.h / 2);
+  if (entry.yaw) rig.root.rotation.y += entry.yaw;
+  rig.root.traverse(o => {
+    if (o.isMesh) {
+      o.castShadow = true; o.receiveShadow = true;
+      if (o.material && "envMapIntensity" in o.material) o.material.envMapIntensity = 1;
     }
-  }
-  if (entry.yaw) root.rotation.y += entry.yaw;
+  });
   const pivot = new T.Group();
-  // 优先走程序化绑骨骼（展台/桌宠同一条管线），走路/战斗才有四肢动作；
-  // 绑不上的角色退回静态模型，只是动画退化成整体颠簸
-  try {
-    const rig = createPetMotion(root, key);
-    rig.root.scale.setScalar(c.h / 2);
-    rig.root.traverse(o => {
-      if (o.isMesh) {
-        o.castShadow = true; o.receiveShadow = true;
-        if (o.material && "envMapIntensity" in o.material) o.material.envMapIntensity = 1;
-      }
-    });
-    pivot.add(rig.root);
-  } catch (e) {
-    console.warn("[game] 骨骼绑定失败，退回静态模型：" + key, e);
-    pivot.add(normalize(root, c.h));
-  }
+  pivot.add(rig.root);
   pivot.userData.holder = pivot.children[0];
   return pivot;
 }
@@ -1201,16 +1191,13 @@ async function buildModelPivot(key, c, entry) {
 async function getActor(key) {
   const c = CAST[key];
   if (!c) return null;
-  if (loaded.has(key)) {
-    const cached = loaded.get(key);
-    return cached ? withAnim(cloneSkinned(cached)) : makeBillboard(key);
-  }
+  if (loaded.get(key) === null) return makeBillboard(key);   // 已判定失败，等后台重试
   const entry = PACK[key];
   if (c.model && entry) {
     try {
-      const pivot = await buildModelPivot(key, c, entry);
-      loaded.set(key, pivot);
-      return withAnim(cloneSkinned(pivot));
+      await ensureSrc(key, entry);
+      loaded.set(key, true);
+      return withAnim(buildRig(key, c, entry));
     } catch (err) {
       console.warn("[game] 模型加载失败，改用立牌：" + key, err);
       loaded.set(key, null);
@@ -1368,7 +1355,10 @@ syncPad();
 let grassDist = 0, hudAcc = 0, grace = 0, battleGrace = 0, encounterLock = false;
 
 function update(dt) {
-  const locked = !state.started || dlg.open || Fight.on || overlayOpen();
+  // 躺在床上时锁输入：不然人保持躺姿在地图上滑（睡姿泄漏）
+  const locked = !state.started || dlg.open || Fight.on || overlayOpen() || sleepPose.on;
+  // 兜底：任何路径只要"人在屋外却躺着"，下一帧立刻站起来
+  if (sleepPose.on && roomState.name !== "house") getUp();
   if (camShakeT > 0) {
     camShakeT -= dt;
     if (camShakeT <= 0) { camShakeT = 0; camShake = 0; }
@@ -1424,12 +1414,19 @@ function update(dt) {
   if (battleGrace > 0) battleGrace -= dt;
 
   playerObj.position.set(player.x, sleepPose.on ? playerObj.position.y : 0, player.z);
-  const cur = playerObj.rotation.y;
-  let diff = ((player.heading - cur + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
-  playerObj.rotation.y = cur + diff * Math.min(1, dt * 14);
+  // 躺下时不做朝向平滑：rot.y 一动，-90° 的躺倒旋转就会被拧歪，头转不到枕头上
+  if (!sleepPose.on) {
+    const cur = playerObj.rotation.y;
+    let diff = ((player.heading - cur + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+    playerObj.rotation.y = cur + diff * Math.min(1, dt * 14);
+  }
 
   if (sleepPose.on) {
-    // 躺下时主循环不许碰姿势：这里每帧覆盖 y/rotation 会把人按回地板里（穿模根因）
+    // 躺下时主循环不许碰姿势：这里每帧覆盖 y/rotation 会把人按回地板里（穿模根因）；
+    // 朝向平滑也停掉，否则 rot.y 被 lerp 半圈，头就转不到枕头上
+    const pActor = playerObj.children[0];
+    const anim = pActor && pActor.userData.anim;
+    if (anim) anim.update("sleep", {});   // 把迈步冻结的腿放平，不然脚底朝天
   } else if (!playerObj.userData.isBillboard) {
     const t = performance.now() / 1000;
     const pActor = playerObj.children[0];
@@ -2037,8 +2034,10 @@ function lieDown() {
   playerObj.updateMatrixWorld(true);
   // 按包围盒实测落位：不靠猜高度，模型多厚都不会插进床垫
   const box = new T.Box3().setFromObject(playerObj);
-  // 头落在枕头一侧（床沿内 0.35），身上盖被子，只露头
-  const zShift = (cz - 1.15) - box.min.z;
+  // 床是 3×3、从 (R.x0+1, R.z0+1) 铺起，枕头画在北端 15%~32% 处；
+  // 头（box.min.z，-Z 端）落在枕头中心略偏北
+  const pillowZ = cz - 1.5 + 3 * .235;
+  const zShift = (pillowZ - .1) - box.min.z;
   const xShift = cx - (box.min.x + box.max.x) / 2;
   playerObj.position.x += xShift;
   playerObj.position.z += zShift;
@@ -2707,7 +2706,7 @@ if (location.search.indexOf("debug") >= 0) {
     npcs, npcNear, talk, runAct, questProgress, bountyMenu,
     qiyetTalk, qiyetWin, qiyetLose, Gomoku, lieDown, getUp, sleepPose,
     modelDbg: () => ({
-      loadedNailong: loaded.get("nailong") ? "3d" : (loaded.has("nailong") ? "billboard" : "unset"),
+      loadedNailong: srcScenes.has("nailong") ? "3d" : (loaded.get("nailong") === null ? "billboard" : "unset"),
       billboards: [...billboardUsers.entries()].map(([k, s]) => k + ":" + s.size),
       lastErrs,
       retried: [...retried.entries()],

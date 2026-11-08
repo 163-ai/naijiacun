@@ -84,53 +84,74 @@ function weightsAt(x, y, z, config, kind, output) {
   output[0] = 1 - sum;
 }
 
+/**
+ * 烘焙顶点时有两个坑，都在量化模型（KHR_mesh_quantization + meshopt）上踩过：
+ * 1. 本工程这份 three 的 `getX()` 已经做过反归一化（内部按 normalized 除以 32767），
+ *    拿到的是真实坐标，千万别再自己除一遍，否则整只模型会缩成 6e-5。
+ * 2. `Box3.setFromObject()` 会优先用 GLTFLoader 从 accessor min/max 写好的
+ *    `geometry.boundingBox`，那是量化空间（±32767）的值；拿它算归一化会把
+ *    2 单位高的模型错算成 65534 高，顶点全被压到 y≈1 的薄片，
+ *    head 骨的权重区间（fy≈0.585~0.665）于是永远取不到顶点——就是"无头圆盘"。
+ * 因此这里改为：先把顶点烘焙成 Float32 实测包围盒，再做归一化与权重。
+ */
 /** Bake all node transforms before binding, so every joint uses one coordinate space. */
 export function createPetMotion(source, id) {
   source.updateMatrixWorld(true);
-  const originalBounds = new T.Box3().setFromObject(source), size = originalBounds.getSize(new T.Vector3());
-  if (!Number.isFinite(size.y) || size.y <= 0) throw new Error('模型没有可显示的网格');
-  const center = originalBounds.getCenter(new T.Vector3());
-  const normalize = new T.Matrix4().makeScale(2 / size.y, 2 / size.y, 2 / size.y);
-  normalize.multiply(new T.Matrix4().makeTranslation(-center.x, -originalBounds.min.y, -center.z));
   const config = ANATOMY[id], kind = config ? 'biped' : id === 'feidudu' ? 'hop' : id === 'capybara' ? 'bowl' : 'roll';
   const { bones, named } = makeBones(config, kind), root = new T.Group();
   root.name = 'pet-' + id; root.add(bones[0]); root.updateMatrixWorld(true);
-  const skeleton = new T.Skeleton(bones), cache = new Map(), originalGeometry = new Set();
-  const weight = new Array(bones.length).fill(0), meshes = [];
+  const skeleton = new T.Skeleton(bones), parts = [], rawBounds = new T.Box3(), probe = new T.Vector3();
   source.traverse(object => {
     if (!object.isMesh) return;
-    const original = object.geometry, transform = normalize.clone().multiply(object.matrixWorld);
-    // GLTF primitives can share the same vertex buffer (the seven paint groups
-    // in the waving dragon). Share the baked attributes and compute weights once.
-    const key = original.attributes.position.array, matrixKey = transform.elements.join(',');
-    if (!cache.has(key)) cache.set(key, new Map());
-    const transformed = cache.get(key);
-    let baked = transformed.get(matrixKey);
-    if (!baked) {
-      const positions = original.attributes.position.clone(), normals = original.attributes.normal?.clone();
-      positions.applyMatrix4(transform); normals?.applyNormalMatrix(new T.Matrix3().getNormalMatrix(transform));
-      const indices = new Uint16Array(positions.count * 4), weights = new Float32Array(positions.count * 4);
-      for (let i = 0; i < positions.count; i++) {
-        weightsAt(positions.getX(i), positions.getY(i), positions.getZ(i), config, kind, weight);
-        const influences = weight.map((w, index) => [index, w]).filter(v => v[1] > 0).sort((a, b) => b[1] - a[1]).slice(0, 4);
-        const sum = influences.reduce((n, influence) => n + influence[1], 0);
-        influences.forEach(([index, value], j) => { indices[i * 4 + j] = index; weights[i * 4 + j] = value / sum; });
+    const geometry = object.geometry, position = geometry.attributes.position;
+    if (!position) return;
+    const sourceNormal = geometry.attributes.normal, world = object.matrixWorld;
+    const count = position.count;
+    const points = new Float32Array(count * 3), normals = sourceNormal ? new Float32Array(count * 3) : null;
+    const normalMatrix = sourceNormal ? new T.Matrix3().getNormalMatrix(world) : null;
+    for (let i = 0; i < count; i++) {
+      probe.set(position.getX(i), position.getY(i), position.getZ(i)).applyMatrix4(world);
+      points[i * 3] = probe.x; points[i * 3 + 1] = probe.y; points[i * 3 + 2] = probe.z;
+      rawBounds.expandByPoint(probe);
+      if (normals) {
+        probe.set(sourceNormal.getX(i), sourceNormal.getY(i), sourceNormal.getZ(i)).applyMatrix3(normalMatrix).normalize();
+        normals[i * 3] = probe.x; normals[i * 3 + 1] = probe.y; normals[i * 3 + 2] = probe.z;
       }
-      baked = { position: positions, normal: normals, skinIndex: new T.Uint16BufferAttribute(indices, 4), skinWeight: new T.Float32BufferAttribute(weights, 4) };
-      transformed.set(matrixKey, baked);
+    }
+    parts.push({ geometry, object, sourceNormal, points, normals, count });
+  });
+  // 包围盒按真实顶点实测，不用 setFromObject（它会拿到量化空间的 boundingBox）。
+  const size = rawBounds.getSize(new T.Vector3());
+  if (!Number.isFinite(size.y) || size.y <= 0) throw new Error('模型没有可显示的网格');
+  const scale = 2 / size.y, centerX = (rawBounds.min.x + rawBounds.max.x) / 2;
+  const centerZ = (rawBounds.min.z + rawBounds.max.z) / 2, floorY = rawBounds.min.y;
+  const weight = new Array(bones.length).fill(0), meshes = [], boneHits = new Array(bones.length).fill(0);
+  for (const part of parts) {
+    const count = part.count, points = new Float32Array(count * 3);
+    const indices = new Uint16Array(count * 4), weights = new Float32Array(count * 4);
+    for (let i = 0; i < count; i++) {
+      const x = (part.points[i * 3] - centerX) * scale;
+      const y = (part.points[i * 3 + 1] - floorY) * scale;
+      const z = (part.points[i * 3 + 2] - centerZ) * scale;
+      points[i * 3] = x; points[i * 3 + 1] = y; points[i * 3 + 2] = z;
+      weightsAt(x, y, z, config, kind, weight);
+      const influences = weight.map((w, index) => [index, w]).filter(v => v[1] > 0).sort((a, b) => b[1] - a[1]).slice(0, 4);
+      const sum = influences.reduce((n, influence) => n + influence[1], 0) || 1;
+      influences.forEach(([index, value], j) => { indices[i * 4 + j] = index; weights[i * 4 + j] = value / sum; });
+      if (influences.length) boneHits[influences[0][0]]++;
     }
     const geometry = new T.BufferGeometry();
-    for (const name in original.attributes) geometry.setAttribute(name, baked[name] || original.attributes[name]);
-    geometry.setAttribute('position', baked.position);
-    if (baked.normal) geometry.setAttribute('normal', baked.normal);
-    geometry.setAttribute('skinIndex', baked.skinIndex); geometry.setAttribute('skinWeight', baked.skinWeight);
-    geometry.setIndex(original.index); geometry.groups = original.groups.map(group => ({ ...group }));
+    for (const name in part.geometry.attributes) geometry.setAttribute(name, part.geometry.attributes[name]);
+    geometry.setAttribute('position', new T.Float32BufferAttribute(points, 3));
+    if (part.normals) geometry.setAttribute('normal', new T.Float32BufferAttribute(part.normals, 3));
+    geometry.setAttribute('skinIndex', new T.Uint16BufferAttribute(indices, 4));
+    geometry.setAttribute('skinWeight', new T.Float32BufferAttribute(weights, 4));
+    geometry.setIndex(part.geometry.index); geometry.groups = part.geometry.groups.map(group => ({ ...group }));
     geometry.computeBoundingBox(); geometry.computeBoundingSphere();
-    const mesh = new T.SkinnedMesh(geometry, object.material);
-    mesh.name = object.name; mesh.frustumCulled = false; mesh.bind(skeleton, new T.Matrix4());
-    root.add(mesh); meshes.push(mesh); originalGeometry.add(original);
-  });
-  originalGeometry.forEach(geometry => geometry.dispose());
+    const mesh = new T.SkinnedMesh(geometry, part.object.material);
+    mesh.name = part.object.name; mesh.frustumCulled = false; mesh.bind(skeleton, new T.Matrix4());
+    root.add(mesh); meshes.push(mesh);
+  }
   root.updateMatrixWorld(true);
   const bounds = new T.Box3().setFromObject(root), restPositions = bones.map(b => b.position.clone());
   let time = 0;
@@ -138,8 +159,16 @@ export function createPetMotion(source, id) {
     root.position.set(0, 0, 0); root.rotation.set(0, 0, 0); root.scale.setScalar(1);
     bones.forEach((bone, i) => { bone.rotation.set(0, 0, 0); bone.position.copy(restPositions[i]); });
   }
-  function update(dt, motion = 'idle') {
-    time += Math.max(0, Math.min(Number.isFinite(dt) ? dt : 0, .1));
+  /** 供调试/自检使用：每根骨骼拿到多少个顶点、归一化前后的实测范围。 */
+  function stats() {
+    return {
+      kind, verts: parts.reduce((n, part) => n + part.count, 0),
+      rawHeight: +size.y.toFixed(3),
+      bindBounds: { min: [+rawBounds.min.x.toFixed(3), +rawBounds.min.y.toFixed(3), +rawBounds.min.z.toFixed(3)], max: [+rawBounds.max.x.toFixed(3), +rawBounds.max.y.toFixed(3), +rawBounds.max.z.toFixed(3)] },
+      bones: bones.map((bone, index) => ({ name: bone.name, hits: boneHits[index] }))
+    };
+  }
+  function update(dt, motion = 'idle') {    time += Math.max(0, Math.min(Number.isFinite(dt) ? dt : 0, .1));
     reset();
     if (motion === 'idle') { root.updateMatrixWorld(true); return; }
     if (motion === 'dragged') {
@@ -189,5 +218,5 @@ export function createPetMotion(source, id) {
     root.position.set(bodyCenter.x, bounds.min.y + extent + pose.lift, bodyCenter.z - halfSize.y * Math.sin(angle) * .55).sub(transformedCenter);
     root.updateMatrixWorld(true);
   }
-  return { root, bones: named, skeleton, meshes, bounds, kind, reset, update, laugh, get time() { return time; } };
+  return { root, bones: named, skeleton, meshes, bounds, kind, reset, update, laugh, stats, get time() { return time; } };
 }
