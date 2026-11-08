@@ -1781,24 +1781,39 @@ function fillWater() {
    ========================================================= */
 const npcs = [];
 
-// 奶察的帽子：奶蛙模型顶上扣一顶蓝帽子，比拿表情图当立牌干净
+// 奶察的帽子：奶蛙模型顶上扣一顶蓝帽子，比拿表情图当立牌干净。
+// 全部尺寸照奶蛙头部逐层实测定的（h=1.62 时）：
+//   头顶 y=1.62；y=1.50 头半宽只有 .15，所以帽筒半径 .165 才贴得住（.22 会像个头盔）；
+//   眼睛画在贴图上、占 y 1.48~1.52，脸面比帽筒前缘鼓出去一截——
+//   从游戏 66° 俯视角想遮住眼睛，只能靠帽舌压在眼上方（y≈1.53）往前探出脸 .1：
+//   视线到眼睛的路径必然穿过帽舌（tan66°≈2.25，每高 .02 就要前探 .009，余量充足）。
 function addCopCap(g, h = 1.5) {
-  const capMat = new T.MeshStandardMaterial({ color: 0x2f4a6b, roughness: .82 });
+  const s = h / 1.62;
+  const capMat = new T.MeshStandardMaterial({ color: 0x2f4a6b, roughness: .82, side: T.DoubleSide });
   const cap = new T.Group();
-  const dome = new T.Mesh(new T.CylinderGeometry(.19, .23, .15, 14), capMat);
+  // 帽筒：拉高的半球，帽口压到眼眶下缘（h*.895），整个把头上半截罩进去——
+  // 奶蛙的眼睛画在 y1.45~1.53 的球面上、脸又向前鼓，平板帽舌挡不住 66° 俯视的视线，
+  // 只有帽筒曲面（前缘 z≈.26 > 脸面 .20）包住眼眶才遮得严实，像戴到位的安全帽。
+  const dome = new T.Mesh(new T.SphereGeometry(.21 * s, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2), capMat);
+  dome.scale.y = 1.15;
+  dome.position.z = .05 * s;   // 对准头心：脸面（z≈.20）必须整个包进帽筒曲面里
   cap.add(dome);
-  const band = new T.Mesh(new T.CylinderGeometry(.232, .232, .05, 14),
+  // 帽箍：深色一圈，罩住帽口和脸颊上缘
+  const band = new T.Mesh(new T.CylinderGeometry(.215 * s, .224 * s, .07 * s, 20),
     new T.MeshStandardMaterial({ color: 0x1b2b40, roughness: .8 }));
-  band.position.y = -.05;
+  band.position.set(0, -.02 * s, .04 * s);
   cap.add(band);
-  const brim = new T.Mesh(new T.BoxGeometry(.46, .04, .3), capMat);
-  brim.position.set(0, -.09, .18);
+  // 帽舌：帽口前沿探出一小截，压低，保留警帽轮廓
+  const brim = new T.Mesh(new T.BoxGeometry(.38 * s, .026 * s, .08 * s), capMat);
+  brim.position.set(0, -.05 * s, .245 * s);
+  brim.rotation.x = -.2;
   cap.add(brim);
-  const badge = new T.Mesh(new T.SphereGeometry(.048, 8, 6),
+  // 帽徽：嵌在帽筒正面曲面上
+  const badge = new T.Mesh(new T.SphereGeometry(.045 * s, 10, 8),
     new T.MeshStandardMaterial({ color: 0xf2c14e, roughness: .35, metalness: .5 }));
-  badge.position.set(0, .03, .2);
+  badge.position.set(0, .1 * s, .23 * s);
   cap.add(badge);
-  cap.position.y = h * .93;
+  cap.position.y = h * .895;
   g.add(cap);
   return cap;
 }
@@ -1991,7 +2006,9 @@ function dim(on) {
   document.body.classList.toggle("asleep", !!on);
 }
 
-// 躺下时盖在腿上的那一床被子 —— 光把模型放平看不出"躺"，得盖上才读得出来
+// 躺下时盖在腿上的那一床被子 —— 光把模型放平看不出"躺"，得盖上才读出来。
+// 尺寸按躺平的奶龙实测：身体总宽 1.30、头占躺平后靠枕头那端 .78，
+// 被子宽 1.44 罩住两侧、被口（本地 z=-.15）压在下巴下、头整个露在外面。
 let quilt = null;
 function quiltMesh() {
   if (quilt) return quilt;
@@ -1999,18 +2016,18 @@ function quiltMesh() {
   const cloth = new T.MeshStandardMaterial({ color: 0xcd675c, roughness: .96 });
   const dup = new T.MeshStandardMaterial({ color: 0xe69383, roughness: .95 });
 
-  const main = new T.Mesh(new T.BoxGeometry(.96, .5, 1.42), cloth);
-  main.position.set(0, .25, .03);
+  const main = new T.Mesh(new T.BoxGeometry(1.44, .6, 1.05), cloth);
+  main.position.set(0, .3, .375);
   main.castShadow = true;
   quilt.add(main);
-  // 被口翻出来的一圈浅色边（靠头那侧）
-  const flap = new T.Mesh(new T.BoxGeometry(.99, .16, .16), dup);
-  flap.position.set(0, .42, -.65);
+  // 被口翻出来的一圈浅色边（贴着下巴那侧）
+  const flap = new T.Mesh(new T.BoxGeometry(1.47, .16, .16), dup);
+  flap.position.set(0, .52, -.09);
   quilt.add(flap);
-  // 脚那头鼓起来一点
+  // 脚那头鼓起来一点（加宽到能兜住两只伸开的脚丫）
   const bump = new T.Mesh(new T.SphereGeometry(.3, 10, 8), cloth);
-  bump.scale.set(1.5, .52, .9);
-  bump.position.set(0, .44, .55);
+  bump.scale.set(1.9, .52, .9);
+  bump.position.set(0, .5, .8);
   quilt.add(bump);
 
   quilt.visible = false;
@@ -2048,9 +2065,10 @@ function lieDown() {
   const box2 = new T.Box3().setFromObject(playerObj);
   // 床垫面在 y≈0，稍微压进去 0.06 读起来像陷进软垫
   playerObj.position.y += .06 - box2.min.y;
-  // 被子盖到脖子：被子中心挪到身体中段
+  // 被口压在下巴下（头约占躺平长度的 .78），被子本地被口在 z=-.15；
+  // 脚那头（本地 z≈.9）正好兜到脚尖，只露一点点脚丫
   const q = quiltMesh();
-  q.position.set(cx, .02, (box2.min.z + box2.max.z) / 2 + .28);
+  q.position.set(cx, .02, box2.min.z + .93);
   q.visible = true;
   updateCamera();
 }

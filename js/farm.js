@@ -435,7 +435,9 @@ Farm.paint = function () {
   $("#cGold").textContent = "💰 " + this.gold;
   const item = TOOLS[this.sel];
   document.body.classList.toggle("night", daylight(this.time) < .32);
-  document.getElementById("rain").classList.toggle("show", this.weather === "rain");
+  const raining = this.weather === "rain";
+  document.getElementById("rain").classList.toggle("show", raining);
+  if (window.Rain2D) window.Rain2D.set(raining);   // canvas 雨幕接管显示
 
   // 物品栏数字
   for (let i = 0; i < TOOLS.length; i++) {
