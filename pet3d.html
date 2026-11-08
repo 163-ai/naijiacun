@@ -9,7 +9,20 @@
   <link rel="modulepreload" href="vendor/three/three.module.min.js">
   <link rel="modulepreload" href="vendor/three/GLTFLoader.js">
   <link rel="modulepreload" href="vendor/meshopt/meshopt_decoder.module.js">
-  <link rel="preload" as="fetch" href="https://testingcf.jsdelivr.net/gh/163-ai/naijiacun@main/assets/models/nailong-waving.glb" crossorigin="anonymous">
+  <script>
+    // 模型预加载地址必须与 JS 实际请求完全一致，否则会重复下载。
+    // 快线托管用同源路径；仍留在 GitHub Pages 时改走 jsDelivr。
+    (function () {
+      var fast = /(^|\.)workbuddy\.host$/i.test(location.hostname);
+      var link = document.createElement("link");
+      link.rel = "preload";
+      link.as = "fetch";
+      link.crossOrigin = "anonymous";
+      link.href = fast ? "assets/models/nailong-waving.glb?v=mini-1"
+        : "https://testingcf.jsdelivr.net/gh/163-ai/naijiacun@main/assets/models/nailong-waving.glb";
+      document.head.appendChild(link);
+    })();
+  </script>
   <link rel="preload" as="image" href="assets/characters/3d/nailong-waving-pet-sm.webp?v=waving-1">
   <link rel="stylesheet" href="css/style.css?v=village-1">
   <link rel="stylesheet" href="css/pet.css?v=browser-pets-1">
@@ -110,7 +123,7 @@
   </main>
 
   <script src="js/data.js?v=browser-pets-1"></script>
-  <script src="js/3d-models.js?v=mini-2"></script>
+  <script src="js/3d-models.js?v=mini-3"></script>
   <script src="js/site-pet.js?v=fast-pet-2"></script>
   <script type="module" src="js/pet3d.js?v=fast-open-3"></script>
   <script src="js/village.js?v=village-1"></script>
