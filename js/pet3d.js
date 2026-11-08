@@ -391,10 +391,18 @@ import { MeshoptDecoder } from "../vendor/meshopt/meshopt_decoder.module.js";
       baseZ: centered.position.z,
       baseRot: centered.rotation.clone(),
       baseScale: centered.scale.clone(),
-      // 身高 / 厚度：用于「笑到躺下」时按身体尺寸把模型稳稳放到地面上
+      // 身高 / 厚度 / 宽度：用于「笑到躺下」时按身体尺寸把模型稳稳放到地面上
       h: Math.max(0.5, size.y),
-      d: Math.max(0.2, size.z)
+      d: Math.max(0.2, size.z),
+      hx: Math.max(0.1, size.x / 2),
+      hy: Math.max(0.25, size.y / 2),
+      hz: Math.max(0.1, size.z / 2)
     };
+    // 静止姿态下模型的最低点就是地面（世界坐标）；之后任何角度都按这个基准把底边贴回去
+    rig.groundY = box.min.y;
+    var rm0 = new T.Matrix4().makeRotationFromEuler(centered.rotation).elements;
+    var ex0 = Math.abs(rm0[1]) * rig.hx + Math.abs(rm0[5]) * rig.hy + Math.abs(rm0[9]) * rig.hz;
+    rig.restLift = (rig.groundY + ex0) - centered.position.y;
   }
 
   function resetRig() {
@@ -455,51 +463,54 @@ import { MeshoptDecoder } from "../vendor/meshopt/meshopt_decoder.module.js";
     var H = rig.h, D = rig.d;
     var lean = 0, roll = 0, shake = 0, squash = 0, lift = 0, turn = 0;
 
-    if (t < 1.9) {
-      // ① 站着笑：肚子一鼓一瘪，越笑越往后仰
-      lean = 0.24 * easeOut(seg(t, 0, 0.65)) + 0.18 * easeOut(seg(t, 0.65, 1.9));
-      shake = (0.018 + 0.065 * seg(t, 0.5, 1.1)) * Math.sin(t * Math.PI * 2 * 5.6);
+    if (t < 1.7) {
+      // ① 站着笑：肚子一鼓一瘪，笑得直抖，越笑越往后仰
+      lean = 0.26 * easeOut(seg(t, 0, 0.6)) + 0.1 * easeOut(seg(t, 0.6, 1.7));
+      shake = (0.016 + 0.06 * seg(t, 0.4, 1.0)) * Math.sin(t * Math.PI * 2 * 5.6);
       var beat = Math.max(0, Math.sin(t * Math.PI * 2 * 2.8));
-      squash = 0.062 * beat;
-      lift = 0.05 * beat;
-    } else if (t < 2.5) {
-      // ② 笑岔气，整个人往后栽（越倒越快，像真的失去平衡）
-      var p = easeIn(seg(t, 1.9, 2.45));
-      lean = 0.42 + (1.55 - 0.42) * p;
-      shake = 0.03 * (1 - p) * Math.sin(t * Math.PI * 2 * 6.4);
+      squash = 0.06 * beat;
+      lift = 0.045 * beat;
+    } else if (t < 2.3) {
+      // ② 笑到站不住，往侧后方一歪，越倒越快
+      var p = easeIn(seg(t, 1.7, 2.25));
+      lean = 0.36 + 0.14 * p;
+      roll = 1.45 * p;
+      shake = 0.025 * (1 - p) * Math.sin(t * Math.PI * 2 * 6.4);
     } else if (t < 3.6) {
-      // ③ 四脚朝天躺着，还在笑：蹬腿 + 左右打滚
-      var r = seg(t, 2.5, 3.6);
-      lean = 1.55 + 0.03 * Math.sin((t - 2.5) * Math.PI * 2 * 1.6);
-      roll = 0.2 * Math.sin((t - 2.5) * Math.PI * 2 * 0.85) * (1 - 0.35 * r);
-      // 躺下时身子稍微斜一点，别让脸被肚子完全挡住
-      turn = 0.55 * easeOut(r);
-      lift = 0.028 * Math.max(0, Math.sin((t - 2.5) * Math.PI * 2 * 3.2));
-    } else if (t < 4.5) {
-      // ④ 缓过来，翻身爬回站姿（带一点回弹）
-      var q = easeOut(seg(t, 3.6, 4.4));
-      lean = 1.55 * (1 - q) - 0.05 * Math.sin(Math.PI * seg(t, 4.3, 4.5));
-      roll = 0.16 * (1 - q) * Math.sin((t - 3.6) * Math.PI * 2 * 0.8);
-      turn = 0.55 * (1 - q);
+      // ③ 侧躺在地上还在笑，滚来滚去、小肚子一抽一抽
+      lean = 0.5 + 0.05 * Math.sin((t - 2.3) * Math.PI * 2 * 1.4);
+      roll = 1.45 + 0.17 * Math.sin((t - 2.3) * Math.PI * 2 * 0.8);
+      turn = 0.14 * Math.sin((t - 2.3) * Math.PI * 2 * 0.55);
+      lift = 0.022 * Math.max(0, Math.sin((t - 2.3) * Math.PI * 2 * 3));
+    } else if (t < 4.4) {
+      // ④ 缓过来，撑着爬起来（带一点回弹）
+      var q = easeOut(seg(t, 3.6, 4.3));
+      lean = 0.5 * (1 - q);
+      roll = 1.45 * (1 - q);
+      turn = 0.1 * (1 - q);
     } else {
       // ⑤ 站稳，收个尾声
-      lean = 0.05 * Math.max(0, Math.sin((t - 4.5) * Math.PI * 5)) * (1 - seg(t, 4.5, 4.7));
+      lean = 0.04 * Math.max(0, Math.sin((t - 4.4) * Math.PI * 2 * 4)) * (1 - seg(t, 4.4, 4.7));
     }
 
     var ang = Math.max(0, lean);
     rig.centered.rotation.x = rig.baseRot.x - ang + shake;
     rig.centered.rotation.z = rig.baseRot.z + roll;
     rig.centered.rotation.y = rig.baseRot.y + turn;
-    // 支点放在脚底：转多少度，就把中心按身高补偿回来；躺下时再把身体厚度垫回去
-    var dy = -(H / 2) * (1 - Math.cos(ang)) + (D / 2) * Math.sin(ang);
-    var dz = -(H / 2) * Math.sin(ang) * 0.55;
-    rig.centered.position.y = rig.baseY + dy + lift;
-    rig.centered.position.z = rig.baseZ + dz;
     rig.centered.scale.set(
       rig.baseScale.x * (1 + squash * 0.7),
       rig.baseScale.y * (1 - squash),
       rig.baseScale.z * (1 + squash * 0.7)
     );
+    // 支点放在脚底，朝后倒时身体顺势往后挪一点
+    rig.centered.position.z = rig.baseZ - (H / 2) * Math.sin(ang) * 0.55;
+    // 贴地：按当前「俯仰 + 侧滚 + 转身」算包围盒底边，保证任何角度都不穿地、也不悬空
+    var e = new T.Matrix4().makeRotationFromEuler(rig.centered.rotation).elements;
+    var sc = rig.centered.scale, bs = rig.baseScale;
+    var extent = Math.abs(e[1]) * rig.hx * (sc.x / bs.x) +
+                 Math.abs(e[5]) * rig.hy * (sc.y / bs.y) +
+                 Math.abs(e[9]) * rig.hz * (sc.z / bs.z);
+    rig.centered.position.y = rig.groundY + extent + lift - rig.restLift;
   }
 
   // 蹦一下：整体起跳（这个模型胳膊与身体共网格，侧抬会拉出薄片）
@@ -612,12 +623,12 @@ import { MeshoptDecoder } from "../vendor/meshopt/meshopt_decoder.module.js";
     if (!rig) { note2.textContent = ""; return; }
     if (!rig.bones.Spine) {
       note2.textContent = mood
-        ? "照视频里的演法：站着笑到抖，越笑越后仰，笑岔气直接往后躺倒、四脚朝天滚两下再爬起来。"
+        ? "照视频里的演法：站着笑到抖，越笑越后仰，笑岔气直接歪倒在地、侧躺着滚两下再爬起来。"
         : "蹦一下：原地跳起再落回，不带动骨骼。";
       return;
     }
     note2.textContent = mood
-      ? "点一下：笑到抖、笑到后仰，然后整个人往后躺倒滚两下再爬起来。"
+      ? "点一下：笑到抖、笑到后仰，然后歪倒在地滚两下再爬起来。"
       : "蹦一下：原地跳起再落回。";
   }
 
