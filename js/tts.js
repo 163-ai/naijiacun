@@ -1,8 +1,9 @@
-// 奶家村 · 语音朗读适配层（支持 BYOK：访客自带 Breeze API Key）
+// 奶家村 · 语音朗读适配层（支持 BYOK：访客自带硅基流动 / Breeze Key）
 //
-// 两种模式：
-//   1. provider = "browser" —— 浏览器内置语音，零成本、无需任何配置
-//   2. provider = "breeze"  —— 调用 Breeze TTS，Key 由访客在「语音设置」里自己填
+// 三种档位，按「有没有填 Key」自动降级：
+//   1. 访客填了自己的硅基流动 Key → 浏览器直连，用他自己的额度，不计数
+//   2. 没填 Key → 走站点代理，站长代付，每人免费 5 句（本地 + 服务端各卡一道）
+//   3. 免费额度用完 / 代理挂了 → 退回浏览器内置语音（系统默认声音）
 //
 // 安全说明：
 //   - Key 只存在访客自己的浏览器（localStorage / sessionStorage），本站不上传、不记录。
@@ -11,13 +12,19 @@
 (function () {
   "use strict";
 
+  // 站长部署好的透传代理。默认就填好：访客什么都不用配也能听到真人音色，
+  // 额度由站长那把 Key 承担，每人免费 5 句。
+  var DEFAULT_ENDPOINT = "https://naijiacun-chat.app.workbuddy.host/?sharecode=LJAS5NSXQO";
+  var FREE_LIMIT = 5;                       // 每人免费几句真人音色
+
   var CONFIG = {
     provider: "browser",   // "browser" | "breeze" | "siliconflow"
-    endpoint: "",          // 站长部署的透传代理地址，例如 https://naijiacun-tts.xxx.workers.dev
+    endpoint: DEFAULT_ENDPOINT,   // 站长部署的透传代理地址
     apiKey: "",            // 访客自己填的 Breeze Key（brz_ 开头）
     sfKey: "",             // 访客自己填的硅基流动 Key（sk- 开头）
     sfBase: "https://api.siliconflow.cn/v1",
     sfModel: "FunAudioLLM/CosyVoice2-0.5B",   // 角色没写 voiceModel 时的默认模型
+    freeLimit: FREE_LIMIT, // 免费真人音色句数
     voices: {},            // 人物 id → 音色 id
     defaultVoiceId: "",    // 默认音色 id
     browserVoice: ""       // 浏览器音色（voiceURI），空 = 自动优选
@@ -43,6 +50,81 @@
   var currentId = null;
   var listeners = [];
   var localMap = {};   // 人物 id → { file, text }，来自 audio/manifest.json
+
+  // ---------- 免费额度（站长代付的那 5 句） ----------
+  // 存在本机 localStorage：换设备会重新给 5 句，所以服务端还会按访客 ID 再卡一道，
+  // 免得刷 localStorage 白嫖。访客自己填了 Key 就整套跳过，走他自己的额度。
+  var QUOTA_KEY = "naijacun_voice_quota";
+  var quota = { vid: "", left: FREE_LIMIT };
+  var quotaListeners = [];
+
+  function genVisitorId() {
+    var s = "v-";
+    if (window.crypto && window.crypto.getRandomValues) {
+      var a = new Uint8Array(8);
+      window.crypto.getRandomValues(a);
+      for (var i = 0; i < a.length; i++) s += ("0" + a[i].toString(16)).slice(-2);
+      return s;
+    }
+    return s + Math.random().toString(36).slice(2, 12) + Date.now().toString(36);
+  }
+
+  function saveQuota() {
+    try {
+      localStorage.setItem(QUOTA_KEY, JSON.stringify({ vid: quota.vid, left: quota.left }));
+    } catch (e) { /* 隐私模式忽略 */ }
+  }
+
+  function loadQuota() {
+    var q = null;
+    try { q = JSON.parse(localStorage.getItem(QUOTA_KEY) || "null"); } catch (e) { q = null; }
+    quota.vid = (q && q.vid) || genVisitorId();
+    var left = q && typeof q.left === "number" ? q.left : FREE_LIMIT;
+    quota.left = Math.max(0, Math.min(FREE_LIMIT, left));
+    saveQuota();
+  }
+
+  // 没填自己的 Key 时才算免费额度；填了就无限
+  function freeLeft() {
+    if (CONFIG.sfKey) return Infinity;
+    return Math.max(0, Math.min(FREE_LIMIT, quota.left));
+  }
+
+  function quotaState() {
+    var own = !!CONFIG.sfKey;
+    var left = freeLeft();
+    return {
+      own: own,
+      limit: FREE_LIMIT,
+      left: own ? Infinity : left,
+      used: own ? 0 : FREE_LIMIT - left,
+      exhausted: !own && left <= 0
+    };
+  }
+
+  function emitQuota() {
+    var st = quotaState();
+    quotaListeners.forEach(function (fn) {
+      try { fn(st); } catch (e) { /* 忽略 */ }
+    });
+  }
+
+  function onQuotaChange(fn) {
+    quotaListeners.push(fn);
+    fn(quotaState());
+  }
+
+  function setLeft(v) {
+    if (typeof v !== "number" || isNaN(v)) return;
+    quota.left = Math.max(0, Math.min(FREE_LIMIT, v));
+    saveQuota();
+    emitQuota();
+  }
+
+  // 服务端没回 x-free-left（老版本代理还在跑）时，本地扣一次
+  function spendOne() {
+    setLeft(freeLeft() - 1);
+  }
 
   function hash(str) {
     var h = 0;
@@ -288,7 +370,9 @@
       return res.json()
         .catch(function () { return {}; })
         .then(function (payload) {
-          throw new Error(describeError(res.status, payload));
+          var err = new Error(describeError(res.status, payload));
+          err.status = res.status;
+          throw err;
         });
     }
     return res.blob();
@@ -344,8 +428,15 @@
       .catch(function (err) { failBack(text, id, err); });
   }
 
+  // 免费额度用完了 / 服务端说没额度了：说一声，然后退回系统默认语音
+  function freeVoiceOut(text, id) {
+    notify("免费真人音色用完啦，这次用系统默认语音念给你听");
+    emitQuota();
+    return speakBrowser(text, id);
+  }
+
   // 硅基流动：访客自带 Key 时浏览器直连（它开放 CORS）；
-  // 没自带就把请求丢给 Worker，用站长存在环境变量里的 Key，按 IP 限量。
+  // 没自带就把请求丢给代理，用站长那把 Key，每人免费 5 句，用完退回浏览器语音。
   function speakSF(text, id) {
     var voiceId = voiceFor(id);
     if (!voiceId) {
@@ -353,13 +444,20 @@
       return speakBrowser(text, id);
     }
 
+    var free = !CONFIG.sfKey;
+    if (free && freeLeft() <= 0) return freeVoiceOut(text, id);
+
     currentId = id;
     emit();
 
     var model = voiceModelFor(id);
     var url, headers, body;
 
-    if (CONFIG.sfKey) {
+    if (free) {
+      url = endpointURL("/api/sf-tts");
+      headers = { "content-type": "application/json", "x-visitor-id": quota.vid };
+      body = JSON.stringify({ text: String(text).slice(0, 600), voiceId: voiceId, modelId: model, free: true });
+    } else {
       url = CONFIG.sfBase.replace(/\/$/, "") + "/audio/speech";
       headers = {
         "content-type": "application/json",
@@ -372,16 +470,28 @@
         response_format: "mp3",
         speed: 1
       });
-    } else {
-      url = endpointURL("/api/sf-tts");
-      headers = { "content-type": "application/json" };
-      body = JSON.stringify({ text: String(text).slice(0, 600), voiceId: voiceId, modelId: model });
     }
 
     return fetch(url, { method: "POST", headers: headers, body: body })
-      .then(readAudio)
-      .then(function (blob) { return playBlob(blob, id); })
-      .catch(function (err) { failBack(text, id, err); });
+      .then(function (res) {
+        // 服务端会回 x-free-left（按访客 ID 算的剩余句数），有就以它为准
+        var left = res.headers.get("x-free-left");
+        if (free && left !== null && left !== "") setLeft(Number(left));
+
+        return readAudio(res).then(function (blob) {
+          if (free && (left === null || left === "")) spendOne();
+          return playBlob(blob, id);
+        });
+      })
+      .catch(function (err) {
+        if (free && err && err.status === 429) {
+          setLeft(0);
+          currentId = null;
+          emit();
+          return freeVoiceOut(text, id);
+        }
+        failBack(text, id, err);
+      });
   }
 
   function notify(msg) {
@@ -564,9 +674,18 @@
     loadLocalManifest: loadLocalManifest,
     hasLocal: function (id) { return !!(localMap[id] && localMap[id].file); },
     config: CONFIG,
-    getCurrent: function () { return currentId; }
+    getCurrent: function () { return currentId; },
+    // 免费额度：state() 看还剩几句，onChange 订阅变化，reset() 只用于站长自测
+    quota: {
+      state: quotaState,
+      left: freeLeft,
+      onChange: onQuotaChange,
+      reset: function () { setLeft(FREE_LIMIT); },
+      visitorId: function () { return quota.vid; }
+    }
   };
 
   // 启动时静默加载预生成音频清单（不存在就静默跳过）
+  loadQuota();
   loadLocalManifest();
 })();

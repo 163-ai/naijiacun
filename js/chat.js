@@ -298,16 +298,26 @@
   }
 
   // 复用主站语音设置（naijacun_tts）：在图鉴页填过，这里自动生效
+  function readTTSStore() {
+    try {
+      var raw = localStorage.getItem("naijacun_tts") || sessionStorage.getItem("naijacun_tts");
+      return raw ? JSON.parse(raw) : {};
+    } catch (e) { return {}; }
+  }
+
+  // 音色怎么出：填了自己的硅基流动 Key → 用自己的额度；
+  // 没填 → 走站点代理的免费额度（默认地址已写在 tts.js 里，访客什么都不用配）；
+  // 额度用完或服务不可用 → tts.js 自动退回系统默认语音。
   function bootTTS() {
     if (!window.NaijiacunTTS) return;
-    var cfg = readJSON("naijacun_tts", null);
-    if (!cfg) return;
+    var cfg = readTTSStore();
     var t = window.NaijiacunTTS.config;
-    t.endpoint = cfg.endpoint || "";
-    t.apiKey = cfg.key || "";
+    t.endpoint = cfg.endpoint || t.endpoint;
+    t.apiKey = cfg.breezeKey || cfg.key || "";
+    t.sfKey = cfg.sfKey || "";
     t.defaultVoiceId = cfg.voiceId || "";
     t.browserVoice = cfg.browserVoice || "";
-    t.provider = cfg.key && t.endpoint ? "breeze" : "browser";
+    t.provider = (t.sfKey || t.endpoint) ? "siliconflow" : "browser";
   }
 
   window.NaijiacunChat = {
@@ -347,6 +357,7 @@
   var speakBtn = document.getElementById("speakBtn");
   var clearBtn = document.getElementById("clearBtn");
   var cfgBtn = document.getElementById("cfgBtn");
+  var quotaChip = document.getElementById("quotaChip");
 
   var LIST = (typeof PEOPLE !== "undefined" && PEOPLE) || [];
   var currentId = "nailong";
@@ -363,6 +374,100 @@
 
   function scrollBottom() {
     msgList.scrollTop = msgList.scrollHeight;
+  }
+
+  // ---------- 语音额度提示 ----------
+  // 站点送 5 句真人音色；用完后自动退回浏览器语音，并在消息里提示一次「可以接自己的 Key」。
+  var noticedExhausted = false;
+  var noticedLow = false;
+
+  function paintQuota(st) {
+    if (!quotaChip) return;
+    var m = window.NaijiacunTTS;
+    st = st || (m && m.quota ? m.quota.state() : null);
+    if (!st) { quotaChip.hidden = true; return; }
+
+    quotaChip.hidden = false;
+    quotaChip.classList.toggle("used", !!st.exhausted);
+    quotaChip.classList.toggle("own", !!st.own);
+
+    if (st.own) {
+      quotaChip.textContent = "🔑 用你自己的 Key";
+      quotaChip.title = "正在用你填的硅基流动 Key，不占站点免费额度";
+    } else if (st.exhausted) {
+      quotaChip.textContent = "🎙️ 系统默认语音";
+      quotaChip.title = "免费真人音色用完了。点这里填自己的 Key，就能继续听角色原声";
+    } else {
+      quotaChip.textContent = "🎁 真人音色 " + st.left + "/" + st.limit;
+      quotaChip.title = "站点送 " + st.limit + " 句角色原声，还剩 " + st.left + " 句。点这里看详情";
+    }
+  }
+
+  // 额度用完的那一下，在消息流里插一条说明（每个会话只插一次，可以手动关掉）
+  function addQuotaNotice() {
+    var row = document.createElement("div");
+    row.className = "ch-notice";
+
+    var title = document.createElement("b");
+    title.textContent = "🎙️ 免费真人音色用完啦";
+    row.appendChild(title);
+
+    var p = document.createElement("p");
+    p.textContent = "站点送的 5 句角色原声已经用完，现在改用系统默认语音接着聊——聊天本身不受影响。" +
+      "想继续听奶龙他们本来的声音，可以填一个自己的硅基流动 Key（注册就送免费额度，只存在你自己的浏览器里）。";
+    row.appendChild(p);
+
+    var bar = document.createElement("div");
+    bar.className = "ch-notice-actions";
+
+    var go = document.createElement("button");
+    go.type = "button";
+    go.className = "ch-tool primary";
+    go.textContent = "去接我的 Key";
+    go.addEventListener("click", function () {
+      openCfg();
+      setTimeout(function () {
+        if (sfKeyInput) sfKeyInput.focus();
+      }, 60);
+    });
+
+    var later = document.createElement("button");
+    later.type = "button";
+    later.className = "ch-tool";
+    later.textContent = "先用默认语音";
+    later.addEventListener("click", function () {
+      if (row.parentNode) row.parentNode.removeChild(row);
+    });
+
+    bar.appendChild(go);
+    bar.appendChild(later);
+    row.appendChild(bar);
+    msgList.appendChild(row);
+    scrollBottom();
+  }
+
+  function watchQuota() {
+    var m = window.NaijiacunTTS;
+    if (!m || !m.quota) return;
+    m.quota.onChange(function (st) {
+      paintQuota(st);
+      if (st.own) { noticedExhausted = false; return; }
+      if (st.exhausted && !noticedExhausted) {
+        noticedExhausted = true;
+        addQuotaNotice();
+        setStatus("免费真人音色已用完，现在用系统默认语音。点右上角「⚙️ 设置」可以填自己的 Key。", true);
+      }
+    });
+  }
+
+  // 状态栏尾巴：这一句声音是从哪来的
+  function voiceNote() {
+    var m = window.NaijiacunTTS;
+    if (!m || !m.quota || !speakEnabled()) return "";
+    var q = m.quota.state();
+    if (q.own) return " · 音色走你自己的 Key";
+    if (q.exhausted) return " · 音色退回系统默认";
+    return " · 真人音色还剩 " + q.left + " 句";
   }
 
   function timeLabel(t) {
@@ -543,7 +648,7 @@
       if (speakEnabled() && window.NaijiacunTTS) window.NaijiacunTTS.speak(reply, currentId);
       setStatus("回复来自 " + (isConfigured()
         ? (CFG.mode === "proxy" ? "代理（" + (CFG.model || "服务端默认模型") + "）" : CFG.model)
-        : "内置话术"));
+        : "内置话术") + voiceNote());
     }).catch(function (err) {
       if (typing && typing.parentNode) typing.parentNode.removeChild(typing);
       if (bot) bot.bubble.textContent = "" ;
@@ -614,7 +719,9 @@
   var modelField = document.getElementById("modelField");
   var cfgHint = document.getElementById("cfgHint");
   var ttsBase = document.getElementById("ttsBase");
-  var ttsKey = document.getElementById("ttsKey");
+  var sfKeyInput = document.getElementById("sfKeyInput");
+  var testSfBtn = document.getElementById("testSfBtn");
+  var quotaLine = document.getElementById("quotaLine");
   var saveBtn = document.getElementById("saveBtn");
   var dlgStatus = document.getElementById("dlgStatus");
 
@@ -663,11 +770,36 @@
     modelInput.value = CFG.model;
     keyInput.value = CFG.key;
 
-    var t = readJSON("naijacun_tts", null) || {};
+    var t = readTTSStore();
     ttsBase.value = t.endpoint || "";
-    ttsKey.value = t.key || "";
+    sfKeyInput.value = t.sfKey || "";
+    paintQuotaLine();
     dlgStatus.textContent = "";
     syncModeUI();
+  }
+
+  // 弹窗顶部那行额度说明
+  function paintQuotaLine() {
+    if (!quotaLine) return;
+    var m = window.NaijiacunTTS;
+    var q = m && m.quota ? m.quota.state() : null;
+    if (!q) { quotaLine.textContent = ""; return; }
+
+    if (q.own) {
+      quotaLine.innerHTML = "当前用<b>你自己填的 Key</b>，不占站点额度。清空下面这栏并保存，就会回到站点免费额度 / 系统语音。";
+    } else if (q.exhausted) {
+      quotaLine.innerHTML = "站点送的 <b>" + q.limit + " 句</b>真人音色已经用完，现在用<b>系统默认语音</b>。" +
+        "填一个自己的 Key 保存后，立刻切回角色原声。";
+    } else {
+      quotaLine.innerHTML = "站点每人送 <b>" + q.limit + " 句</b>角色原声，你还剩 <b>" + q.left +
+        " 句</b>。不填 Key 也能聊，用完后自动换成系统默认语音。";
+    }
+  }
+
+  function openCfg() {
+    fillDialog();
+    if (dlg.showModal) dlg.showModal();
+    else dlg.setAttribute("open", "");
   }
 
   presetSel.addEventListener("change", function () {
@@ -693,11 +825,27 @@
 
   modeSel.addEventListener("change", syncModeUI);
 
-  cfgBtn.addEventListener("click", function () {
-    fillDialog();
-    if (dlg.showModal) dlg.showModal();
-    else dlg.setAttribute("open", "");
-  });
+  cfgBtn.addEventListener("click", openCfg);
+  if (quotaChip) quotaChip.addEventListener("click", openCfg);
+
+  // 验一下填的硅基流动 Key 能不能用（只查 Key，不合成、不花额度）
+  if (testSfBtn) {
+    testSfBtn.addEventListener("click", function () {
+      var key = sfKeyInput.value.trim();
+      if (!key) { dlgStatus.textContent = "先填一个 Key 再测"; return; }
+      if (!/^sk-/.test(key)) { dlgStatus.textContent = "硅基流动的 Key 一般是 sk- 开头，确认没复制错"; return; }
+      if (!window.NaijiacunTTS) { dlgStatus.textContent = "语音模块没加载，刷新一下页面"; return; }
+
+      dlgStatus.textContent = "正在验证…";
+      window.NaijiacunTTS.checkSFKey(key)
+        .then(function () {
+          dlgStatus.textContent = "Key 有效 ✓ 保存后角色就用你自己的额度说话";
+        })
+        .catch(function (err) {
+          dlgStatus.textContent = (err && err.message) || "验证失败";
+        });
+    });
+  }
 
   saveBtn.addEventListener("click", function (e) {
     e.preventDefault();
@@ -709,19 +857,23 @@
       key: keyInput.value
     });
 
-    // 语音配置写回主站那份
-    var tts = readJSON("naijacun_tts", null) || {};
+    // 语音配置写回主站那份（图鉴页 / 桌宠共用），老版本存的 Breeze key 顺手清掉
+    var tts = readTTSStore();
+    var sfKey = sfKeyInput.value.trim();
+    tts.sfKey = sfKey;
     tts.endpoint = ttsBase.value.trim();
-    tts.key = ttsKey.value.trim();
-    if (!tts.browserVoice) tts.browserVoice = "";
+    tts.provider = sfKey ? "siliconflow" : "breeze";
+    delete tts.key;
     writeJSON("naijacun_tts", tts);
+    try { sessionStorage.removeItem("naijacun_tts"); } catch (err) { /* 忽略 */ }
     bootTTS();
+    paintQuota();
 
     var ok = isConfigured();
     var where = CFG.mode === "proxy" ? "代理" : (CFG.model || "直连");
     dlgStatus.textContent = ok ? "已保存，可以开始聊了" : "已保存（还没填地址，仍用内置话术）";
     setStatus(ok
-      ? "已连上模型：" + where
+      ? "已连上模型：" + where + voiceNote()
       : "还没配模型 Key，当前用内置话术回答。",
       !ok);
     setTimeout(function () { if (dlg.close) dlg.close(); }, 600);
@@ -729,6 +881,7 @@
 
   // ---------- 启动 ----------
   paintSpeakBtn();
+  watchQuota();
   renderRail();
   selectCharacter(currentId);
   input.focus();
