@@ -3,7 +3,7 @@
   "use strict";
   var key = "naijiacun_site_pet_v1";
   var state = normalize(read());
-  var view = null, moduleReady = null, revision = 0;
+  var view = null, moduleReady = null, revision = 0, forced3d = false;
 
   function read() {
     try { return JSON.parse(localStorage.getItem(key)) || {}; } catch (error) { return {}; }
@@ -46,8 +46,10 @@
       });
       view = module.createSitePet({ catalog: catalog, onChange: change });
     }
-    // 慢网下先以平面形象出场，不触发 6MB 的 GLB 下载（保存的偏好不变，网速恢复后仍是 3D）
-    await view.applyState(state.mode === "3d" && slowNetwork() ? { ...state, mode: "2d" } : state);
+    // 慢网下先以平面形象出场，不触发 6MB 的 GLB 下载。降级在本次会话内保持稳定，
+    // 拖动、改尺寸等重绘不会再把模型拉起来；用户自己点「真实 3D」则立即按他说的做。
+    var use3d = state.mode === "3d" && (forced3d || !slowNetwork());
+    await view.applyState(use3d ? state : { ...state, mode: "2d" });
   }
   function slowNetwork() {
     var c = navigator.connection;
@@ -67,6 +69,9 @@
     });
   }
   function change(patch, render) {
+    // 用户亲手点过模式按钮，就以他的选择为准，不再被慢网降级覆盖
+    if (patch && patch.mode === "3d") forced3d = true;
+    if (patch && patch.mode === "2d") forced3d = false;
     state = normalize({ ...state, ...patch });
     save();
     return render === false ? Promise.resolve({ ...state }) : renderState().then(function () { return { ...state }; });
