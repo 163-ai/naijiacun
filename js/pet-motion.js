@@ -6,6 +6,11 @@ const smooth = (a, b, x) => T.MathUtils.smoothstep(x, a, b);
 // short dinosaur legs, uniform, and seated feet need different joint locations.
 const ANATOMY = {
   nailong: { hip: .19, knee: .085, legX: .205, legTop: .26, head: .63, shoulders: [[-.225, .57, 0], [.23, .52, 0]], hands: [[-.49, .72, .02], [.44, .34, .02]], armRadius: .095, armGate: .25 },
+  // 站立版奶龙（nailong.glb，游戏主角用）：双手贴身斜向外垂下——肩在身高 .53、
+  // 手在 .19（2026-11-09 按模型逐层实测：外侧凸起 y.3~.7、偏背面 z -0.33~0.05）。
+  // 腿/头与挥手版相同（两版模型下半身一致）；手不能照搬挥手版的
+  // [-.49,.72] 高举胶囊，否则垂下的手臂离胶囊太远、权重为 0，走路只有一只手摆。
+  nailongStand: { hip: .19, knee: .085, legX: .205, legTop: .26, head: .63, shoulders: [[-.23, .53, -.02], [.23, .53, -.02]], hands: [[-.335, .19, -.07], [.335, .19, -.07]], armRadius: .11, armGate: .27 },
   naiwa: { hip: .28, knee: .13, legX: .14, legTop: .33, head: .67, shoulders: [[-.19, .61, 0], [.19, .61, 0]], hands: [[-.235, .32, .025], [.235, .32, .025]], armRadius: .075, armGate: .185 },
   baobaolong: { hip: .17, knee: .075, legX: .18, legTop: .24, head: .57, shoulders: [[-.27, .49, 0], [.27, .49, 0]], hands: [[-.33, .24, .06], [.33, .24, .06]], armRadius: .09, armGate: .26, wings: true },
   xiaoqi: { hip: .40, knee: .20, legX: .08, legTop: .43, head: .72, shoulders: [[-.105, .62, 0], [.105, .62, 0]], hands: [[-.13, .40, .025], [.13, .40, .025]], armRadius: .05, armGate: .105 },

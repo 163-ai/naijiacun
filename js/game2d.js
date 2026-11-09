@@ -4,7 +4,7 @@
 import * as T from "three";
 import { GLTFLoader } from "../vendor/three/GLTFLoader.js";
 import { MeshoptDecoder } from "../vendor/meshopt/meshopt_decoder.module.js";
-import { createPetMotion } from "./pet-motion.js";
+import { createPetMotion } from "./pet-motion.js?v=2";
 import { makeAnimator } from "./creature.js?v=57";
 import { Fight } from "./kof.js?v=57";
 import {
@@ -1000,8 +1000,9 @@ function buildProps() {
    ========================================================= */
 const PACK = window.N3D_MODELS || {};
 // 游戏里的奶龙用站立版模型：挥手版（nailong-waving）手臂定格高举，走路也举着很怪；
-// 图鉴/桌宠/盲盒走 pet-renderer 的 N3D_MODELS 原映射，仍是挥手形象。
-if (PACK.nailong) PACK.nailong = { ...PACK.nailong, file: "assets/models/nailong.glb" };
+// 绑骨走 nailongStand（按站立版手臂实测的垂手胶囊）。图鉴/桌宠/盲盒走
+// pet-renderer 的 N3D_MODELS 原映射，仍是挥手形象。
+if (PACK.nailong) PACK.nailong = { ...PACK.nailong, file: "assets/models/nailong.glb", rigId: "nailongStand" };
 const gltfLoader = new GLTFLoader();
 // 模型是 meshopt 压缩过的，不配解压器会全部解析失败，退化成 2D 立牌
 gltfLoader.setMeshoptDecoder(MeshoptDecoder);
@@ -1176,7 +1177,9 @@ function buildRig(key, c, entry) {
     const sub = root.getObjectByName(nodeName);
     if (sub) root = sub;             // 只读引用，不动共享源
   }
-  const rig = createPetMotion(root, key);
+  // rigId：同一模型文件在不同场合可用不同绑骨（游戏主角用站立版奶龙的垂手绑骨，
+  // 图鉴/桌宠的挥手版走 nailong 原参数，互不影响）
+  const rig = createPetMotion(root, entry.rigId || key);
   rig.root.scale.setScalar(c.h / 2);
   if (entry.yaw) rig.root.rotation.y += entry.yaw;
   rig.root.traverse(o => {
@@ -2009,35 +2012,136 @@ function dim(on) {
   document.body.classList.toggle("asleep", !!on);
 }
 
-// 躺下时盖在腿上的那一床被子 —— 光把模型放平看不出"躺"，得盖上才读出来。
-// 尺寸按躺平的奶龙实测：身体总宽 1.30、躺平厚度 0.85（y 0.06~0.91），
-// 被子宽 1.44 罩住两侧、高 0.94 把肚子整个兜进去（顶 0.96 > 身顶 0.91），
-// 被口（本地 z=-.15）压在下巴下、头整个露在外面。之前高 0.6 太矮，
-// 肚子高出被子一截，俯视角看就像人躺在被子外面。
+// 躺下时盖在身上的被子——不再拿几何体拼（方盒 + 方条 + 球，俯视一看就是两层），
+// 而是一整片蒙在身体上的布：躺下时把躺平模型的顶点烘成"身体高度场"，
+// 布面 = 身体表面抬高一点、边缘垂到床垫、再叠细褶皱 + 两头收圆。
+// 布跟着身体的起伏走，读起来就是"盖上去的"，不是一个浮在另一层上的盒子。
 let quilt = null;
+const QUILT = { cols: 34, rows: 28, halfW: .75 };
 function quiltMesh() {
   if (quilt) return quilt;
   quilt = new T.Group();
-  const cloth = new T.MeshStandardMaterial({ color: 0xcd675c, roughness: .96 });
+  const cloth = new T.MeshStandardMaterial({
+    color: 0xcd675c, roughness: .96, side: T.DoubleSide,
+    // 布面基准面离床垫面只有几毫米，远相机下会跟床垫贴图 z-fighting
+    //（床垫上印的图案会透过布面闪现，看着像身体顶穿被子），给它一个深度偏移
+    polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2
+  });
   const dup = new T.MeshStandardMaterial({ color: 0xe69383, roughness: .95 });
 
-  const main = new T.Mesh(new T.BoxGeometry(1.44, .94, 1.05), cloth);
-  main.position.set(0, .47, .375);
-  main.castShadow = true;
-  quilt.add(main);
-  // 被口翻出来的一圈浅色边（贴着下巴那侧，翻在被子顶上）
-  const flap = new T.Mesh(new T.BoxGeometry(1.47, .16, .16), dup);
-  flap.position.set(0, .82, -.09);
-  quilt.add(flap);
-  // 脚那头鼓起来一点（加宽到能兜住两只伸开的脚丫）
-  const bump = new T.Mesh(new T.SphereGeometry(.3, 10, 8), cloth);
-  bump.scale.set(1.9, .52, .9);
-  bump.position.set(0, .78, .8);
-  quilt.add(bump);
+  const mesh = new T.Mesh(new T.BufferGeometry(), cloth);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  quilt.add(mesh);
+  quilt.userData.cloth = mesh;
+  // 被口翻边：半圆筒卷边（贴着下巴那侧），躺下时摆在布面高度上
+  const roll = new T.Mesh(new T.CylinderGeometry(.085, .085, 1.3, 20, 1, false, 0, Math.PI), dup);
+  roll.rotation.z = Math.PI / 2;
+  roll.castShadow = true;
+  quilt.add(roll);
+  quilt.userData.roll = roll;
 
   quilt.visible = false;
   scene.add(quilt);
   return quilt;
+}
+
+// 把身体轮廓烘进布面：top[r][c] = 该格上方身体的最高点，两次盒式模糊当"布的下垂"
+function drapeQuilt(cx, box2) {
+  const mesh = quilt.userData.cloth;
+  const headZ = box2.min.z, footZ = box2.max.z;
+  const qz = headZ + .93, qx = cx;
+  const z0 = -.32;                                   // 被口压在下巴下（嘴/鼻/眼都留在被子外）
+  const z1 = (footZ - qz) + .32;                     // 脚那头多垂出一截
+  const rows = QUILT.rows, cols = QUILT.cols;
+  const dz = (z1 - z0) / rows, dx = QUILT.halfW * 2 / cols;
+  // 1) 采身体高度场。注意：身体网格顶点间距（~.08）比格子（~.045）大，
+  //    只把顶点记进最近格会让大半格子是空洞、布面在这些洞里塌到身体下面
+  //    （俯视就是一条条身体从"洞"里透出来）。所以每个顶点向半径内所有格子泼溅。
+  const top = new Float32Array((cols + 1) * (rows + 1));
+  const SPLAT_R2 = .055 * .055;
+  playerObj.updateMatrixWorld(true);
+  playerObj.traverse(o => {
+    if (!o.isMesh || !o.geometry || !o.geometry.attributes.position) return;
+    const p = o.geometry.attributes.position, e = o.matrixWorld.elements;
+    for (let i = 0; i < p.count; i++) {
+      const wx = e[0] * p.getX(i) + e[4] * p.getY(i) + e[8] * p.getZ(i) + e[12];
+      const wy = e[1] * p.getX(i) + e[5] * p.getY(i) + e[9] * p.getZ(i) + e[13];
+      const wz = e[2] * p.getX(i) + e[6] * p.getY(i) + e[10] * p.getZ(i) + e[14];
+      const lx = wx - qx, lz = wz - qz;
+      if (lx < -QUILT.halfW - .06 || lx > QUILT.halfW + .06 || lz < z0 - .06 || lz > z1 + .06) continue;
+      const fc = (lx + QUILT.halfW) / dx, fr = (lz - z0) / dz;
+      const c0 = Math.max(0, Math.ceil(fc - .06 / dx)), c1 = Math.min(cols, Math.floor(fc + .06 / dx));
+      const r0 = Math.max(0, Math.ceil(fr - .06 / dz)), r1 = Math.min(rows, Math.floor(fr + .06 / dz));
+      for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
+        const ddx = (c * dx - QUILT.halfW) - lx, ddz = (z0 + r * dz) - lz;
+        if (ddx * ddx + ddz * ddz > SPLAT_R2) continue;
+        const k = r * (cols + 1) + c;
+        if (wy > top[k]) top[k] = wy;
+      }
+    }
+  });
+  // 1.5) 膨胀两轮兜底：仍没泼溅到的格子取邻域最大值，保证场无洞
+  for (let pass = 0; pass < 2; pass++) {
+    const src = top.slice();
+    for (let r = 0; r <= rows; r++) for (let c = 0; c <= cols; c++) {
+      const k = r * (cols + 1) + c;
+      if (src[k] > 0) continue;
+      let m = 0;
+      for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+        const rr = r + dr, cc = c + dc;
+        if (rr < 0 || rr > rows || cc < 0 || cc > cols) continue;
+        if (src[rr * (cols + 1) + cc] > m) m = src[rr * (cols + 1) + cc];
+      }
+      top[k] = m;
+    }
+  }
+  // 2) 盒式模糊 ×2：布搭在身上会摊平过渡，不会一格一格台阶（原始场留着兜底）
+  const topRaw = top.slice();
+  for (let pass = 0; pass < 2; pass++) {
+    const src = top.slice();
+    for (let r = 0; r <= rows; r++) for (let c = 0; c <= cols; c++) {
+      let sum = 0, n = 0;
+      for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+        const rr = r + dr, cc = c + dc;
+        if (rr < 0 || rr > rows || cc < 0 || cc > cols) continue;
+        sum += src[rr * (cols + 1) + cc]; n++;
+      }
+      top[r * (cols + 1) + c] = sum / n;
+    }
+  }
+  // 3) 写布面顶点：先模糊出"摊平的下垂"，再强制不低于身体顶 + 布厚
+  //    （纯模糊会把肚子峰值抹下去，肚皮就从布面顶穿了）；细褶皱 + 两头微收
+  const pos = new Float32Array((cols + 1) * (rows + 1) * 3);
+  let k = 0;
+  for (let r = 0; r <= rows; r++) {
+    const lz = z0 + r * dz;
+    const tz = (lz - z0) / (z1 - z0);
+    const taper = 1 - .10 * Math.max(0, Math.max(tz, 1 - tz) - .85) / .15;   // 端头 15% 微收
+    for (let c = 0; c <= cols; c++) {
+      const lx = (-QUILT.halfW + c * dx) * taper;
+      const body = top[r * (cols + 1) + c];
+      const raw = topRaw[r * (cols + 1) + c];
+      // 基准面抬到世界 y≈.105：床垫面在 y≈.06，太近会 z-fighting（床垫印花透布）
+      let h = Math.max(.085, Math.max(body > .02 ? body + .05 : .03, raw > .02 ? raw + .06 : .03));
+      h += .016 * Math.sin(lx * 15 + lz * 9) * Math.sin(lz * 12 - lx * 5);   // 细褶皱
+      pos[k++] = lx; pos[k++] = h; pos[k++] = lz;
+    }
+  }
+  const idx = [];
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+    const a = r * (cols + 1) + c, b = a + 1, d = a + cols + 1, e2 = d + 1;
+    idx.push(a, d, b, b, d, e2);
+  }
+  const g = new T.BufferGeometry();
+  g.setAttribute("position", new T.BufferAttribute(pos, 3));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  mesh.geometry.dispose();
+  mesh.geometry = g;
+  // 卷边贴在布面被口上（取被口中间那颗顶点的高度），略微下压嵌进布面
+  const roll = quilt.userData.roll;
+  roll.position.set(0, pos[(cols >> 1) * 3 + 1] - .015, z0 + .03);
 }
 
 function lieDown() {
@@ -2070,10 +2174,10 @@ function lieDown() {
   const box2 = new T.Box3().setFromObject(playerObj);
   // 床垫面在 y≈0，稍微压进去 0.06 读起来像陷进软垫
   playerObj.position.y += .06 - box2.min.y;
-  // 被口压在下巴下（头约占躺平长度的 .78），被子本地被口在 z=-.15；
-  // 脚那头（本地 z≈.9）正好兜到脚尖，只露一点点脚丫
+  // 被口压在下巴下：被子原点在 box2.min.z + .93，布面被口在本地 z=-.22（世界 .71）
   const q = quiltMesh();
   q.position.set(cx, .02, box2.min.z + .93);
+  drapeQuilt(cx, box2);
   q.visible = true;
   updateCamera();
 }
