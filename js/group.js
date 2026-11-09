@@ -1,5 +1,6 @@
 /* 奶家村 · 村口放映厅（相亲相爱一家人）
- * 群聊式的视频索引页：消息逐条回放，卡片点开在站内看 / 小窗看。
+ * 群聊式的视频索引页：视频按「免跳转 → 热度 → 二创」排序后逐条推送，
+ * 两条之间至少隔 90 秒，间隔由群成员闲聊填满。
  * 只做索引，不下载、不转存任何视频文件。
  */
 (function () {
@@ -13,6 +14,7 @@
   var composer = document.getElementById("composer");
   var rail = document.getElementById("memberRail");
   var skipBtn = document.getElementById("skipBtn");
+  var pushCount = document.getElementById("pushCount");
   var newMsgChip = document.getElementById("newMsg");
   var toastEl = document.getElementById("toast");
 
@@ -27,9 +29,22 @@
   var noticeDlg = document.getElementById("noticeDlg");
   var currentVideo = null;
 
-  var SEEN_KEY = "naijiacun-group-seen-v1";
+  var SEEN_KEY = "naijiacun-group-seen-v2";
   var members = D.members || {};
   var memberKeys = Object.keys(members);
+  var MIN_GAP = (D.push && D.push.minGapMs) || 90000;
+
+  /* ---------- 排片：按推荐分排序 ---------- */
+  var ranked = D.rank ? D.rank(D.videos || []) : (D.videos || []).map(function (v) {
+    return { video: v, score: 0, tags: [], mode: "inline" };
+  });
+  var posts = ranked.map(function (r) {
+    var v = r.video;
+    v._tags = r.tags || [];
+    v._score = r.score || 0;
+    v._mode = r.mode;
+    return v;
+  });
 
   /* ---------- 小工具 ---------- */
   function el(tag, cls, text) {
@@ -143,6 +158,8 @@
     return row;
   }
 
+  var TAG_CLASS = { "免跳转": "free", "高热度": "hot", "二创": "ugc", "小窗": "win", "跳转": "win" };
+
   function addVideo(senderKey, v) {
     var m = members[senderKey] || {};
     var status = v.status || "ok";
@@ -164,6 +181,15 @@
     var info = el("div", "g-vinfo");
     info.appendChild(el("div", "g-vtitle", v.title || "未命名视频"));
     info.appendChild(el("div", "g-vmeta", (v.author || "") + (v.stat ? " · " + v.stat : "")));
+
+    if (v._tags && v._tags.length) {
+      var tags = el("div", "g-tags");
+      v._tags.forEach(function (t) {
+        tags.appendChild(el("span", "g-tag " + (TAG_CLASS[t] || ""), t));
+      });
+      info.appendChild(tags);
+    }
+
     var hint = status === "ok"
       ? (v.platform === "bilibili"
         ? (v.embed === false ? "点击 · 小窗观看（官方番剧）" : "点击 · 直接在群里看")
@@ -198,61 +224,172 @@
   function renderMsg(msg) {
     if (msg.type === "system" || msg.type === "date") addSystem(msg.text);
     else if (msg.type === "text") addText(msg.sender, msg.text, false);
-    else if (msg.type === "video") addVideo(msg.sender, msg.video);
     autoScroll();
   }
 
-  /* ---------- 回放引擎 ---------- */
-  var flow = { playing: false, timer: null, msgs: [], idx: 0, ambient: null, pool: [] };
-
-  function playFlow(msgs, startIdx) {
-    flow.msgs = msgs;
-    flow.idx = startIdx || 0;
-    flow.playing = true;
-    skipBtn.hidden = false;
-    step();
+  function removeTyping() {
+    var tips = list.querySelectorAll(".ch-typing");
+    for (var i = 0; i < tips.length; i++) {
+      var row = tips[i];
+      while (row && String(row.className).indexOf("ch-row") < 0) row = row.parentElement;
+      if (row) row.remove();
+    }
   }
 
-  function step() {
-    if (!flow.playing) return;
-    if (flow.idx >= flow.msgs.length) { endFlow(); startAmbient(); return; }
-    var msg = flow.msgs[flow.idx++];
-    if (msg.type === "text") {
-      var tip = showTyping(msg.sender);
-      var dur = 700 + Math.min(2000, (msg.text || "").length * 45) * (0.7 + Math.random() * 0.6);
-      flow.timer = setTimeout(function () {
-        if (!flow.playing) return;
-        if (tip.parentNode) tip.remove();
-        renderMsg(msg);
-        flow.timer = setTimeout(step, 300 + Math.random() * 380);
-      }, dur);
+  /* ---------- 回放引擎：开场 → 排片推送 → 闲聊 ---------- */
+  var flow = {
+    stage: "",            // "" | "intro" | "plan" | "ambient"
+    playing: false,
+    timers: [],
+    introIdx: 0,
+    pushed: 0,
+    total: posts.length,
+    pool: []
+  };
+
+  function later(fn, ms) {
+    flow.timers.push(setTimeout(fn, Math.max(0, Math.round(ms || 0))));
+  }
+  function clearTimers() {
+    flow.timers.forEach(clearTimeout);
+    flow.timers = [];
+  }
+  function updateCount() {
+    if (!pushCount) return;
+    if (flow.stage === "plan") {
+      pushCount.hidden = false;
+      pushCount.textContent = "已推送 " + flow.pushed + " / " + flow.total;
     } else {
-      flow.timer = setTimeout(function () {
-        if (!flow.playing) return;
-        renderMsg(msg);
-        flow.timer = setTimeout(step, 420 + Math.random() * 460);
-      }, 360);
+      pushCount.hidden = true;
     }
+  }
+
+  /* 开场白：逐条打字发出 */
+  function playIntro(done) {
+    var intro = D.intro || [];
+    flow.stage = "intro";
+    flow.playing = true;
+    flow.introIdx = 0;
+    skipBtn.hidden = false;
+    updateCount();
+
+    function next() {
+      if (!flow.playing) return;
+      if (flow.introIdx >= intro.length) { done(); return; }
+      var m = intro[flow.introIdx++];
+      if (m.type === "text") {
+        var tip = showTyping(m.sender);
+        var dur = 650 + Math.min(1500, (m.text || "").length * 34);
+        later(function () {
+          if (!flow.playing) return;
+          if (tip.parentNode) tip.remove();
+          renderMsg(m);
+          later(next, 240 + Math.random() * 260);
+        }, dur);
+      } else {
+        later(function () {
+          if (!flow.playing) return;
+          renderMsg(m);
+          later(next, 460);
+        }, 280);
+      }
+    }
+    next();
+  }
+
+  /* 间隔里的闲聊 */
+  function emitChatter() {
+    var pool = D.ambient || [];
+    if (!pool.length || !flow.playing) return;
+    if (!flow.pool.length) flow.pool = shuffle(pool.slice());
+    var line = flow.pool.pop();
+    var tip = showTyping(line[0]);
+    later(function () {
+      if (!flow.playing) return;
+      if (tip.parentNode) tip.remove();
+      addText(line[0], line[1], false);
+      autoScroll();
+    }, 800 + Math.random() * 600);
+  }
+
+  /* 发卡前的铺垫台词 */
+  function emitLead(v, offset) {
+    (v.lead || []).forEach(function (text, i) {
+      later(function () {
+        if (!flow.playing) return;
+        var tip = showTyping(v.sender);
+        later(function () {
+          if (!flow.playing) return;
+          if (tip.parentNode) tip.remove();
+          addText(v.sender, text, false);
+          autoScroll();
+        }, 780 + Math.random() * 400);
+      }, offset + i * 2400);
+    });
+  }
+
+  function pushCard(v) {
+    if (!flow.playing) return;
+    addVideo(v.sender, v);
+    flow.pushed++;
+    markSeen(flow.pushed);
+    updateCount();
+    autoScroll();
+  }
+
+  /* 按时间轴推送：至少 MIN_GAP 一条 */
+  function runPlan(fromIndex) {
+    var rest = posts.slice(fromIndex || 0);
+    if (!rest.length) { endFlow(); startAmbient(); return; }
+
+    flow.stage = "plan";
+    flow.playing = true;
+    flow.pushed = fromIndex || 0;
+    skipBtn.hidden = false;
+    updateCount();
+
+    var plan = D.planTimeline
+      ? D.planTimeline(rest, { minGapMs: MIN_GAP, startMs: 1600 })
+      : rest.map(function (v, i) { return { video: v, leadAt: 1600 + i * MIN_GAP, at: 4000 + i * MIN_GAP, fillers: [] }; });
+
+    plan.forEach(function (item) {
+      emitLead(item.video, item.leadAt);
+      later(function () { pushCard(item.video); }, item.at);
+      item.fillers.forEach(function (ms) { later(emitChatter, ms); });
+    });
+
+    var lastAt = plan.length ? plan[plan.length - 1].at : 0;
+    later(function () {
+      endFlow();
+      startAmbient();
+    }, lastAt + 6000);
   }
 
   function endFlow() {
     flow.playing = false;
-    clearTimeout(flow.timer);
+    flow.stage = "";
+    clearTimers();
+    removeTyping();
     skipBtn.hidden = true;
-    markSeen(flow.msgs.length);
+    updateCount();
+    markSeen(flow.total);
     toBottom();
   }
 
   function skipFlow() {
-    if (!flow.playing) return;
-    clearTimeout(flow.timer);
-    var tip = list.querySelector(".ch-typing");
-    if (tip) {
-      var row = tip;
-      while (row && row.className.indexOf("ch-row") < 0) row = row.parentElement;
-      if (row) row.remove();
+    clearTimers();
+    removeTyping();
+
+    if (flow.stage === "intro") {
+      var intro = D.intro || [];
+      while (flow.introIdx < intro.length) renderMsg(intro[flow.introIdx++]);
     }
-    while (flow.idx < flow.msgs.length) renderMsg(flow.msgs[flow.idx++]);
+    while (flow.pushed < flow.total) {
+      var v = posts[flow.pushed];
+      (v.lead || []).forEach(function (text) { addText(v.sender, text, false); });
+      addVideo(v.sender, v);
+      flow.pushed++;
+    }
     newMsgChip.hidden = true;
     endFlow();
     startAmbient();
@@ -263,18 +400,19 @@
   function startAmbient() {
     var pool = D.ambient || [];
     if (!pool.length) return;
+    flow.stage = "ambient";
     function next() {
       if (!flow.pool.length) flow.pool = shuffle(pool.slice());
       var line = flow.pool.pop();
       var tip = showTyping(line[0]);
-      flow.ambient = setTimeout(function () {
+      later(function () {
         if (tip.parentNode) tip.remove();
         addText(line[0], line[1], false);
         autoScroll();
-        flow.ambient = setTimeout(next, 24000 + Math.random() * 26000);
+        later(next, 24000 + Math.random() * 26000);
       }, 900 + Math.random() * 700);
     }
-    flow.ambient = setTimeout(next, 15000 + Math.random() * 13000);
+    later(next, 15000 + Math.random() * 13000);
   }
 
   /* ---------- 播放 ---------- */
@@ -429,27 +567,41 @@
     input.style.height = Math.min(120, input.scrollHeight) + "px";
   });
 
-  /* ---------- 启动：首次回放，回访只演新消息 ---------- */
+  /* ---------- 启动：首次看排片，回访只推新增 ---------- */
   (function boot() {
-    var msgs = D.messages || [];
-    var seen = seenCount();
+    var intro = D.intro || [];
+    var seen = Math.min(seenCount(), posts.length);
 
-    if (seen >= msgs.length && msgs.length) {
-      msgs.forEach(renderMsg);
-      newMsgChip.hidden = true;
+    function renderIntroAll() {
+      intro.forEach(renderMsg);
+    }
+    function renderPosts(from, to) {
+      for (var i = from; i < to; i++) {
+        var v = posts[i];
+        (v.lead || []).forEach(function (text) { addText(v.sender, text, false); });
+        addVideo(v.sender, v);
+      }
+      flow.pushed = to;
+    }
+
+    if (seen >= posts.length && posts.length) {
+      renderIntroAll();
+      renderPosts(0, posts.length);
       addSystem(pick(D.welcomeBack || ["欢迎回来。"]));
       var away = shuffle((D.ambient || []).slice()).slice(0, 1 + Math.floor(Math.random() * 2));
       away.forEach(function (line) { addText(line[0], line[1], false); });
       toBottom();
       startAmbient();
     } else if (seen > 0) {
-      for (var i = 0; i < seen; i++) renderMsg(msgs[i]);
-      newMsgChip.hidden = true;
-      addSystem("欢迎回来，你走之后群里来了新消息 ——");
+      renderIntroAll();
+      renderPosts(0, seen);
+      addSystem("欢迎回来，你走之后群里又推了新的 ——");
       toBottom();
-      playFlow(msgs, seen);
+      runPlan(seen);
     } else {
-      playFlow(msgs, 0);
+      playIntro(function () {
+        runPlan(0);
+      });
     }
   })();
 })();

@@ -1,13 +1,24 @@
 // 奶家村 · 村口放映厅（相亲相爱一家人）数据
 //
-// 加视频：在 messages 里复制一条 type:"video" 的记录，改字段即可，页面不用动。
+// 加视频：在 videos 里复制一条记录，改字段即可，页面不用动。
+//   sender   : 谁发的（members 里的 key）——谁的视频谁发
 //   platform : "bilibili" | "douyin"
 //   status   : "ok" 正常 | "pending" 链接待录入（卡片置灰） | "dead" 已失效（卡片置灰）
-//   id       : B站视频的 BV 号
+//   id       : B站视频的 BV 号（embed 为 false 时也需要，用于小窗兜底）
 //   url      : 原视频完整链接
 //   embed    : 仅B站需要。true/缺省 = 普通 UP 主投稿，本页内嵌官方播放器直接看；
 //              false = 官方番剧等需要登录的内容，点击后弹出小窗在 B 站页面播放。
 //              抖音一律走小窗 / 唤起 App（抖音不开放第三方网页嵌入）。
+//   heat     : 热度数值（播放量，纯数字）。用于排序，仅作参考快照。
+//   kind     : "ugc" 二创 / 搬运 / 二次剪辑 | "official" 官方正片、官方账号
+//   lead     : 发卡前的铺垫台词（按顺序逐条发出，先说再发）
+//
+// 推送规则（页面顶部「已推送 x/y」会实时显示进度）：
+//   ① 免跳转优先 —— 能在本页内直接播的排前面
+//   ② 热度高优先 —— heat 越大越靠前
+//   ③ 二创优先   —— 真人二创 / 二剪排在官方正片前
+//   三者合成推荐分（见 rank()）；视频之间至少间隔 push.minGapMs（默认 90 秒），
+//   间隔里由群成员闲聊填满，不会冷场。
 //
 // 合规约定：本文件只存元数据（标题/作者/链接），绝不下载、转存任何视频文件。
 // 视频版权归原作者及平台所有，收录即索引；作者要求移除时删除对应记录即可。
@@ -15,6 +26,15 @@
 window.NAIJIA_GROUP = {
   name: "相亲相爱一家人",
   subtitle: "奶家村 · 村口放映厅",
+
+  // 推送节奏与排序权重（想调节奏改这里）
+  push: {
+    minGapMs: 90000,      // 两条视频之间至少 90 秒
+    fillerMinMs: 14000,   // 间隔里的闲聊间隔
+    fillerMaxMs: 22000,
+    weights: { inline: 1000, window: 400, external: 200, heat: 100, ugc: 60 }
+  },
+
   members: {
     nailong: {
       name: "奶龙",
@@ -65,73 +85,98 @@ window.NAIJIA_GROUP = {
       pet: "assets/characters/3d/feidudu-pet.webp"
     }
   },
-  messages: [
+
+  // 开场：建群、寒暄、宣布推送规则（不含视频）
+  intro: [
     { type: "system", text: "欢迎加入「相亲相爱一家人」。群规只有一条：好笑的视频必须发群里。" },
     { type: "date", text: "今天 20:30" },
-
     { type: "text", sender: "nailong", text: "本龙把群建好了！都进来看看，本龙亲自镇楼。" },
     { type: "text", sender: "baobaolong", text: "切。建群也不提前请示本龙？行，进去等我，陷阱马上就好。" },
-    { type: "text", sender: "nailong", text: "先发本龙的正片。官方番剧得在 B 站页面上播，本节点开自动开个小窗，不用切走——" },
-    { type: "video", sender: "nailong", video: {
-      platform: "bilibili", status: "ok", embed: false, id: "BV1ya4y1a74W",
-      url: "https://www.bilibili.com/video/BV1ya4y1a74W/",
-      title: "《奶龙》官方动画 · 第128集",
-      author: "第七印象", stat: "B站番剧 · 全150话"
-    } },
-    { type: "text", sender: "xiaoqi", text: "从第 1 话开始补也可以，讲的是奶龙住进人家之后的事。" },
-    { type: "video", sender: "xiaoqi", video: {
-      platform: "bilibili", status: "ok", embed: false, id: "BV14v411p72v",
-      url: "https://www.bilibili.com/video/BV14v411p72v/",
-      title: "《奶龙》官方动画 · 第30集",
-      author: "第七印象", stat: "全系列播放 20.6 亿"
-    } },
-    { type: "text", sender: "nailong", text: "下面这条是本龙抖音官号的作品。电脑上会弹个小窗，手机上直接唤起抖音。" },
-    { type: "video", sender: "nailong", video: {
-      platform: "douyin", status: "ok",
-      url: "https://www.douyin.com/video/7333132668411923763",
-      title: "新年到，奶龙上新才艺！给大家跳一段开运舞",
-      author: "奶龙（官方抖音号）", stat: "抖音 · 官方账号"
-    } },
+    { type: "system", text: "群固定了排序：能在这儿直接看的排前面，再看热度，二创优先于官方正片。一条一条来，至少隔一分半。" },
+    { type: "text", sender: "naicha", text: "嘎嘎滴辣虾。本察巡逻路过，顺便把群规念一遍：好笑的视频必须发群里。" }
+  ],
 
-    { type: "text", sender: "naiwa", text: "齁齁齁齁齁齁——" },
-    { type: "text", sender: "naiwa", text: "有人把本蛙做成了游戏，还给本蛙塞了一院子钱草。这条 B 站点开就能播。" },
-    { type: "video", sender: "naiwa", video: {
-      platform: "bilibili", status: "ok", id: "BV1SNYq6gEQh",
+  videos: [
+    {
+      sender: "naiwa", platform: "bilibili", status: "ok", embed: true,
+      id: "BV1SNYq6gEQh",
       url: "https://www.bilibili.com/video/BV1SNYq6gEQh/",
       title: "《旅行青蛙》停运？我做了个「旅行奶蛙」，出门全是热梗",
-      author: "UP主 扎克鸡", stat: "84.7万播放"
-    } },
-
-    { type: "text", sender: "niulai", text: "妈妈，牛来！" },
-    { type: "video", sender: "niulai", video: {
-      platform: "bilibili", status: "ok", id: "BV1wkbC6vEaJ",
-      url: "https://www.bilibili.com/video/BV1wkbC6vEaJ/",
-      title: "牛来？绊倒体？",
-      author: "UP主 李智Lee1", stat: "26.2万播放"
-    } },
-    { type: "text", sender: "niulai", text: "傻孩子，那是绊倒体，狗都不碰。" },
-
-    { type: "text", sender: "capybara", text: "……（泡在水里，头顶橘子，情绪稳定）" },
-    { type: "text", sender: "capybara", text: "BGM 我已经放好了。" },
-    { type: "video", sender: "capybara", video: {
-      platform: "bilibili", status: "ok", id: "BV1NN411h7eQ",
+      author: "UP主 扎克鸡", stat: "84.7 万播放",
+      heat: 847000, kind: "ugc",
+      lead: [
+        "齁齁齁齁齁——本蛙先上。",
+        "有人把本蛙做成了游戏，还给本蛙塞了一院子钱草。这条点开就能在群里直接播。"
+      ]
+    },
+    {
+      sender: "capybara", platform: "bilibili", status: "ok", embed: true,
+      id: "BV1NN411h7eQ",
       url: "https://www.bilibili.com/video/BV1NN411h7eQ/",
       title: "【中俄双字】卡皮巴拉 · 水豚之歌",
-      author: "格瓦斯字幕组", stat: "38.4万播放"
-    } },
-
-    { type: "text", sender: "baobaolong", text: "哼，本龙和奶龙的日常被人剪成合集了。就……勉为其难发一下。" },
-    { type: "video", sender: "baobaolong", video: {
-      platform: "bilibili", status: "ok", id: "BV1KrgX6HExh",
+      author: "格瓦斯字幕组", stat: "38.4 万播放",
+      heat: 384000, kind: "ugc",
+      lead: [
+        "……（泡在水里，头顶橘子，情绪稳定）",
+        "BGM 我已经放好了。"
+      ]
+    },
+    {
+      sender: "niulai", platform: "bilibili", status: "ok", embed: true,
+      id: "BV1wkbC6vEaJ",
+      url: "https://www.bilibili.com/video/BV1wkbC6vEaJ/",
+      title: "牛来？绊倒体？",
+      author: "UP主 李智Lee1", stat: "26.2 万播放",
+      heat: 262000, kind: "ugc",
+      lead: [
+        "妈妈，牛来！",
+        "这条是本牛的。傻孩子，那是绊倒体，狗都不碰。"
+      ]
+    },
+    {
+      sender: "baobaolong", platform: "bilibili", status: "ok", embed: true,
+      id: "BV1KrgX6HExh",
       url: "https://www.bilibili.com/video/BV1KrgX6HExh/",
       title: "奶龙和暴暴龙的搞笑日常 · 视频合集",
-      author: "UP主 宝宝早教动画儿歌", stat: "26.1万播放"
-    } },
-
-    { type: "text", sender: "naicha", text: "嘎嘎滴辣虾。本察巡逻路过，顺便把群规念一遍：好笑的视频必须发群里。" },
-    { type: "text", sender: "feidudu", text: "你的胆子真是肥嘟嘟——居然敢在本群潜水。" },
-
-    { type: "system", text: "小提示：点卡片就能看 —— B 站投稿在本页内直接播放；B 站番剧和抖音视频会弹出小窗，人还留在群里。" }
+      author: "UP主 宝宝早教动画儿歌", stat: "26.1 万播放",
+      heat: 261000, kind: "ugc",
+      lead: [
+        "哼，本龙和奶龙的日常被人剪成合集了。",
+        "就……勉为其难发一下。"
+      ]
+    },
+    {
+      sender: "nailong", platform: "bilibili", status: "ok", embed: false,
+      id: "BV1ya4y1a74W",
+      url: "https://www.bilibili.com/video/BV1ya4y1a74W/",
+      title: "《奶龙》官方动画 · 第128集",
+      author: "第七印象", stat: "B站番剧 · 全150话",
+      heat: 2060000000, kind: "official",
+      lead: [
+        "正片放到后头。官方番剧得在 B 站页面上播，本节点开自动开个小窗，不用切走——"
+      ]
+    },
+    {
+      sender: "xiaoqi", platform: "bilibili", status: "ok", embed: false,
+      id: "BV14v411p72v",
+      url: "https://www.bilibili.com/video/BV14v411p72v/",
+      title: "《奶龙》官方动画 · 第30集",
+      author: "第七印象", stat: "全系列播放 20.6 亿",
+      heat: 2060000000, kind: "official",
+      lead: [
+        "从第 1 话开始补也可以，讲的是奶龙住进人家之后的事。"
+      ]
+    },
+    {
+      sender: "nailong", platform: "douyin", status: "ok",
+      url: "https://www.douyin.com/video/7333132668411923763",
+      title: "新年到，奶龙上新才艺！给大家跳一段开运舞",
+      author: "奶龙（官方抖音号）", stat: "抖音 · 官方账号",
+      heat: 3200000, kind: "official",
+      lead: [
+        "最后是本龙抖音官号的作品。电脑上会弹个小窗，手机上直接唤起抖音。"
+      ]
+    }
   ],
 
   // 回放结束后，群成员自己闲聊的台词池（随机抽取，抽完重置）
@@ -147,7 +192,9 @@ window.NAIJIA_GROUP = {
     ["nailong", "点赞了吗？收藏了吗？没有的话现在去。"],
     ["capybara", "（默默把头顶的橘子换成了小番茄）"],
     ["niulai", "绊倒体那条我又看了一遍，笑死牛来了。"],
-    ["naiwa", "本蛙游戏里的钱草又种满了，谁来收一下。"]
+    ["naiwa", "本蛙游戏里的钱草又种满了，谁来收一下。"],
+    ["xiaoqi", "排队呢，下一条还得等一分多钟，别催。"],
+    ["baobaolong", "哼，好东西当然要慢慢放。"]
   ],
 
   // 回访时的随机欢迎语
@@ -158,4 +205,88 @@ window.NAIJIA_GROUP = {
     "欢迎回来，本龙还以为你退群了。",
     "群主回来了，都精神点。"
   ]
+};
+
+/* ------------------------------------------------------------------
+ * 推荐分：免跳转优先 > 热度高优先 > 二创优先（写死在权重里，可调）
+ * ------------------------------------------------------------------ */
+window.NAIJIA_GROUP.rank = function (list) {
+  var W = (window.NAIJIA_GROUP.push || {}).weights || {};
+  var wInline = W.inline || 1000;
+  var wWindow = W.window || 400;
+  var wExternal = W.external || 200;
+  var wHeat = W.heat || 100;
+  var wUgc = W.ugc || 60;
+  var HEAT_REF = Math.log10(2000000); // 200 万播放 ≈ 热度满分
+
+  function playMode(v) {
+    if (v.status && v.status !== "ok") return "off";
+    if (v.platform === "bilibili" && v.embed !== false) return "inline";
+    if (v.platform === "bilibili") return "window";
+    return "external";
+  }
+
+  var scored = (list || []).map(function (v, i) {
+    var mode = playMode(v);
+    var base = mode === "inline" ? wInline : mode === "window" ? wWindow : mode === "external" ? wExternal : 0;
+    var heatVal = Math.max(0, Number(v.heat) || 0);
+    var heatScore = heatVal > 0 ? Math.min(wHeat, Math.round(wHeat * Math.log10(heatVal) / HEAT_REF)) : 0;
+    var ugcScore = v.kind === "ugc" ? wUgc : 0;
+    var tags = [];
+    if (mode === "inline") tags.push("免跳转");
+    else if (mode === "window") tags.push("小窗");
+    else if (mode === "external") tags.push("跳转");
+    if (heatScore >= Math.round(wHeat * 0.7)) tags.push("高热度");
+    if (v.kind === "ugc") tags.push("二创");
+
+    return {
+      video: v, mode: mode, order: i,
+      score: base + heatScore + ugcScore,
+      tags: tags,
+      detail: { inline: base, heat: heatScore, ugc: ugcScore }
+    };
+  });
+
+  scored.sort(function (a, b) { return b.score - a.score || a.order - b.order; });
+  return scored;
+};
+
+/* ------------------------------------------------------------------
+ * 排片时间轴：保证任意两条视频间隔 >= minGapMs，间隔里插入闲聊
+ * 返回 [{ video, leadAt, at, fillers:[ms...] }]，时间均为相对开播的毫秒数
+ * ------------------------------------------------------------------ */
+window.NAIJIA_GROUP.planTimeline = function (list, opt) {
+  opt = opt || {};
+  var P = window.NAIJIA_GROUP.push || {};
+  var gap = opt.minGapMs != null ? opt.minGapMs : (P.minGapMs || 90000);
+  var jitter = opt.jitterMs != null ? opt.jitterMs : 22000; // 在最小间隔上随机加 0~22 秒
+  var rnd = opt.rnd || Math.random;
+  var cursor = opt.startMs != null ? opt.startMs : 1200;
+  var lastVideo = null;
+
+  return (list || []).map(function (v, i) {
+    var leads = (v.lead && v.lead.length) || 0;
+    var leadSpan = leads * 2400 + 600;
+    var at = lastVideo == null
+      ? cursor + leadSpan
+      : Math.max(cursor + leadSpan, lastVideo + gap + rnd() * jitter);
+    at = Math.round(at);
+    var leadAt = at - leadSpan;
+
+    var fillers = [];
+    if (lastVideo != null) {
+      var fMin = P.fillerMinMs || 14000;
+      var fMax = P.fillerMaxMs || 22000;
+      var t = lastVideo + fMin;
+      var limit = leadAt - 2000;
+      while (t < limit) {
+        fillers.push(Math.round(t));
+        t += fMin + rnd() * Math.max(1000, fMax - fMin);
+      }
+    }
+
+    lastVideo = at;
+    cursor = at;
+    return { video: v, index: i, leadAt: Math.round(leadAt), at: at, fillers: fillers };
+  });
 };
