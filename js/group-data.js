@@ -32,7 +32,16 @@ window.NAIJIA_GROUP = {
     minGapMs: 30000,      // 两条视频之间至少 30 秒
     fillerMinMs: 8000,    // 间隔里的闲聊间隔（30 秒窗口够塞 1~2 句）
     fillerMaxMs: 14000,
-    weights: { inline: 1000, window: 400, external: 200, heat: 100, ugc: 60 }
+    weights: {
+      inline: 1000,       // 能在本页直接播
+      window: 400,        // 要在小窗里播
+      external: 200,      // 只能跳回原平台
+      heat: 100,          // 播放量（对数）
+      ugc: 60,            // 二创
+      recency: 180,       // 新近度：越新越高
+      abstract: 140,      // 抽象 / 整活 / 鬼畜
+      duration: 90        // 时长：短视频优先
+    }
   },
 
   members: {
@@ -92,7 +101,7 @@ window.NAIJIA_GROUP = {
     { type: "date", text: "今天 20:30" },
     { type: "text", sender: "nailong", text: "本龙把群建好了！都进来看看，本龙亲自镇楼。" },
     { type: "text", sender: "baobaolong", text: "切。建群也不提前请示本龙？行，进去等我，陷阱马上就好。" },
-    { type: "system", text: "群固定了排序：能在这儿直接看的排前面，再看热度，二创优先于官方正片。一条一条来，至少隔一分半。" },
+    { type: "system", text: "群固定了排序：能在这儿直接看的排前面，然后优先新鲜的、抽象的、热度高的。一条一条来，至少隔半分钟。" },
     { type: "text", sender: "naicha", text: "嘎嘎滴辣虾。本察巡逻路过，顺便把群规念一遍：好笑的视频必须发群里。" }
   ],
 
@@ -248,7 +257,8 @@ window.NAIJIA_GROUP = {
 };
 
 /* ------------------------------------------------------------------
- * 推荐分：免跳转优先 > 热度高优先 > 二创优先（写死在权重里，可调）
+ * 推荐分：免跳转 > 新 > 抽象 > 热度 > 短 > 二创
+ * 老视频会随着时间自然下沉，不用手工删。
  * ------------------------------------------------------------------ */
 window.NAIJIA_GROUP.rank = function (list) {
   var W = (window.NAIJIA_GROUP.push || {}).weights || {};
@@ -257,7 +267,14 @@ window.NAIJIA_GROUP.rank = function (list) {
   var wExternal = W.external || 200;
   var wHeat = W.heat || 100;
   var wUgc = W.ugc || 60;
+  var wRecency = W.recency == null ? 180 : W.recency;
+  var wAbs = W.abstract == null ? 140 : W.abstract;
+  var wDur = W.duration == null ? 90 : W.duration;
   var HEAT_REF = Math.log10(2000000); // 200 万播放 ≈ 热度满分
+  var NOW = Date.now() / 1000;
+
+  /* 抽象 / 整活 / 鬼畜：标题或作者里带这些词就算 */
+  var ODD_RE = /抽象|整活|沙雕|鬼畜|梗|笑死|离谱|绷不住|绝活|发疯|逆天|魔性|搞笑/;
 
   function playMode(v) {
     if (v.status && v.status !== "ok") return "off";
@@ -266,24 +283,61 @@ window.NAIJIA_GROUP.rank = function (list) {
     return "external";
   }
 
+  /* 新近度：3 天内满分，一年以上只剩两成 */
+  function recencyScore(v) {
+    var t = Number(v.pubdate) || 0;
+    if (!t) return Math.round(wRecency * 0.5); // 不知道发布时间的给中间值
+    var days = (NOW - t) / 86400;
+    var r;
+    if (days <= 3) r = 1;
+    else if (days <= 30) r = 0.85;
+    else if (days <= 180) r = 0.6;
+    else if (days <= 365) r = 0.35;
+    else r = 0.2;
+    return Math.round(wRecency * r);
+  }
+
+  /* 时长：一分钟内满分，超过 15 分钟基本不给分 */
+  function durationScore(v) {
+    var d = Number(v.durationSec) || 0;
+    if (!d) return Math.round(wDur * 0.6);
+    var r;
+    if (d <= 60) r = 1;
+    else if (d <= 180) r = 0.85;
+    else if (d <= 420) r = 0.6;
+    else if (d <= 900) r = 0.3;
+    else r = 0.1;
+    return Math.round(wDur * r);
+  }
+
+  function abstractScore(v) {
+    return ODD_RE.test((v.title || "") + " " + (v.author || "")) ? wAbs : 0;
+  }
+
   var scored = (list || []).map(function (v, i) {
     var mode = playMode(v);
     var base = mode === "inline" ? wInline : mode === "window" ? wWindow : mode === "external" ? wExternal : 0;
     var heatVal = Math.max(0, Number(v.heat) || 0);
     var heatScore = heatVal > 0 ? Math.min(wHeat, Math.round(wHeat * Math.log10(heatVal) / HEAT_REF)) : 0;
     var ugcScore = v.kind === "ugc" ? wUgc : 0;
+    var recScore = recencyScore(v);
+    var absScore = abstractScore(v);
+    var durScore = durationScore(v);
+
     var tags = [];
     if (mode === "inline") tags.push("免跳转");
     else if (mode === "window") tags.push("小窗");
     else if (mode === "external") tags.push("跳转");
+    if (recScore >= Math.round(wRecency * 0.85)) tags.push("新");
+    if (absScore > 0) tags.push("抽象");
     if (heatScore >= Math.round(wHeat * 0.7)) tags.push("高热度");
     if (v.kind === "ugc") tags.push("二创");
 
     return {
       video: v, mode: mode, order: i,
-      score: base + heatScore + ugcScore,
+      score: base + heatScore + ugcScore + recScore + absScore + durScore,
       tags: tags,
-      detail: { inline: base, heat: heatScore, ugc: ugcScore }
+      detail: { inline: base, heat: heatScore, ugc: ugcScore, recency: recScore, abstract: absScore, duration: durScore }
     };
   });
 

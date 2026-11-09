@@ -102,14 +102,9 @@
 .g-tag.free { border-color: #cfdccd; background: #e7efe6; color: #3f5b46; }
 .g-tag.hot { border-color: #eed0bd; background: #f8e3d6; color: #8b4127; }
 .g-tag.ugc { border-color: #e0d3e6; background: #efe6f2; color: #5d4468; }
+.g-tag.fresh { border-color: #c9d9e8; background: #e6eef7; color: #35506b; }
+.g-tag.odd { border-color: #ddd0e8; background: #f0e8f6; color: #63457a; }
 
-/* 推送进度：已推送 3 / 7 */
-.g-count {
-  display: inline-flex; align-items: center; height: 32px; padding: 0 11px;
-  border-radius: 999px; background: #f1e6ca; color: #7c6a52;
-  font-size: 11px; letter-spacing: .02em; font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
 .g-card.dead, .g-card.pending { opacity: .55; filter: grayscale(.55); cursor: not-allowed; }
 .g-card.dead:hover, .g-card.pending:hover { transform: none; box-shadow: 0 3px 10px #6347250a; border-color: #e0cfb2; }
 .g-card.dead .g-vhint, .g-card.pending .g-vhint { color: var(--ink-3); }

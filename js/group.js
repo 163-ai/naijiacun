@@ -14,7 +14,6 @@
   var composer = document.getElementById("composer");
   var rail = document.getElementById("memberRail");
   var skipBtn = document.getElementById("skipBtn");
-  var pushCount = document.getElementById("pushCount");
   var stickerBtn = document.getElementById("stickerBtn");
   var stickerPanel = document.getElementById("stickerPanel");
   var newMsgChip = document.getElementById("newMsg");
@@ -31,7 +30,7 @@
   var noticeDlg = document.getElementById("noticeDlg");
   var currentVideo = null;
 
-  var SEEN_KEY = "naijiacun-group-seen-v2";
+  var SEEN_KEY = "naijiacun-group-seen-v3";
   var members = D.members || {};
   var memberKeys = Object.keys(members);
   var MIN_GAP = (D.push && D.push.minGapMs) || 30000;
@@ -66,11 +65,29 @@
     }
     return a;
   }
-  function seenCount() {
-    try { return parseInt(localStorage.getItem(SEEN_KEY) || "0", 10) || 0; } catch (e) { return 0; }
+  /* 已读按视频 ID 记，不按条数。
+     视频池是滚动更新的，每次抓取后排序都会变，用条数记会错位
+     —— 用户会反复看到老视频、同时漏掉新的。 */
+  function seenIds() {
+    try {
+      var raw = JSON.parse(localStorage.getItem(SEEN_KEY) || "[]");
+      return Array.isArray(raw) ? raw : [];
+    } catch (e) { return []; }
   }
-  function markSeen(n) {
-    try { localStorage.setItem(SEEN_KEY, String(n)); } catch (e) {}
+  function markSeenIds(ids) {
+    if (!ids || !ids.length) return;
+    try {
+      var cur = seenIds();
+      var set = Object.create(null);
+      cur.forEach(function (id) { if (id) set[id] = 1; });
+      ids.forEach(function (id) { if (id) set[id] = 1; });
+      var next = Object.keys(set);
+      if (next.length > 600) next = next.slice(next.length - 600);
+      localStorage.setItem(SEEN_KEY, JSON.stringify(next));
+    } catch (e) {}
+  }
+  function markAllSeen() {
+    markSeenIds(posts.map(function (v) { return v && v.id; }));
   }
   var toastTimer = null;
   function toast(msg) {
@@ -163,7 +180,10 @@
     return row;
   }
 
-  var TAG_CLASS = { "免跳转": "free", "高热度": "hot", "二创": "ugc", "小窗": "win", "跳转": "win" };
+  var TAG_CLASS = {
+    "免跳转": "free", "高热度": "hot", "二创": "ugc",
+    "小窗": "win", "跳转": "win", "新": "fresh", "抽象": "odd"
+  };
 
   function addVideo(senderKey, v) {
     var m = members[senderKey] || {};
@@ -358,13 +378,7 @@
     flow.timers = [];
   }
   function updateCount() {
-    if (!pushCount) return;
-    if (flow.stage === "plan") {
-      pushCount.hidden = false;
-      pushCount.textContent = "已推送 " + flow.pushed + " / " + flow.total;
-    } else {
-      pushCount.hidden = true;
-    }
+    /* 进度条已去掉：把「已推送 x / y」摆在群聊顶上很出戏 */
   }
 
   /* 开场白：逐条打字发出 */
@@ -462,8 +476,7 @@
     if (!flow.playing) return;
     addVideo(v.sender, v);
     flow.pushed++;
-    markSeen(flow.pushed);
-    updateCount();
+    markSeenIds([v.id]);
     autoScroll();
   }
 
@@ -509,7 +522,7 @@
     removeTyping();
     skipBtn.hidden = true;
     updateCount();
-    markSeen(flow.total);
+    markAllSeen();
     toBottom();
   }
 
@@ -864,7 +877,7 @@
     if (!D.videos) D.videos = [];
     added.forEach(function (v) { D.videos.push(v); });
 
-    var firstVisit = !seenCount();
+    var firstVisit = !seenIds().length;
 
     if (firstVisit && flow.stage !== "plan") {
       // 还没开始推 —— 整体按「免跳转 > 热度 > 二创」重排，新视频也能排到前面
@@ -875,9 +888,10 @@
 
     // 已经在推或推完了 —— 只往队尾接，绝不打乱当前队列
     added.forEach(function (v) {
-      v._tags = [];
-      v._score = 0;
-      v._mode = "inline";
+      var r = D.rank ? D.rank([v])[0] : null;
+      v._tags = r ? r.tags : [];
+      v._score = r ? r.score : 0;
+      v._mode = r ? r.mode : "inline";
       posts.push(v);
     });
     flow.total = posts.length;
@@ -921,10 +935,9 @@
     next();
   }
 
-  /* ---------- 启动：首次看排片，回访只推新增 ---------- */
+  /* ---------- 启动：首次看排片，回访只推新的 ---------- */
   (function boot() {
     var intro = D.intro || [];
-    var seen = Math.min(seenCount(), posts.length);
 
     function renderIntroAll() {
       intro.forEach(renderMsg);
@@ -938,7 +951,23 @@
       flow.pushed = to;
     }
 
-    if (seen >= posts.length && posts.length) {
+    // 按视频 ID 区分看过 / 没看过，不按条数
+    var seenSet = Object.create(null);
+    seenIds().forEach(function (id) { if (id) seenSet[id] = 1; });
+
+    var oldPosts = [];
+    var freshPosts = [];
+    posts.forEach(function (v) {
+      if (v.id && seenSet[v.id]) oldPosts.push(v);
+      else freshPosts.push(v);
+    });
+
+    // 看过的最多留最近 5 条当上下文，其余不再重复刷屏
+    var tail = oldPosts.slice(-5);
+    posts = tail.concat(freshPosts);
+    flow.total = posts.length;
+
+    if (!freshPosts.length && posts.length) {
       renderIntroAll();
       renderPosts(0, posts.length);
       addSystem(pick(D.welcomeBack || ["欢迎回来。"]));
@@ -946,17 +975,21 @@
       away.forEach(function (line) { addText(line[0], line[1], false); });
       toBottom();
       startAmbient();
-    } else if (seen > 0) {
-      renderIntroAll();
-      renderPosts(0, seen);
-      addSystem("欢迎回来，你走之后群里又推了新的 ——");
-      toBottom();
-      runPlan(seen);
-    } else {
-      playIntro(function () {
-        runPlan(0);
-      });
+      return;
     }
+
+    if (oldPosts.length) {
+      renderIntroAll();
+      renderPosts(0, tail.length);
+      addSystem("你走之后群里又进了 " + freshPosts.length + " 条 ——");
+      toBottom();
+      runPlan(tail.length);
+      return;
+    }
+
+    playIntro(function () {
+      runPlan(0);
+    });
   })();
 
   loadLive();

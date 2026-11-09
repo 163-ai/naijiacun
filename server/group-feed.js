@@ -14,9 +14,17 @@ const TTL_MS = 10 * 60 * 1000;
 const MIN_HEAT = 20000;
 const MAX_VIDEOS = 18;
 const REQ_GAP_MS = 380;
+const MAX_DURATION_SEC = 1500; // 超过 25 分钟的合集直接不要
 
 /* 合集 / 纯享 / 循环 这类搬运内容信息量低，排在后面，但不删 */
 const LOW_INFO = /合集|纯享|循环|助眠|小时|精选|大全|盘点|搬运/;
+
+/* 抽象 / 整活 / 鬼畜 —— 用户点名要优先的那类 */
+const ODD_RE = /抽象|整活|沙雕|鬼畜|梗|笑死|离谱|绷不住|绝活|发疯|逆天|魔性|搞笑/;
+
+/* 模玩店也叫「牛来」，搜"牛来"会带出一堆手办开箱，跟奶家村没关系 */
+const OFF_TOPIC = /模玩|高达|手办|模型|开箱|积木|乐高/;
+const CORE_NAME = /奶龙|奶蛙|奶察|奶家村|卡皮巴拉|暴暴龙/;
 
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
@@ -93,6 +101,39 @@ function clip(s, max) {
   return s.length > max ? s.slice(0, max - 1) + "…" : s;
 }
 
+/* "12:34" / "1:02:03" → 秒 */
+function parseDuration(str) {
+  const parts = String(str || "").trim().split(":").map(Number);
+  if (!parts.length || parts.some((n) => !Number.isFinite(n))) return 0;
+  return parts.reduce((acc, n) => acc * 60 + n, 0);
+}
+
+/* 选稿分：热度对数 × 新鲜度/时长/抽象加权 × 低质惩罚
+   老视频压得住，但热度差十倍的老爆款仍能压过冷门新片。 */
+function pickScore(v, now) {
+  const days = v.pubdate ? (now - v.pubdate) / 86400 : 999;
+  let rec;
+  if (days <= 3) rec = 1;
+  else if (days <= 30) rec = 0.85;
+  else if (days <= 180) rec = 0.6;
+  else if (days <= 365) rec = 0.35;
+  else rec = 0.2;
+
+  const d = v.durationSec || 0;
+  let dur;
+  if (!d) dur = 0.5;
+  else if (d <= 60) dur = 1;
+  else if (d <= 180) dur = 0.85;
+  else if (d <= 420) dur = 0.6;
+  else if (d <= 900) dur = 0.3;
+  else dur = 0.1;
+
+  const odd = ODD_RE.test(v.title + " " + v.author) ? 1 : 0;
+  const factor = 0.38 * rec + 0.2 * dur + 0.15 * odd + 0.27;
+  const penalty = LOW_INFO.test(v.title) ? 0.45 : 1;
+  return Math.log10(Math.max(10, v.heat)) * factor * penalty;
+}
+
 function pickSender(text) {
   for (const role of ROLES) {
     if (role.words.some((w) => text.indexOf(w) >= 0)) return role.key;
@@ -154,11 +195,18 @@ async function crawl() {
         const haystack = title + " " + author;
         if (!CORE_SIGNAL.test(haystack) && !MEMBER_SIGNAL.test(haystack)) continue;
 
+        // 模玩区的"牛来模玩"混进来了：不带任何成员真名的一律丢掉
+        if (OFF_TOPIC.test(haystack) && !CORE_NAME.test(haystack)) continue;
+
         const sender = pickSender(haystack);
         if (!sender) continue;
 
         const heat = Number(raw.play) || 0;
         if (heat < MIN_HEAT) continue;
+
+        // 太长的合集不要：一次看不完，也不是群里想刷的东西
+        const durSec = parseDuration(raw.duration);
+        if (durSec > MAX_DURATION_SEC) continue;
 
         const prev = bucket.get(bvid);
         if (prev && prev.heat >= heat) continue;
@@ -174,11 +222,10 @@ async function crawl() {
           heat: heat,
           kind: guessKind({ title, author }),
           pubdate: Number(raw.pubdate) || 0,
-          duration: cleanText(raw.duration),
+          durationSec: durSec,
           embed: true
         };
         video.lead = LEADS[hashOf(bvid) % LEADS.length](video);
-        video._rank = heat * (LOW_INFO.test(title) ? 0.25 : 1);
         bucket.set(bvid, video);
       }
     } catch (err) {
@@ -186,12 +233,15 @@ async function crawl() {
     }
   }
 
+  const now = Math.floor(Date.now() / 1000);
   const videos = Array.from(bucket.values())
+    .map((v) => {
+      v._rank = pickScore(v, now);
+      return v;
+    })
     .sort((a, b) => b._rank - a._rank)
     .slice(0, MAX_VIDEOS)
     .map((v) => {
-      delete v.pubdate;
-      delete v.duration;
       delete v._rank;
       return v;
     });
