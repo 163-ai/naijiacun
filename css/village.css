@@ -86,8 +86,8 @@ button:disabled { cursor: not-allowed; }
 .home-page .card { background: linear-gradient(145deg, #fffcf5, #fbf1df); box-shadow: inset 0 0 0 4px #fffaf1, 0 3px 12px #94704405; }
 .home-page .card:hover { box-shadow: inset 0 0 0 4px #fffaf1, 0 8px 20px #7b5d2a14; }
 .village-places { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 0 0 28px; }
-/* 入口加到四个（多了一个"进村大冒险"）之后，宽屏排一行更舒展 */
-@media (min-width: 980px) { .village-places { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+/* 入口加到五个（多了一个"相亲相爱一家人"放映厅）之后，宽屏排一行更舒展 */
+@media (min-width: 980px) { .village-places { grid-template-columns: repeat(5, minmax(0, 1fr)); } .village-places a { padding: 15px 16px; gap: 13px; } }
 .village-places a { padding: 15px 23px; color: #5b2e1c; text-decoration: none; display: flex; align-items: center; gap: 18px; border-right: 1px solid var(--line); }
 .village-places a:last-child { border-right: 0; }
 .village-places a:hover { background: #f1e4ce66; border-radius: 12px; }

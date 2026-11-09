@@ -1,0 +1,165 @@
+/* 奶家村 · 村口放映厅（相亲相爱一家人）
+ * 沿用 chat.css 的纸色气泡骨架，只补群聊专属的部分：
+ * 群头像、成员列表、视频卡片、小窗播放弹窗、群公告。
+ */
+
+/* ---------- 布局 ---------- */
+.g-panel { position: relative; }
+.g-msgs { gap: 15px; }
+.g-bwrap { display: flex; flex-direction: column; gap: 4px; min-width: 0; max-width: 100%; }
+.g-name { color: var(--ink-3); font-size: 10.5px; line-height: 1.5; }
+.ch-row.me .g-bwrap { align-items: flex-end; }
+
+/* 自己的头像位：一个「你」的小圆片，保持左右对称但不抢戏 */
+.g-me-av {
+  display: flex; align-items: center; justify-content: center;
+  width: 31px; height: 31px; flex-shrink: 0; border-radius: 50%;
+  background: #f1e6ca; border: 1px solid #ddccaa;
+  color: #8a734f; font-size: 10px; line-height: 1;
+}
+
+/* ---------- 顶部群头像 ---------- */
+.g-avatars { display: flex; align-items: center; flex-shrink: 0; }
+.g-avatars img,
+.g-avatars span {
+  width: 34px; height: 34px; margin-left: -11px;
+  border-radius: 50%; border: 2px solid #fffaf0; background: #f1e6ca;
+  object-fit: cover; box-shadow: 0 1px 2px #63472512;
+}
+.g-avatars img:first-child { margin-left: 0; }
+.g-avatars span {
+  display: flex; align-items: center; justify-content: center;
+  color: #7c6a52; font-size: 10px; letter-spacing: .02em;
+}
+
+/* ---------- 左侧成员 ---------- */
+.g-rail-foot {
+  margin: 12px 7px 2px; padding-top: 10px;
+  border-top: 1px dashed #d9c7aa;
+  color: var(--ink-3); font-size: 10px; line-height: 1.75;
+}
+
+/* ---------- 系统提示 ---------- */
+.g-sys {
+  align-self: center; max-width: 86%; padding: 6px 13px;
+  border-radius: 10px; background: #efe3cc; color: #7b6a51;
+  font-size: 11px; line-height: 1.75; text-align: center;
+  animation: ch-in .2s ease-out;
+}
+
+/* ---------- 视频卡片 ---------- */
+.ch-row .ch-bubble:has(.g-card) { padding: 0; border: 0; background: none; box-shadow: none; }
+.g-card {
+  width: min(330px, 100%);
+  border: 1px solid #e0cfb2; border-radius: 14px;
+  background: #fffdf6; overflow: hidden; cursor: pointer;
+  box-shadow: 0 3px 10px #6347250a;
+  transition: transform .16s ease, box-shadow .16s ease, border-color .16s;
+}
+.g-card:hover { transform: translateY(-2px); border-color: #cdae8b; box-shadow: 0 10px 22px #6347251c; }
+.g-poster {
+  position: relative; display: flex; align-items: center; justify-content: center;
+  height: 148px; overflow: hidden;
+  background: radial-gradient(circle at 32% 18%, #f8e8c9, #f0e1c6 68%);
+  border-bottom: 1px solid #ecdec4;
+}
+.g-poster img {
+  height: 130px; width: auto; object-fit: contain;
+  filter: drop-shadow(0 7px 10px #6b4a1f1f);
+}
+.g-chip {
+  position: absolute; top: 9px; left: 9px;
+  padding: 3px 9px; border-radius: 999px;
+  color: #fffaf0; font-size: 10px; letter-spacing: .06em; line-height: 1.5;
+}
+.g-chip.bilibili { background: #344f49; }
+.g-chip.douyin { background: #823d2f; }
+.g-play {
+  position: absolute; right: 10px; bottom: 10px;
+  display: flex; align-items: center; justify-content: center;
+  width: 33px; height: 33px; border-radius: 50%;
+  background: #823d2fe8; color: #fffaf0;
+  font-size: 12px; line-height: 1; padding-left: 2px;
+}
+.g-vinfo { padding: 11px 13px 12px; }
+.g-vtitle {
+  color: var(--ink); font-size: 13px; font-weight: 700; line-height: 1.6;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.g-vmeta {
+  margin-top: 5px; color: var(--ink-3); font-size: 11px; line-height: 1.5;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.g-vhint { margin-top: 7px; color: var(--green); font-size: 11px; line-height: 1.5; }
+.g-card.dead, .g-card.pending { opacity: .55; filter: grayscale(.55); cursor: not-allowed; }
+.g-card.dead:hover, .g-card.pending:hover { transform: none; box-shadow: 0 3px 10px #6347250a; border-color: #e0cfb2; }
+.g-card.dead .g-vhint, .g-card.pending .g-vhint { color: var(--ink-3); }
+
+/* ---------- 有新消息 ---------- */
+.g-newmsg {
+  position: absolute; left: 50%; bottom: 84px; transform: translateX(-50%);
+  z-index: 6; padding: 6px 15px; border: 0; border-radius: 999px;
+  background: var(--green); color: #fffaf0; font-family: inherit; font-size: 11px;
+  cursor: pointer; box-shadow: 0 6px 16px #63472536;
+}
+.g-newmsg:hover { background: #6b3026; }
+
+/* ---------- 播放弹窗 ---------- */
+.g-dlg { width: min(880px, calc(100% - 32px)); }
+.g-dlg-inner { position: relative; }
+.g-stage {
+  margin-top: 15px; border-radius: 12px; overflow: hidden;
+  background: #2c312c; aspect-ratio: 16 / 9;
+}
+.g-stage iframe { display: block; width: 100%; height: 100%; border: 0; }
+.g-dlg-foot { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; margin-top: 15px; }
+.g-dlg-note { flex: 1; min-width: 200px; color: var(--ink-3); font-size: 11px; line-height: 1.7; }
+.g-dlg-foot .ch-tool {
+  display: inline-flex; align-items: center; min-height: 36px;
+  font-size: 12px; text-decoration: none;
+}
+.g-dlg-foot .ch-tool.primary { background: var(--green); border-color: var(--green); color: #fffaf0; }
+
+.g-launch {
+  display: flex; flex-direction: column; align-items: center; gap: 9px;
+  padding: 24px 18px; text-align: center;
+  border: 1px dashed #d3bfa0; border-radius: 12px; background: #fbf4e6;
+}
+.g-launch img {
+  width: 86px; height: 86px; border-radius: 50%; object-fit: contain;
+  background: #fffaf0; border: 2px solid #e3d1ad; padding: 4px;
+}
+.g-launch h3 { margin: 2px 0 0; font-size: 16px; }
+.g-launch p { margin: 0; max-width: 420px; color: var(--ink-3); font-size: 12px; line-height: 1.8; }
+.g-launch-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 9px; margin-top: 5px; }
+
+/* ---------- 群公告 ---------- */
+.g-notice p { margin: 0 0 12px; color: var(--ink-2); font-size: 12.5px; line-height: 1.95; }
+.g-notice b { color: var(--ink); }
+.g-notice code {
+  padding: 1px 5px; border-radius: 4px;
+  background: #f1e7d5; color: #6f5b42; font-size: 11px;
+}
+.g-notice a { color: var(--green); }
+.g-notice-foot {
+  margin: 0; padding-top: 12px; border-top: 1px solid var(--line);
+  color: var(--ink-3); font-size: 11px; line-height: 1.8;
+}
+
+/* ---------- 响应式 ---------- */
+@media (max-width: 800px) {
+  .g-avatars img, .g-avatars span { width: 30px; height: 30px; margin-left: -12px; }
+  .g-rail-foot { display: none; }
+  .g-card { width: 100%; }
+  .g-poster { height: 136px; }
+}
+@media (max-width: 480px) {
+  .g-dlg { width: calc(100% - 18px); }
+  .g-dlg-inner { padding: 18px 14px 16px; }
+  .g-stage { aspect-ratio: 1 / 1; margin-top: 12px; }
+  .g-dlg-note { min-width: 0; flex-basis: 100%; }
+  .g-name { font-size: 10px; }
+  .g-poster { height: 124px; }
+  .g-poster img { height: 108px; }
+  .g-me-av { width: 26px; height: 26px; font-size: 9px; }
+}

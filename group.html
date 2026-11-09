@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>相亲相爱一家人 · 村口放映厅 · 奶家村</title>
+  <meta name="description" content="奶家村的视频群聊：谁的视频谁发。B站投稿在本页内直接播放，官方番剧与抖音视频弹出小窗，人还留在群里。本站只做索引，不搬运任何视频。">
+  <link rel="stylesheet" href="css/style.css?v=village-1">
+  <link rel="stylesheet" href="css/chat.css?v=voice-quota-1">
+  <link rel="stylesheet" href="css/village.css?v=village-1">
+  <link rel="stylesheet" href="css/group.css?v=group-1">
+  <script type="importmap">{"imports":{"three":"./vendor/three/three.module.min.js"}}</script>
+</head>
+<body class="village-theme group-page">
+  <div class="ch-wrap">
+    <header class="ch-head">
+      <div class="ch-head-copy">
+        <a class="ch-back" href="index.html">村民图鉴 /</a>
+        <p class="ch-eyebrow">村口放映厅 <span>VILLAGE CINEMA</span></p>
+        <h1>相亲相爱一家人，<br>蹲在群里刷视频。</h1>
+        <p class="ch-intro">村里建了个群，谁的视频谁发。B 站投稿点开就能在这儿看；官方番剧与抖音会弹个小窗，人还留在群里。本站只做索引，不搬运任何视频。</p>
+      </div>
+      <div class="ch-head-note">
+        <span class="ch-note-mark" aria-hidden="true">“</span>
+        <p>一群村民，几句闲话，<br><span>外加你一个潜水员。</span></p>
+      </div>
+    </header>
+
+    <div class="ch-main g-main">
+      <aside class="ch-rail g-rail">
+        <div class="ch-rail-heading"><h2>群成员</h2><span id="memberCount">8 位</span></div>
+        <div id="memberRail" class="ch-rail-list"></div>
+        <p class="g-rail-foot">群里的话是网友二创，<br>不代表任何官方设定。</p>
+      </aside>
+
+      <section class="ch-panel g-panel" aria-label="相亲相爱一家人 群聊">
+        <div class="ch-bar g-bar">
+          <div class="g-avatars" id="gAvatars" aria-hidden="true"></div>
+          <div class="ch-who">
+            <strong id="gName">相亲相爱一家人</strong>
+            <span id="gSub">奶家村 · 村口放映厅</span>
+          </div>
+          <div class="ch-actions">
+            <button id="skipBtn" class="ch-tool" type="button" hidden>⏩ 看完全部</button>
+            <button id="noticeBtn" class="ch-tool" type="button">📋 群公告</button>
+          </div>
+        </div>
+
+        <div id="msgList" class="ch-msgs g-msgs" role="log" aria-live="polite"></div>
+        <div id="newMsg" class="g-newmsg" hidden>↓ 有新消息</div>
+
+        <form id="composer" class="ch-composer">
+          <textarea id="input" rows="1" maxlength="120" aria-label="在群里说点什么" placeholder="在群里说点什么…"></textarea>
+          <button id="sendBtn" type="submit">发送 <span aria-hidden="true">↗</span></button>
+        </form>
+        <p class="ch-input-hint">Enter 发送 · Shift + Enter 换行 <span>群聊回放会记住你看到哪了</span></p>
+      </section>
+    </div>
+  </div>
+
+  <!-- 站内播放：B站官方播放器 -->
+  <dialog id="playerDlg" class="ch-dlg g-dlg" aria-labelledby="pTitle">
+    <div class="ch-dlg-inner g-dlg-inner">
+      <button class="ch-dlg-close" id="pClose" type="button" aria-label="关闭播放器">×</button>
+      <p class="ch-eyebrow" id="pPlatform">正在播放</p>
+      <h2 id="pTitle">视频</h2>
+      <div class="g-stage" id="pStage"></div>
+      <div class="g-dlg-foot">
+        <span class="g-dlg-note" id="pNote"></span>
+        <button type="button" class="ch-tool" id="pWin" hidden>换小窗播放</button>
+        <a class="ch-tool" id="pOrigin" href="#" target="_blank" rel="noopener">在原平台打开 ↗</a>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- 群公告 -->
+  <dialog id="noticeDlg" class="ch-dlg g-dlg" aria-labelledby="nTitle">
+    <form method="dialog" class="ch-dlg-inner">
+      <button class="ch-dlg-close" value="close" aria-label="关闭群公告">×</button>
+      <p class="ch-eyebrow">群公告 <span>PINNED</span></p>
+      <h2 id="nTitle">收录说明</h2>
+      <div class="g-notice">
+        <p>本群的所有视频都来自 <b>哔哩哔哩、抖音</b>，视频版权归原作者及平台所有。本页仅作<b>索引与推荐</b>，不下载、不转存、不缓存任何视频文件：B 站视频在本页内嵌其<b>官方播放器</b>观看，抖音视频通过<b>小窗 / 唤起 App</b> 回到抖音观看。</p>
+        <p><b>想加视频</b>：编辑 <code>js/group-data.js</code>，复制一条 <code>video</code> 记录，改 platform / url / title 即可，页面无需改动。</p>
+        <p><b>视频失效</b>：把该条记录的 status 改为 <code>"dead"</code>，卡片会自动置灰。</p>
+        <p><b>作者申诉 / 要求移除</b>：联系 <a href="mailto:tmy520866@163.com">tmy520866@163.com</a>，确认后立即删除对应记录。</p>
+      </div>
+      <p class="g-notice-foot">角色语气为网友二创，不代表官方设定；本站为非官方、非商业的同人整理。</p>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+
+  <script src="js/group-data.js?v=group-1"></script>
+  <script src="js/group.js?v=group-1"></script>
+</body>
+</html>

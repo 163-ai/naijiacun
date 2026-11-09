@@ -1,0 +1,455 @@
+/* 奶家村 · 村口放映厅（相亲相爱一家人）
+ * 群聊式的视频索引页：消息逐条回放，卡片点开在站内看 / 小窗看。
+ * 只做索引，不下载、不转存任何视频文件。
+ */
+(function () {
+  "use strict";
+
+  var D = window.NAIJIA_GROUP;
+  if (!D) return;
+
+  var list = document.getElementById("msgList");
+  var input = document.getElementById("input");
+  var composer = document.getElementById("composer");
+  var rail = document.getElementById("memberRail");
+  var skipBtn = document.getElementById("skipBtn");
+  var newMsgChip = document.getElementById("newMsg");
+  var toastEl = document.getElementById("toast");
+
+  var dlg = document.getElementById("playerDlg");
+  var dTitle = document.getElementById("pTitle");
+  var dPlatform = document.getElementById("pPlatform");
+  var dStage = document.getElementById("pStage");
+  var dNote = document.getElementById("pNote");
+  var dWin = document.getElementById("pWin");
+  var dOrigin = document.getElementById("pOrigin");
+
+  var noticeDlg = document.getElementById("noticeDlg");
+  var currentVideo = null;
+
+  var SEEN_KEY = "naijiacun-group-seen-v1";
+  var members = D.members || {};
+  var memberKeys = Object.keys(members);
+
+  /* ---------- 小工具 ---------- */
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  }
+  function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+  function shuffle(a) {
+    for (var i = a.length - 1; i > 0; i--) {
+      var j = Math.floor(Math.random() * (i + 1));
+      var t = a[i]; a[i] = a[j]; a[j] = t;
+    }
+    return a;
+  }
+  function seenCount() {
+    try { return parseInt(localStorage.getItem(SEEN_KEY) || "0", 10) || 0; } catch (e) { return 0; }
+  }
+  function markSeen(n) {
+    try { localStorage.setItem(SEEN_KEY, String(n)); } catch (e) {}
+  }
+  var toastTimer = null;
+  function toast(msg) {
+    toastEl.textContent = msg;
+    toastEl.classList.remove("hidden");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { toastEl.classList.add("hidden"); }, 2600);
+  }
+
+  /* ---------- 顶部群头像 ---------- */
+  (function buildHead() {
+    var box = document.getElementById("gAvatars");
+    memberKeys.slice(0, 3).forEach(function (k) {
+      var img = el("img");
+      img.src = members[k].avatar;
+      img.alt = "";
+      img.loading = "lazy";
+      box.appendChild(img);
+    });
+    var more = el("span", null, "+" + Math.max(0, memberKeys.length - 3));
+    box.appendChild(more);
+    document.getElementById("gName").textContent = D.name || "相亲相爱一家人";
+    document.getElementById("gSub").textContent = D.subtitle || "";
+    document.getElementById("memberCount").textContent = memberKeys.length + " 位";
+  })();
+
+  /* ---------- 左侧成员 ---------- */
+  memberKeys.forEach(function (k) {
+    var m = members[k];
+    var item = el("div", "ch-rail-item");
+    var img = el("img");
+    img.src = m.avatar;
+    img.alt = m.name;
+    img.loading = "lazy";
+    var meta = el("div", "ch-rail-meta");
+    meta.appendChild(el("span", "ch-rail-name", m.name));
+    meta.appendChild(el("span", "ch-rail-last", m.title || ""));
+    item.appendChild(img);
+    item.appendChild(meta);
+    rail.appendChild(item);
+  });
+
+  /* ---------- 滚动与“有新消息” ---------- */
+  function nearBottom() {
+    return list.scrollHeight - list.scrollTop - list.clientHeight < 260;
+  }
+  function toBottom() { list.scrollTop = list.scrollHeight; }
+  function autoScroll() {
+    if (nearBottom()) toBottom();
+    else newMsgChip.hidden = false;
+  }
+  newMsgChip.addEventListener("click", function () {
+    newMsgChip.hidden = true;
+    toBottom();
+  });
+
+  /* ---------- 消息渲染 ---------- */
+  function addSystem(text) {
+    list.appendChild(el("div", "g-sys", text));
+  }
+
+  function rowFor(senderKey, mine) {
+    var row = el("div", "ch-row " + (mine ? "me" : "bot"));
+    if (mine) {
+      row.appendChild(el("span", "g-me-av", "你"));
+    } else {
+      var av = el("img");
+      var m = members[senderKey] || {};
+      av.src = m.avatar || "";
+      av.alt = m.name || senderKey;
+      av.loading = "lazy";
+      row.appendChild(av);
+    }
+    return row;
+  }
+
+  function addText(senderKey, text, mine) {
+    var row = rowFor(senderKey, mine);
+    var bubble = el("div", "ch-bubble", text);
+    if (!mine) {
+      var name = el("div", "g-name", (members[senderKey] || {}).name || senderKey);
+      var wrap = el("div", "g-bwrap");
+      wrap.appendChild(name);
+      wrap.appendChild(bubble);
+      row.appendChild(wrap);
+    } else {
+      row.appendChild(bubble);
+    }
+    list.appendChild(row);
+    return row;
+  }
+
+  function addVideo(senderKey, v) {
+    var m = members[senderKey] || {};
+    var status = v.status || "ok";
+    var row = rowFor(senderKey, false);
+    var wrap = el("div", "g-bwrap");
+    wrap.appendChild(el("div", "g-name", m.name || senderKey));
+
+    var card = el("div", "g-card " + status);
+    var poster = el("div", "g-poster");
+    var pet = el("img");
+    pet.src = m.pet || m.avatar || "";
+    pet.alt = "";
+    pet.loading = "lazy";
+    poster.appendChild(pet);
+    poster.appendChild(el("span", "g-chip " + v.platform, v.platform === "bilibili" ? "B 站" : "抖音"));
+    poster.appendChild(el("span", "g-play", "▶"));
+    card.appendChild(poster);
+
+    var info = el("div", "g-vinfo");
+    info.appendChild(el("div", "g-vtitle", v.title || "未命名视频"));
+    info.appendChild(el("div", "g-vmeta", (v.author || "") + (v.stat ? " · " + v.stat : "")));
+    var hint = status === "ok"
+      ? (v.platform === "bilibili"
+        ? (v.embed === false ? "点击 · 小窗观看（官方番剧）" : "点击 · 直接在群里看")
+        : "点击 · 小窗观看")
+      : (status === "pending" ? "链接待录入" : "视频已失效");
+    info.appendChild(el("div", "g-vhint", hint));
+    card.appendChild(info);
+
+    card.addEventListener("click", function () { playItem(v); });
+    wrap.appendChild(card);
+    row.appendChild(wrap);
+    list.appendChild(row);
+    return row;
+  }
+
+  function showTyping(senderKey) {
+    var m = members[senderKey] || {};
+    var row = rowFor(senderKey, false);
+    var wrap = el("div", "g-bwrap");
+    wrap.appendChild(el("div", "g-name", m.name || senderKey));
+    var bubble = el("div", "ch-bubble");
+    var dots = el("span", "ch-typing");
+    dots.appendChild(el("i")); dots.appendChild(el("i")); dots.appendChild(el("i"));
+    bubble.appendChild(dots);
+    wrap.appendChild(bubble);
+    row.appendChild(wrap);
+    list.appendChild(row);
+    autoScroll();
+    return row;
+  }
+
+  function renderMsg(msg) {
+    if (msg.type === "system" || msg.type === "date") addSystem(msg.text);
+    else if (msg.type === "text") addText(msg.sender, msg.text, false);
+    else if (msg.type === "video") addVideo(msg.sender, msg.video);
+    autoScroll();
+  }
+
+  /* ---------- 回放引擎 ---------- */
+  var flow = { playing: false, timer: null, msgs: [], idx: 0, ambient: null, pool: [] };
+
+  function playFlow(msgs, startIdx) {
+    flow.msgs = msgs;
+    flow.idx = startIdx || 0;
+    flow.playing = true;
+    skipBtn.hidden = false;
+    step();
+  }
+
+  function step() {
+    if (!flow.playing) return;
+    if (flow.idx >= flow.msgs.length) { endFlow(); startAmbient(); return; }
+    var msg = flow.msgs[flow.idx++];
+    if (msg.type === "text") {
+      var tip = showTyping(msg.sender);
+      var dur = 700 + Math.min(2000, (msg.text || "").length * 45) * (0.7 + Math.random() * 0.6);
+      flow.timer = setTimeout(function () {
+        if (!flow.playing) return;
+        if (tip.parentNode) tip.remove();
+        renderMsg(msg);
+        flow.timer = setTimeout(step, 300 + Math.random() * 380);
+      }, dur);
+    } else {
+      flow.timer = setTimeout(function () {
+        if (!flow.playing) return;
+        renderMsg(msg);
+        flow.timer = setTimeout(step, 420 + Math.random() * 460);
+      }, 360);
+    }
+  }
+
+  function endFlow() {
+    flow.playing = false;
+    clearTimeout(flow.timer);
+    skipBtn.hidden = true;
+    markSeen(flow.msgs.length);
+    toBottom();
+  }
+
+  function skipFlow() {
+    if (!flow.playing) return;
+    clearTimeout(flow.timer);
+    var tip = list.querySelector(".ch-typing");
+    if (tip) {
+      var row = tip;
+      while (row && row.className.indexOf("ch-row") < 0) row = row.parentElement;
+      if (row) row.remove();
+    }
+    while (flow.idx < flow.msgs.length) renderMsg(flow.msgs[flow.idx++]);
+    newMsgChip.hidden = true;
+    endFlow();
+    startAmbient();
+  }
+  skipBtn.addEventListener("click", skipFlow);
+
+  /* ---------- 闲着也唠嗑 ---------- */
+  function startAmbient() {
+    var pool = D.ambient || [];
+    if (!pool.length) return;
+    function next() {
+      if (!flow.pool.length) flow.pool = shuffle(pool.slice());
+      var line = flow.pool.pop();
+      var tip = showTyping(line[0]);
+      flow.ambient = setTimeout(function () {
+        if (tip.parentNode) tip.remove();
+        addText(line[0], line[1], false);
+        autoScroll();
+        flow.ambient = setTimeout(next, 24000 + Math.random() * 26000);
+      }, 900 + Math.random() * 700);
+    }
+    flow.ambient = setTimeout(next, 15000 + Math.random() * 13000);
+  }
+
+  /* ---------- 播放 ---------- */
+  function isMobile() { return window.matchMedia("(max-width: 800px)").matches; }
+
+  function bvidOf(v) {
+    if (v.id) return v.id;
+    var m = (v.url || "").match(/BV[a-zA-Z0-9]+/);
+    return m ? m[0] : "";
+  }
+
+  function playItem(v) {
+    var status = v.status || "ok";
+    if (status !== "ok") {
+      toast(status === "pending" ? "这条的链接还没录入，去 js/group-data.js 补上就好" : "视频已失效，等群主换一条吧");
+      return;
+    }
+    currentVideo = v;
+    if (v.platform === "bilibili" && v.embed !== false) {
+      var id = bvidOf(v);
+      if (!id) { toast("缺少 BV 号，请检查 group-data.js 的 id 字段"); return; }
+      openEmbed(id, v);
+    } else {
+      openLauncher(v);
+    }
+  }
+
+  function openEmbed(id, v) {
+    dPlatform.textContent = "B 站 · 站内播放";
+    dTitle.textContent = v.title || "视频";
+    dNote.textContent = "播放器为 B 站官方外链，画质上限 720P（未登录时）；想看更高画质可在原平台打开。";
+    dWin.hidden = true;
+    dOrigin.href = v.url || "#";
+    dStage.innerHTML = "";
+    var f = document.createElement("iframe");
+    f.src = "https://player.bilibili.com/player.html?bvid=" + encodeURIComponent(id)
+      + "&autoplay=1&danmaku=0&high_quality=1&qn=64";
+    f.setAttribute("allow", "fullscreen; autoplay; encrypted-media");
+    f.setAttribute("allowfullscreen", "");
+    f.setAttribute("referrerpolicy", "no-referrer");
+    f.setAttribute("scrolling", "no");
+    dStage.appendChild(f);
+    if (!dlg.open) dlg.showModal();
+  }
+
+  function openLauncher(v) {
+    dPlatform.textContent = v.platform === "douyin" ? "抖音 · 小窗观看" : "B 站 · 官方番剧";
+    dTitle.textContent = v.title || "视频";
+    dNote.textContent = v.platform === "douyin"
+      ? "抖音不开放第三方网页嵌入，小窗里是抖音官方页面，人还留在群里。"
+      : "官方番剧需要在 B 站页面里播放，已为你准备小窗。";
+    dWin.hidden = false;
+    dOrigin.href = v.url || "#";
+    dStage.innerHTML = "";
+
+    var box = el("div", "g-launch");
+    var img = el("img");
+    var sender = v._sender && members[v._sender] ? members[v._sender] : null;
+    img.src = sender ? (sender.pet || sender.avatar) : "";
+    img.alt = "";
+    box.appendChild(img);
+
+    var sub = el("p", null, (v.author || "") + (v.stat ? " · " + v.stat : ""));
+    var b1 = el("button", "ch-tool primary", "小窗打开");
+    b1.type = "button";
+    b1.addEventListener("click", function () {
+      var win = openPopup(v.url);
+      if (win) { dlg.close(); toast("已在小窗打开，可拖拽窗口边缘调整大小"); }
+      else toast("浏览器拦截了小窗，请用「在原平台打开」");
+    });
+    var b2 = el("button", "ch-tool", "新标签页打开");
+    b2.type = "button";
+    b2.addEventListener("click", function () { window.open(v.url, "_blank", "noopener"); dlg.close(); });
+
+    var actions = el("div", "g-launch-row");
+    actions.appendChild(b1);
+    actions.appendChild(b2);
+
+    box.appendChild(el("h3", null, v.platform === "douyin" ? "这条得去抖音看" : "这条得去 B 站看"));
+    box.appendChild(sub);
+    box.appendChild(actions);
+    dStage.appendChild(box);
+
+    if (!dlg.open) dlg.showModal();
+  }
+
+  function openPopup(url) {
+    if (isMobile()) { window.location.href = url; return true; }
+    var availW = window.screen.availWidth || 1280;
+    var availH = window.screen.availHeight || 800;
+    var w = Math.min(980, availW - 60);
+    var h = Math.min(940, availH - 50);
+    var left = Math.max(10, availW - w - 20);
+    var top = Math.max(10, Math.round((availH - h) / 2));
+    return window.open(url, "groupvideowin",
+      "width=" + w + ",height=" + h + ",left=" + left + ",top=" + top
+      + ",menubar=no,toolbar=no,location=no,status=no,scrollbars=yes,resizable=yes");
+  }
+
+  document.getElementById("pClose").addEventListener("click", function () {
+    dStage.innerHTML = "";
+    dlg.close();
+  });
+  dlg.addEventListener("close", function () { dStage.innerHTML = ""; });
+  dWin.addEventListener("click", function () {
+    if (!currentVideo) return;
+    var win = openPopup(currentVideo.url);
+    if (win) { dlg.close(); toast("已在小窗打开，可拖拽窗口边缘调整大小"); }
+    else toast("浏览器拦截了小窗，请用「在原平台打开」");
+  });
+
+  document.getElementById("noticeBtn").addEventListener("click", function () { noticeDlg.showModal(); });
+
+  /* ---------- 发消息 ---------- */
+  var REPLIES = [
+    "哈哈哈哈哈", "这条必须收藏", "再来一条！", "默默点了个赞", "已阅，退下了",
+    "好活，赏", "笑得泡脚水都洒了", "这条比上一条好笑", "本龙觉得很一般（骄傲）",
+    "嘎嘎滴辣虾", "你的胆子真是肥嘟嘟"
+  ];
+
+  function replyTo(senderName) {
+    var key = pick(memberKeys);
+    var m = members[key];
+    var tip = showTyping(key);
+    setTimeout(function () {
+      if (tip.parentNode) tip.remove();
+      addText(key, pick(REPLIES), false);
+      autoScroll();
+      if (senderName) toast(m.name + " 回了你一句");
+    }, 700 + Math.random() * 900);
+  }
+
+  composer.addEventListener("submit", function (e) {
+    e.preventDefault();
+    var text = input.value.trim();
+    if (!text) return;
+    addText(null, text, true);
+    input.value = "";
+    input.style.height = "auto";
+    toBottom();
+    replyTo("你");
+  });
+
+  input.addEventListener("keydown", function (e) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      composer.dispatchEvent(new Event("submit", { cancelable: true }));
+    }
+  });
+  input.addEventListener("input", function () {
+    input.style.height = "auto";
+    input.style.height = Math.min(120, input.scrollHeight) + "px";
+  });
+
+  /* ---------- 启动：首次回放，回访只演新消息 ---------- */
+  (function boot() {
+    var msgs = D.messages || [];
+    var seen = seenCount();
+
+    if (seen >= msgs.length && msgs.length) {
+      msgs.forEach(renderMsg);
+      newMsgChip.hidden = true;
+      addSystem(pick(D.welcomeBack || ["欢迎回来。"]));
+      var away = shuffle((D.ambient || []).slice()).slice(0, 1 + Math.floor(Math.random() * 2));
+      away.forEach(function (line) { addText(line[0], line[1], false); });
+      toBottom();
+      startAmbient();
+    } else if (seen > 0) {
+      for (var i = 0; i < seen; i++) renderMsg(msgs[i]);
+      newMsgChip.hidden = true;
+      addSystem("欢迎回来，你走之后群里来了新消息 ——");
+      toBottom();
+      playFlow(msgs, seen);
+    } else {
+      playFlow(msgs, 0);
+    }
+  })();
+})();
