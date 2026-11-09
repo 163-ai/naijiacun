@@ -5,7 +5,7 @@ import * as T from "three";
 import { GLTFLoader } from "../vendor/three/GLTFLoader.js";
 import { MeshoptDecoder } from "../vendor/meshopt/meshopt_decoder.module.js";
 import { createPetMotion } from "./pet-motion.js?v=2";
-import { makeAnimator } from "./creature.js?v=57";
+import { makeAnimator } from "./creature.js?v=58";
 import { Fight } from "./kof.js?v=57";
 import {
   TS, TI, VILLAGE, HOUSE, SHOP, STATION, ARCHIVE, MAPS,
@@ -2096,9 +2096,10 @@ function drapeQuilt(cx, box2) {
       top[k] = m;
     }
   }
-  // 2) 盒式模糊 ×2：布搭在身上会摊平过渡，不会一格一格台阶（原始场留着兜底）
+  // 2) 盒式模糊 ×4：布搭在身上会摊平过渡，不会一格一格台阶（原始场留着兜底）。
+  //    2 轮在顶点稀疏的地方还是会读出细碎起伏，4 轮才有"厚棉被压下来"的圆润感。
   const topRaw = top.slice();
-  for (let pass = 0; pass < 2; pass++) {
+  for (let pass = 0; pass < 4; pass++) {
     const src = top.slice();
     for (let r = 0; r <= rows; r++) for (let c = 0; c <= cols; c++) {
       let sum = 0, n = 0;
@@ -2122,9 +2123,14 @@ function drapeQuilt(cx, box2) {
       const lx = (-QUILT.halfW + c * dx) * taper;
       const body = top[r * (cols + 1) + c];
       const raw = topRaw[r * (cols + 1) + c];
-      // 基准面抬到世界 y≈.105：床垫面在 y≈.06，太近会 z-fighting（床垫印花透布）
-      let h = Math.max(.085, Math.max(body > .02 ? body + .05 : .03, raw > .02 ? raw + .06 : .03));
-      h += .016 * Math.sin(lx * 15 + lz * 9) * Math.sin(lz * 12 - lx * 5);   // 细褶皱
+      // 基准面抬到世界 y≈.105：床垫面在 y≈.06，太近会 z-fighting（床垫印花透布）。
+      // 取高以 4 轮模糊后的 body 为主（平滑），raw 只在模糊把局部峰值抹掉
+      // 超过 .01 时兜底，保证肚皮不会从布面顶穿（之前 raw+.06 全场压制模糊场，
+      // 布面读起来还是一格一格的）。
+      let h = Math.max(.085, Math.max(body > .02 ? body + .05 : .03, raw > body + .01 ? raw + .04 : .03));
+      // 细褶皱减淡放缓（振幅 .016→.010、频率降一档）：棉被要的是大波浪的下垂
+      // 褶，不是密密麻麻的搓衣纹
+      h += .010 * Math.sin(lx * 10 + lz * 6) * Math.sin(lz * 8 - lx * 4);   // 细褶皱
       pos[k++] = lx; pos[k++] = h; pos[k++] = lz;
     }
   }

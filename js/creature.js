@@ -42,8 +42,9 @@ export function makeAnimator(root) {
       bones.kneeLeft.rotation.x = Math.max(0, -step) * .75;
       bones.kneeRight.rotation.x = Math.max(0, step) * .75;
       if (bones.armLeft) {
-        bones.armLeft.rotation.x = -step * .34;
-        bones.armRight.rotation.x = step * .34;
+        // 摆臂收敛到 ~0.17 rad：贴身的自然小幅摆动，不再是大幅度抡胳膊
+        bones.armLeft.rotation.x = -step * .17;
+        bones.armRight.rotation.x = step * .17;
       }
       bones.head.rotation.y = step * .04;
       bones.body.rotation.y = step * .03;
