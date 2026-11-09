@@ -6,6 +6,7 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const zlib = require("zlib");
+const groupFeed = require("./server/group-feed");
 
 const ROOT = __dirname;
 const PORT = Number(process.env.PORT) || 3000;
@@ -91,9 +92,48 @@ function send(res, status, body, headers) {
   res.end(body);
 }
 
+/* ------------------------------------------------------------------
+ * 群聊视频源：服务端代抓 B 站（浏览器直连会被风控 403）
+ * 同源可直接调用；带 ACAO 是为了让 GitHub Pages 版也能取到实时数据。
+ * ------------------------------------------------------------------ */
+function serveGroupVideos(req, res) {
+  groupFeed
+    .getFeed()
+    .then(function (payload) {
+      const body = Buffer.from(JSON.stringify(Object.assign({ ok: true }, payload)), "utf8");
+      res.writeHead(200, {
+        "Content-Type": "application/json; charset=utf-8",
+        "Content-Length": body.length,
+        "Cache-Control": "public, max-age=60, stale-while-revalidate=600",
+        "Access-Control-Allow-Origin": "*",
+        "X-Content-Type-Options": "nosniff"
+      });
+      res.end(req.method === "HEAD" ? undefined : body);
+    })
+    .catch(function (err) {
+      const body = Buffer.from(
+        JSON.stringify({ ok: false, error: String((err && err.message) || err) }),
+        "utf8"
+      );
+      res.writeHead(200, {
+        "Content-Type": "application/json; charset=utf-8",
+        "Content-Length": body.length,
+        "Cache-Control": "no-store",
+        "Access-Control-Allow-Origin": "*"
+      });
+      res.end(body);
+    });
+}
+
 const server = http.createServer((req, res) => {
   if (req.method !== "GET" && req.method !== "HEAD") {
     send(res, 405, "Method Not Allowed", { "Content-Type": "text/plain; charset=utf-8", Allow: "GET, HEAD" });
+    return;
+  }
+
+  const pathname = (req.url || "/").split("?")[0];
+  if (pathname === "/api/group-videos" || pathname === "/api/group-videos/") {
+    serveGroupVideos(req, res);
     return;
   }
 

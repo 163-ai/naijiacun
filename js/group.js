@@ -37,16 +37,19 @@
   var MIN_GAP = (D.push && D.push.minGapMs) || 30000;
 
   /* ---------- 排片：按推荐分排序 ---------- */
-  var ranked = D.rank ? D.rank(D.videos || []) : (D.videos || []).map(function (v) {
-    return { video: v, score: 0, tags: [], mode: "inline" };
-  });
-  var posts = ranked.map(function (r) {
-    var v = r.video;
-    v._tags = r.tags || [];
-    v._score = r.score || 0;
-    v._mode = r.mode;
-    return v;
-  });
+  function rankAll() {
+    var ranked = D.rank ? D.rank(D.videos || []) : (D.videos || []).map(function (v) {
+      return { video: v, score: 0, tags: [], mode: "inline" };
+    });
+    return ranked.map(function (r) {
+      var v = r.video;
+      v._tags = r.tags || [];
+      v._score = r.score || 0;
+      v._mode = r.mode;
+      return v;
+    });
+  }
+  var posts = rankAll();
 
   /* ---------- 小工具 ---------- */
   function el(tag, cls, text) {
@@ -472,6 +475,7 @@
     flow.stage = "plan";
     flow.playing = true;
     flow.pushed = fromIndex || 0;
+    flow.total = posts.length;
     skipBtn.hidden = false;
     updateCount();
 
@@ -487,6 +491,12 @@
 
     var lastAt = plan.length ? plan[plan.length - 1].at : 0;
     later(function () {
+      // 本轮推完后如果期间又抓到了新视频，接着往下推，不进闲聊
+      if (pendingLater.length) {
+        pendingLater = [];
+        runPlan(flow.pushed);
+        return;
+      }
       endFlow();
       startAmbient();
     }, lastAt + 6000);
@@ -808,6 +818,98 @@
     input.style.height = Math.min(120, input.scrollHeight) + "px";
   });
 
+  /* ------------------------------------------------------------------
+   * 线上实时源
+   * 浏览器不能直接查 B 站（跨域请求会被风控 403，实测如此），所以由
+   * 服务端代抓、页面只收同源 JSON。托管版有 /api/group-videos；
+   * GitHub Pages 版没有这个路由，就退到托管域名取（接口带了 CORS）。
+   * 全部失败时保持内置数据，页面照常可用。
+   * ------------------------------------------------------------------ */
+  var LIVE_SOURCES = [
+    "/api/group-videos",
+    "https://naijiacun-chat.app.workbuddy.host/api/group-videos"
+  ];
+  var pendingLater = [];
+
+  function applyLive(incoming) {
+    if (!Array.isArray(incoming) || !incoming.length) return;
+
+    var known = {};
+    (D.videos || []).forEach(function (v) { if (v && v.id) known[v.id] = 1; });
+
+    var added = [];
+    incoming.forEach(function (v) {
+      if (!v || !v.id) return;
+      if (v.platform !== "bilibili") return;
+      if (!/^BV[0-9A-Za-z]+$/.test(v.id)) return;
+      if (!/^https:\/\/www\.bilibili\.com\/video\/[0-9A-Za-z]+$/.test(String(v.url || ""))) return;
+      if (!v.sender || !members[v.sender]) return;
+      if (known[v.id]) return;
+      known[v.id] = 1;
+      added.push(v);
+    });
+    if (!added.length) return;
+
+    if (!D.videos) D.videos = [];
+    added.forEach(function (v) { D.videos.push(v); });
+
+    var firstVisit = !seenCount();
+
+    if (firstVisit && flow.stage !== "plan") {
+      // 还没开始推 —— 整体按「免跳转 > 热度 > 二创」重排，新视频也能排到前面
+      posts = rankAll();
+      flow.total = posts.length;
+      return;
+    }
+
+    // 已经在推或推完了 —— 只往队尾接，绝不打乱当前队列
+    added.forEach(function (v) {
+      v._tags = [];
+      v._score = 0;
+      v._mode = "inline";
+      posts.push(v);
+    });
+    flow.total = posts.length;
+
+    if (flow.stage === "plan") {
+      pendingLater = pendingLater.concat(added);
+    } else if (!flow.playing) {
+      addSystem("群里刚又进了 " + added.length + " 条新视频 ——");
+      clearTimers();
+      removeTyping();
+      runPlan(flow.pushed);
+    }
+  }
+
+  function loadLive() {
+    var i = 0;
+    function next() {
+      if (i >= LIVE_SOURCES.length) return;
+      var url = LIVE_SOURCES[i++];
+      var ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+      var timer = setTimeout(function () { if (ctrl) ctrl.abort(); }, 9000);
+
+      fetch(url, { cache: "no-store", signal: ctrl ? ctrl.signal : undefined })
+        .then(function (r) {
+          var ct = r.headers.get("content-type") || "";
+          if (!r.ok || ct.indexOf("json") < 0) throw new Error("bad response");
+          return r.json();
+        })
+        .then(function (data) {
+          clearTimeout(timer);
+          if (!data || !data.ok || !Array.isArray(data.videos) || !data.videos.length) {
+            throw new Error("empty");
+          }
+          applyLive(data.videos);
+        })
+        .catch(function () {
+          clearTimeout(timer);
+          next();
+        });
+    }
+    next();
+  }
+
   /* ---------- 启动：首次看排片，回访只推新增 ---------- */
   (function boot() {
     var intro = D.intro || [];
@@ -845,4 +947,6 @@
       });
     }
   })();
+
+  loadLive();
 })();
