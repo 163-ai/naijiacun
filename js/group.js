@@ -825,9 +825,20 @@
    * GitHub Pages 版没有这个路由，就退到托管域名取（接口带了 CORS）。
    * 全部失败时保持内置数据，页面照常可用。
    * ------------------------------------------------------------------ */
+  /* 托管域名带分享码校验，不带参数会 403。
+     同源请求靠访问页面时拿到的 cookie 就够，跨域（GitHub Pages 版）必须显式带上。 */
+  var SHARECODE = "LJAS5NSXQO";
+  function liveSuffix() {
+    var code = SHARECODE;
+    try {
+      var q = new URLSearchParams(location.search).get("sharecode");
+      if (q) code = q;
+    } catch (e) {}
+    return code ? "?sharecode=" + encodeURIComponent(code) : "";
+  }
   var LIVE_SOURCES = [
-    "/api/group-videos",
-    "https://naijiacun-chat.app.workbuddy.host/api/group-videos"
+    "/api/group-videos" + liveSuffix(),
+    "https://naijiacun-chat.app.workbuddy.host/api/group-videos" + liveSuffix()
   ];
   var pendingLater = [];
 
