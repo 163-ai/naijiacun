@@ -2091,10 +2091,10 @@ function drapeQuilt(cx, box2) {
       top[k] = m;
     }
   }
-  // 2) 盒式模糊 ×6：布搭在身上会摊平过渡，不会一格一格台阶（原始场留着兜底）。
-  //    2 轮在顶点稀疏的地方还是会读出细碎起伏，6 轮才有"厚棉被压下来"的圆润感。
+  // 2) 盒式模糊 ×10：布搭在身上会摊平过渡，不会一格一格台阶（原始场留着兜底）。
+  //    棉被读起来要"一整块压下来"，模糊轮数给足，局部细碎起伏全部抹平。
   const topRaw = top.slice();
-  for (let pass = 0; pass < 6; pass++) {
+  for (let pass = 0; pass < 10; pass++) {
     const src = top.slice();
     for (let r = 0; r <= rows; r++) for (let c = 0; c <= cols; c++) {
       let sum = 0, n = 0;
@@ -2105,6 +2105,17 @@ function drapeQuilt(cx, box2) {
       }
       top[r * (cols + 1) + c] = sum / n;
     }
+  }
+  // 2.5) 兜底场轻模糊一轮：去掉单格毛刺，兜底区和融合区交界不再产生折痕
+  const rawS = new Float32Array(topRaw.length);
+  for (let r = 0; r <= rows; r++) for (let c = 0; c <= cols; c++) {
+    let sum = 0, n = 0;
+    for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+      const rr = r + dr, cc = c + dc;
+      if (rr < 0 || rr > rows || cc < 0 || cc > cols) continue;
+      sum += topRaw[rr * (cols + 1) + cc]; n++;
+    }
+    rawS[r * (cols + 1) + c] = sum / n;
   }
   // 3) 写布面顶点：先模糊出"摊平的下垂"，再强制不低于身体顶 + 布厚
   //    （纯模糊会把肚子峰值抹下去，肚皮就从布面顶穿了）；细褶皱 + 两头微收
@@ -2117,15 +2128,19 @@ function drapeQuilt(cx, box2) {
     for (let c = 0; c <= cols; c++) {
       const lx = (-QUILT.halfW + c * dx) * taper;
       const body = top[r * (cols + 1) + c];
-      const raw = topRaw[r * (cols + 1) + c];
+      const raw = rawS[r * (cols + 1) + c];
       // 基准面抬到世界 y≈.105：床垫面在 y≈.06，太近会 z-fighting（床垫印花透布）。
-      // 取高以 4 轮模糊后的 body 为主（平滑），raw 只在模糊把局部峰值抹掉
-      // 超过 .01 时兜底，保证肚皮不会从布面顶穿（之前 raw+.06 全场压制模糊场，
-      // 布面读起来还是一格一格的）。
-      let h = Math.max(.085, Math.max(body > .02 ? body + .05 : .03, raw > body + .01 ? raw + .04 : .03));
-      // 细褶皱减淡放缓（振幅 .016→.010、频率降一档）：棉被要的是大波浪的下垂
-      // 褶，不是密密麻麻的搓衣纹
-      h += .010 * Math.sin(lx * 10 + lz * 6) * Math.sin(lz * 8 - lx * 4);   // 细褶皱
+      // 身体区域"深度融合"：按模糊场存在度从床垫面连续升到 身体+.05，
+      // 不再有"身体区/床垫区"两套取值硬切换造成的交界折痕；
+      // raw 只在两处兜底——肚皮峰值（10 轮模糊抹峰 >.01）和身体侧面收边
+      // （布不切进身侧）。这两处 raw 本身平滑，不会读出搓衣板。
+      const p = T.MathUtils.smoothstep(body, .015, .07);
+      let h = .03 + p * (body + .05 - .03);
+      if (raw > .02 && raw + .04 > h) h = raw + .04;
+      h = Math.max(.085, h);
+      // 细褶皱再减淡（.010→.005、频率再降）：往"整块厚棉被"靠，几乎只剩
+      // 身体大起伏 + 极轻的布纹
+      h += .005 * Math.sin(lx * 7 + lz * 4) * Math.sin(lz * 6 - lx * 3);   // 细褶皱
       // 4) 被口卷边烘进布面：贴着被口隆起一道半圆截面的软卷边，横向按身体
       //    轮廓取 Existence——身体上方隆起、两侧自然落回床垫，不再是固定宽度
       //    的独立圆筒横棍
