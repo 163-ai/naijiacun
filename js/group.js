@@ -15,6 +15,8 @@
   var rail = document.getElementById("memberRail");
   var skipBtn = document.getElementById("skipBtn");
   var pushCount = document.getElementById("pushCount");
+  var stickerBtn = document.getElementById("stickerBtn");
+  var stickerPanel = document.getElementById("stickerPanel");
   var newMsgChip = document.getElementById("newMsg");
   var toastEl = document.getElementById("toast");
 
@@ -227,6 +229,91 @@
     autoScroll();
   }
 
+  /* ---------- 表情包（直接用现成开源表情图，CDN 外链，失败退回 emoji 字形） ---------- */
+  function stickerSources(s) {
+    var urls = [];
+    if (s.src) urls.push(s.src);
+    (D.stickerCdn || []).forEach(function (base) { urls.push(base + s.emoji + ".svg"); });
+    return urls;
+  }
+
+  function attachSticker(img, s) {
+    var urls = stickerSources(s), i = 0;
+    function next() {
+      if (i >= urls.length) {
+        var span = el("span", "g-sticker-emoji", s.label || "🙂");
+        if (img.parentNode) img.parentNode.replaceChild(span, img);
+        return;
+      }
+      img.src = urls[i++];
+    }
+    img.addEventListener("error", next);
+    next();
+  }
+
+  function addSticker(senderKey, s, mine) {
+    var row = rowFor(senderKey, mine);
+    var box = el("div", "g-sticker");
+    box.style.setProperty("--tilt", (Math.random() * 4 - 2).toFixed(1) + "deg");
+    var img = el("img");
+    img.alt = s.label || "表情";
+    img.loading = "lazy";
+    box.appendChild(img);
+    attachSticker(img, s);
+
+    if (mine) {
+      row.appendChild(box);
+    } else {
+      var wrap = el("div", "g-bwrap");
+      wrap.appendChild(el("div", "g-name", (members[senderKey] || {}).name || senderKey));
+      wrap.appendChild(box);
+      row.appendChild(wrap);
+    }
+    list.appendChild(row);
+    autoScroll();
+    return row;
+  }
+
+  function stickerPool() { return D.stickers || []; }
+  function stickerOf(key) {
+    var mine = stickerPool().filter(function (s) { return s.sender === key; });
+    return mine.length ? pick(mine) : pick(stickerPool());
+  }
+
+  /* 群成员自己发一张表情包 */
+  function emitSticker(key, delay) {
+    var s = stickerOf(key);
+    if (!s) return;
+    later(function () {
+      if (!flow.playing && flow.stage !== "ambient") return;
+      var tip = showTyping(key);
+      later(function () {
+        if (tip.parentNode) tip.remove();
+        addSticker(key, s, false);
+      }, 600 + Math.random() * 500);
+    }, delay || 0);
+  }
+
+  /* 表情面板（输入框左边笑脸打开） */
+  function buildStickerPanel(panel) {
+    stickerPool().forEach(function (s) {
+      var cell = el("button", "g-sticker-cell");
+      cell.type = "button";
+      cell.title = (members[s.sender] || {}).name + " · " + (s.label || "表情");
+      var img = el("img");
+      img.alt = s.label || "";
+      img.loading = "lazy";
+      cell.appendChild(img);
+      attachSticker(img, s);
+      cell.addEventListener("click", function () {
+        sendMySticker(s);
+        panel.hidden = true;
+        if (stickerBtn) stickerBtn.setAttribute("aria-expanded", "false");
+      });
+      panel.appendChild(cell);
+    });
+  }
+
   function removeTyping() {
     var tips = list.querySelectorAll(".ch-typing");
     for (var i = 0; i < tips.length; i++) {
@@ -297,33 +384,49 @@
     next();
   }
 
-  /* 间隔里的闲聊 */
+  /* 间隔里的闲聊：文字与表情包混着发 */
   function emitChatter() {
-    var pool = D.ambient || [];
-    if (!pool.length || !flow.playing) return;
-    if (!flow.pool.length) flow.pool = shuffle(pool.slice());
-    var line = flow.pool.pop();
-    var tip = showTyping(line[0]);
-    later(function () {
+    guard(function () {
       if (!flow.playing) return;
-      if (tip.parentNode) tip.remove();
-      addText(line[0], line[1], false);
-      autoScroll();
-    }, 800 + Math.random() * 600);
+      if (stickerPool().length && Math.random() < 0.3) {
+        var key = pick(memberKeys);
+        var s = stickerOf(key);
+        var tip = showTyping(key);
+        later(function () {
+          if (!flow.playing) return;
+          if (tip.parentNode) tip.remove();
+          addSticker(key, s, false);
+        }, 600 + Math.random() * 450);
+        return;
+      }
+      var pool = D.ambient || [];
+      if (!pool.length) return;
+      if (!flow.pool.length) flow.pool = shuffle(pool.slice());
+      var line = flow.pool.pop();
+      var tip2 = showTyping(line[0]);
+      later(function () {
+        if (!flow.playing) return;
+        if (tip2.parentNode) tip2.remove();
+        addText(line[0], line[1], false);
+        autoScroll();
+      }, 800 + Math.random() * 600);
+    });
   }
 
   /* 发卡前的铺垫台词 */
   function emitLead(v, offset) {
     (v.lead || []).forEach(function (text, i) {
       later(function () {
-        if (!flow.playing) return;
-        var tip = showTyping(v.sender);
-        later(function () {
+        guard(function () {
           if (!flow.playing) return;
-          if (tip.parentNode) tip.remove();
-          addText(v.sender, text, false);
-          autoScroll();
-        }, 780 + Math.random() * 400);
+          var tip = showTyping(v.sender);
+          later(function () {
+            if (!flow.playing) return;
+            if (tip.parentNode) tip.remove();
+            addText(v.sender, text, false);
+            autoScroll();
+          }, 780 + Math.random() * 400);
+        });
       }, offset + i * 2400);
     });
   }
@@ -354,7 +457,7 @@
 
     plan.forEach(function (item) {
       emitLead(item.video, item.leadAt);
-      later(function () { pushCard(item.video); }, item.at);
+      later(function () { guard(function () { pushCard(item.video); }); }, item.at);
       item.fillers.forEach(function (ms) { later(emitChatter, ms); });
     });
 
@@ -526,23 +629,78 @@
 
   document.getElementById("noticeBtn").addEventListener("click", function () { noticeDlg.showModal(); });
 
-  /* ---------- 发消息 ---------- */
+  /* ---------- 你说话，群里先回你 ---------- */
   var REPLIES = [
     "哈哈哈哈哈", "这条必须收藏", "再来一条！", "默默点了个赞", "已阅，退下了",
     "好活，赏", "笑得泡脚水都洒了", "这条比上一条好笑", "本龙觉得很一般（骄傲）",
     "嘎嘎滴辣虾", "你的胆子真是肥嘟嘟"
   ];
+  var holdUntil = 0;
+  var replySeq = 0;
 
-  function replyTo(senderName) {
-    var key = pick(memberKeys);
-    var m = members[key];
-    var tip = showTyping(key);
-    setTimeout(function () {
-      if (tip.parentNode) tip.remove();
-      addText(key, pick(REPLIES), false);
-      autoScroll();
-      if (senderName) toast(m.name + " 回了你一句");
-    }, 700 + Math.random() * 900);
+  /* 你说话之后的一小段时间里，自动推送先让路 */
+  function hold(ms) { holdUntil = Math.max(holdUntil, Date.now() + (ms || 6500)); }
+  function guard(fn) {
+    if (Date.now() < holdUntil) {
+      later(function () { guard(fn); }, holdUntil - Date.now() + 80);
+      return false;
+    }
+    fn();
+    return true;
+  }
+
+  /* 按你说的内容挑个最该出来接话的人 */
+  function respondersFor(text) {
+    var t = String(text || "");
+    var map = [
+      [/视频|链接|失效|打不开|播不了|看不了|加载|卡住/, "xiaoqi"],
+      [/表情|贴纸|斗图|包/, "naicha"],
+      [/奶龙|本龙/, "nailong"],
+      [/奶蛙|蛙/, "naiwa"],
+      [/牛来|牛/, "niulai"],
+      [/卡皮|水豚|橘子/, "capybara"],
+      [/暴/, "baobaolong"],
+      [/奶察|警察|巡逻/, "naicha"],
+      [/肥嘟|袋鼠/, "feidudu"]
+    ];
+    var keys = [];
+    map.forEach(function (p) {
+      if (p[0].test(t) && keys.indexOf(p[1]) < 0) keys.push(p[1]);
+    });
+    return keys;
+  }
+
+  function replyLine(key) {
+    var lines = (D.replies && D.replies[key]) || REPLIES;
+    return pick(lines);
+  }
+
+  /* 最高优先级：0.7 秒内一定有人接你 */
+  function onUserSpoke(text, sticker) {
+    hold(6500);
+    removeTyping();
+    var keys = sticker ? [sticker.sender] : respondersFor(text);
+    if (!keys.length) keys = memberKeys.slice();
+    var key = pick(keys);
+    var wait = 160 + Math.random() * 140 + replySeq * 240;
+    replySeq++;
+    later(function () {
+      var tip = showTyping(key);
+      later(function () {
+        if (tip.parentNode) tip.remove();
+        addText(key, replyLine(key), false);
+        autoScroll();
+        toast(((members[key] || {}).name || key) + " 回了你一句");
+        if (sticker && Math.random() < 0.45) emitSticker(key, 600);
+        replySeq = Math.max(0, replySeq - 1);
+      }, 520 + Math.random() * 240);
+    }, wait);
+  }
+
+  function sendMySticker(s) {
+    addSticker(null, s, true);
+    toBottom();
+    onUserSpoke("", s);
   }
 
   composer.addEventListener("submit", function (e) {
@@ -553,8 +711,31 @@
     input.value = "";
     input.style.height = "auto";
     toBottom();
-    replyTo("你");
+    onUserSpoke(text, null);
   });
+
+  /* ---------- 表情面板 ---------- */
+  if (stickerBtn && stickerPanel) {
+    buildStickerPanel(stickerPanel);
+    function closePanel() {
+      stickerPanel.hidden = true;
+      stickerBtn.setAttribute("aria-expanded", "false");
+    }
+    stickerBtn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      var opening = stickerPanel.hidden;
+      stickerPanel.hidden = !opening;
+      stickerBtn.setAttribute("aria-expanded", opening ? "true" : "false");
+    });
+    document.addEventListener("click", function (e) {
+      if (stickerPanel.hidden) return;
+      if (stickerPanel.contains(e.target) || stickerBtn.contains(e.target)) return;
+      closePanel();
+    });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" && !stickerPanel.hidden) closePanel();
+    });
+  }
 
   input.addEventListener("keydown", function (e) {
     if (e.key === "Enter" && !e.shiftKey) {

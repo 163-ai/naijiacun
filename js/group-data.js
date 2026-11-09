@@ -179,6 +179,46 @@ window.NAIJIA_GROUP = {
     }
   ],
 
+  // 表情包：直接引用现成的开源表情图（Twemoji，CC-BY 4.0），不自己画、不存本地。
+  //   emoji : 表情的 Unicode 码位（多个码位用 - 连接，如 1f468-200d-1f4bb）
+  //   sender: 谁发的（决定头像）
+  //   label : 文字标签，只在 CDN 全部加载失败时兜底显示
+  // 想换成自定义表情包：把图片放进 assets/stickers/，把 src 改成图片路径即可
+  // （rank/排序不受影响，表情只用于聊天）。
+  stickerCdn: [
+    "https://cdn.jsdelivr.net/gh/jdecked/twemoji@15.1.0/assets/svg/",
+    "https://fastly.jsdelivr.net/gh/jdecked/twemoji@15.1.0/assets/svg/"
+  ],
+  stickers: [
+    { id: "dino", sender: "nailong", emoji: "1f996", label: "🦖" },
+    { id: "cool", sender: "nailong", emoji: "1f60e", label: "😎" },
+    { id: "lol", sender: "nailong", emoji: "1f602", label: "😂" },
+    { id: "frog", sender: "naiwa", emoji: "1f438", label: "🐸" },
+    { id: "rofl", sender: "naiwa", emoji: "1f923", label: "🤣" },
+    { id: "ox", sender: "niulai", emoji: "1f402", label: "🐂" },
+    { id: "cry", sender: "niulai", emoji: "1f62d", label: "😭" },
+    { id: "orange", sender: "capybara", emoji: "1f34a", label: "🍊" },
+    { id: "zen", sender: "capybara", emoji: "1f9d8", label: "🧘" },
+    { id: "angry", sender: "baobaolong", emoji: "1f620", label: "😠" },
+    { id: "dragon", sender: "baobaolong", emoji: "1f409", label: "🐉" },
+    { id: "cop", sender: "naicha", emoji: "1f693", label: "🚓" },
+    { id: "kangaroo", sender: "feidudu", emoji: "1f998", label: "🦘" },
+    { id: "tool", sender: "xiaoqi", emoji: "1f527", label: "🔧" },
+    { id: "fire", sender: "naiwa", emoji: "1f525", label: "🔥" }
+  ],
+
+  // 你说话时，各角色的优先回话（按关键词挑人：见 group.js 的 respondersFor）
+  replies: {
+    nailong: ["说到本龙？本龙就在这儿。", "本龙的视频看了没？没看快看。", "群规只有一条，你复述一遍。"],
+    naiwa: ["齁齁齁齁——你说啥？", "本蛙的梗你接不住吧。", "表情包存了没？没存赶紧存。"],
+    baobaolong: ["哼，有话快说。", "本龙的计谋，你学不来。"],
+    xiaoqi: ["链接我盯着呢，失效了跟我说。", "要换哪条？我五分钟搞定。"],
+    niulai: ["妈妈，牛来！", "本牛在听，你继续说。"],
+    capybara: ["……（抬头看了你一眼，情绪稳定）", "（慢慢点了个头）"],
+    naicha: ["嘎嘎滴辣虾，本察收到。", "巡逻中，有事说事。"],
+    feidudu: ["你的胆子真是肥嘟嘟。", "说吧，本袋鼠听着。"]
+  },
+
   // 回放结束后，群成员自己闲聊的台词池（随机抽取，抽完重置）
   ambient: [
     ["nailong", "本龙再强调一遍，群规只有一条。"],

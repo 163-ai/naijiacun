@@ -114,6 +114,52 @@
 .g-card.dead:hover, .g-card.pending:hover { transform: none; box-shadow: 0 3px 10px #6347250a; border-color: #e0cfb2; }
 .g-card.dead .g-vhint, .g-card.pending .g-vhint { color: var(--ink-3); }
 
+/* ---------- 表情消息（现成开源表情图，无气泡无文案） ---------- */
+.ch-row .g-sticker {
+  display: flex; align-items: flex-end; padding: 1px 0;
+  transform: rotate(var(--tilt, 0deg));
+}
+.ch-row .g-sticker img { width: 66px; height: 66px; object-fit: contain; }
+.ch-row .g-sticker .g-sticker-emoji {
+  display: flex; align-items: center; justify-content: center;
+  width: 66px; height: 66px; font-size: 46px; line-height: 1;
+}
+
+/* ---------- 表情面板 ---------- */
+.g-composer-wrap { position: relative; }
+.g-sticker-btn {
+  position: absolute; left: 20px; bottom: 17px; z-index: 4;
+  display: flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; padding: 0;
+  border: 1px solid #d6c4a7; border-radius: 9px;
+  background: #fffcf6; color: #8a734f; cursor: pointer;
+  transition: border-color .15s, color .15s, background .15s;
+}
+.g-sticker-btn svg { width: 19px; height: 19px; }
+.g-sticker-btn:hover, .g-sticker-btn[aria-expanded="true"] {
+  border-color: var(--green); color: var(--green); background: #fdf4e6;
+}
+.g-composer-wrap .ch-composer textarea { padding-left: 48px; }
+
+.g-sticker-panel {
+  position: absolute; left: 20px; right: 20px; bottom: calc(100% + 8px); z-index: 20;
+  display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px;
+  padding: 12px; border: 1px solid #d9c7aa; border-radius: 14px;
+  background: #fffaf0; box-shadow: 0 16px 42px #63472533;
+}
+.g-sticker-panel[hidden] { display: none; }
+.g-sticker-cell {
+  display: flex; align-items: center; justify-content: center;
+  padding: 7px 3px; border: 1px solid transparent; border-radius: 10px;
+  background: transparent; color: inherit; font-family: inherit; cursor: pointer;
+}
+.g-sticker-cell:hover { border-color: #e3d1ad; background: #f7edda; }
+.g-sticker-cell img { width: 38px; height: 38px; object-fit: contain; }
+.g-sticker-cell .g-sticker-emoji {
+  display: flex; align-items: center; justify-content: center;
+  width: 38px; height: 38px; font-size: 27px; line-height: 1;
+}
+
 /* ---------- 有新消息 ---------- */
 .g-newmsg {
   position: absolute; left: 50%; bottom: 84px; transform: translateX(-50%);
@@ -171,6 +217,13 @@
   .g-rail-foot { display: none; }
   .g-card { width: 100%; }
   .g-poster { height: 136px; }
+  .g-sticker-btn { left: 13px; bottom: 14px; width: 32px; height: 32px; }
+  .g-composer-wrap .ch-composer textarea { padding-left: 42px; }
+  .g-sticker-panel { left: 13px; right: 13px; gap: 6px; padding: 10px; grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .g-sticker-cell img, .g-sticker-cell .g-sticker-emoji { width: 32px; height: 32px; }
+  .g-sticker-cell .g-sticker-emoji { font-size: 24px; }
+  .ch-row .g-sticker img, .ch-row .g-sticker .g-sticker-emoji { width: 58px; height: 58px; }
+  .ch-row .g-sticker .g-sticker-emoji { font-size: 40px; }
 }
 @media (max-width: 480px) {
   .g-dlg { width: calc(100% - 18px); }
