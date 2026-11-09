@@ -2027,19 +2027,14 @@ function quiltMesh() {
     //（床垫上印的图案会透过布面闪现，看着像身体顶穿被子），给它一个深度偏移
     polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2
   });
-  const dup = new T.MeshStandardMaterial({ color: 0xe69383, roughness: .95 });
 
   const mesh = new T.Mesh(new T.BufferGeometry(), cloth);
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   quilt.add(mesh);
   quilt.userData.cloth = mesh;
-  // 被口翻边：半圆筒卷边（贴着下巴那侧），躺下时摆在布面高度上
-  const roll = new T.Mesh(new T.CylinderGeometry(.085, .085, 1.3, 20, 1, false, 0, Math.PI), dup);
-  roll.rotation.z = Math.PI / 2;
-  roll.castShadow = true;
-  quilt.add(roll);
-  quilt.userData.roll = roll;
+  // 被口卷边不再用独立圆筒——刚体圆筒宽度固定、不跟身体轮廓，两侧悬空看着
+  // 像一根横棍。卷边直接烘进布面高度场（见 drapeQuilt 第 4 步），沿身体隆起。
 
   quilt.visible = false;
   scene.add(quilt);
@@ -2096,10 +2091,10 @@ function drapeQuilt(cx, box2) {
       top[k] = m;
     }
   }
-  // 2) 盒式模糊 ×4：布搭在身上会摊平过渡，不会一格一格台阶（原始场留着兜底）。
-  //    2 轮在顶点稀疏的地方还是会读出细碎起伏，4 轮才有"厚棉被压下来"的圆润感。
+  // 2) 盒式模糊 ×6：布搭在身上会摊平过渡，不会一格一格台阶（原始场留着兜底）。
+  //    2 轮在顶点稀疏的地方还是会读出细碎起伏，6 轮才有"厚棉被压下来"的圆润感。
   const topRaw = top.slice();
-  for (let pass = 0; pass < 4; pass++) {
+  for (let pass = 0; pass < 6; pass++) {
     const src = top.slice();
     for (let r = 0; r <= rows; r++) for (let c = 0; c <= cols; c++) {
       let sum = 0, n = 0;
@@ -2131,6 +2126,20 @@ function drapeQuilt(cx, box2) {
       // 细褶皱减淡放缓（振幅 .016→.010、频率降一档）：棉被要的是大波浪的下垂
       // 褶，不是密密麻麻的搓衣纹
       h += .010 * Math.sin(lx * 10 + lz * 6) * Math.sin(lz * 8 - lx * 4);   // 细褶皱
+      // 4) 被口卷边烘进布面：贴着被口隆起一道半圆截面的软卷边，横向按身体
+      //    轮廓取 Existence——身体上方隆起、两侧自然落回床垫，不再是固定宽度
+      //    的独立圆筒横棍
+      const rl = (lz - z0) / .14;
+      if (rl < 1) {
+        let near = 0;
+        for (let dr = -1; dr <= 1; dr++) for (let dc = -3; dc <= 3; dc++) {
+          const rr = r + dr, cc = c + dc;
+          if (rr < 0 || rr > rows || cc < 0 || cc > cols) continue;
+          if (topRaw[rr * (cols + 1) + cc] > near) near = topRaw[rr * (cols + 1) + cc];
+        }
+        const on = T.MathUtils.smoothstep(near, .05, .15);
+        h += .07 * Math.sin(Math.min(rl, 1) * Math.PI) * on;
+      }
       pos[k++] = lx; pos[k++] = h; pos[k++] = lz;
     }
   }
@@ -2145,9 +2154,6 @@ function drapeQuilt(cx, box2) {
   g.computeVertexNormals();
   mesh.geometry.dispose();
   mesh.geometry = g;
-  // 卷边贴在布面被口上（取被口中间那颗顶点的高度），略微下压嵌进布面
-  const roll = quilt.userData.roll;
-  roll.position.set(0, pos[(cols >> 1) * 3 + 1] - .015, z0 + .03);
 }
 
 function lieDown() {
