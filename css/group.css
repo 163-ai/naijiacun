@@ -91,6 +91,25 @@
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .g-vhint { margin-top: 7px; color: var(--green); font-size: 11px; line-height: 1.5; }
+
+/* 推荐标签：免跳转 / 高热度 / 二创 */
+.g-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
+.g-tag {
+  padding: 2px 7px; border-radius: 6px;
+  border: 1px solid #e6d8bd; background: #f3ead8; color: #7c6a52;
+  font-size: 10px; line-height: 1.65;
+}
+.g-tag.free { border-color: #cfdccd; background: #e7efe6; color: #3f5b46; }
+.g-tag.hot { border-color: #eed0bd; background: #f8e3d6; color: #8b4127; }
+.g-tag.ugc { border-color: #e0d3e6; background: #efe6f2; color: #5d4468; }
+
+/* 推送进度：已推送 3 / 7 */
+.g-count {
+  display: inline-flex; align-items: center; height: 32px; padding: 0 11px;
+  border-radius: 999px; background: #f1e6ca; color: #7c6a52;
+  font-size: 11px; letter-spacing: .02em; font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 .g-card.dead, .g-card.pending { opacity: .55; filter: grayscale(.55); cursor: not-allowed; }
 .g-card.dead:hover, .g-card.pending:hover { transform: none; box-shadow: 0 3px 10px #6347250a; border-color: #e0cfb2; }
 .g-card.dead .g-vhint, .g-card.pending .g-vhint { color: var(--ink-3); }

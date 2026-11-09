@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="css/style.css?v=village-1">
   <link rel="stylesheet" href="css/chat.css?v=voice-quota-1">
   <link rel="stylesheet" href="css/village.css?v=village-1">
-  <link rel="stylesheet" href="css/group.css?v=group-1">
+  <link rel="stylesheet" href="css/group.css?v=group-2">
   <script type="importmap">{"imports":{"three":"./vendor/three/three.module.min.js"}}</script>
 </head>
 <body class="village-theme group-page">
@@ -42,6 +42,7 @@
             <span id="gSub">奶家村 · 村口放映厅</span>
           </div>
           <div class="ch-actions">
+            <span id="pushCount" class="g-count" hidden></span>
             <button id="skipBtn" class="ch-tool" type="button" hidden>⏩ 看完全部</button>
             <button id="noticeBtn" class="ch-tool" type="button">📋 群公告</button>
           </div>
@@ -81,8 +82,9 @@
       <p class="ch-eyebrow">群公告 <span>PINNED</span></p>
       <h2 id="nTitle">收录说明</h2>
       <div class="g-notice">
+        <p><b>推送规则</b>：① 能在本页直接播的<b>免跳转</b>视频优先；② 同等条件下<b>热度高</b>的优先；③ <b>二创</b>（网友剪辑、改编、配音）优先于官方正片。三条合成推荐分排序，两条视频之间<b>至少间隔 90 秒</b>，间隔里由群成员闲聊填满。想先看全部，点右上角「看完全部」。</p>
         <p>本群的所有视频都来自 <b>哔哩哔哩、抖音</b>，视频版权归原作者及平台所有。本页仅作<b>索引与推荐</b>，不下载、不转存、不缓存任何视频文件：B 站视频在本页内嵌其<b>官方播放器</b>观看，抖音视频通过<b>小窗 / 唤起 App</b> 回到抖音观看。</p>
-        <p><b>想加视频</b>：编辑 <code>js/group-data.js</code>，复制一条 <code>video</code> 记录，改 platform / url / title 即可，页面无需改动。</p>
+        <p><b>想加视频</b>：编辑 <code>js/group-data.js</code>，在 <code>videos</code> 里复制一条记录，填 <code>heat</code>（播放量）和 <code>kind</code>（<code>ugc</code> 二创 / <code>official</code> 官方），排序会自动生效。</p>
         <p><b>视频失效</b>：把该条记录的 status 改为 <code>"dead"</code>，卡片会自动置灰。</p>
         <p><b>作者申诉 / 要求移除</b>：联系 <a href="mailto:tmy520866@163.com">tmy520866@163.com</a>，确认后立即删除对应记录。</p>
       </div>
@@ -92,7 +94,7 @@
 
   <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
 
-  <script src="js/group-data.js?v=group-1"></script>
-  <script src="js/group.js?v=group-1"></script>
+  <script src="js/group-data.js?v=group-2"></script>
+  <script src="js/group.js?v=group-2"></script>
 </body>
 </html>
