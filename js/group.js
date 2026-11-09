@@ -207,6 +207,19 @@
     return row;
   }
 
+  /* ---------- 人手节奏 ----------
+     看到消息先愣一下（thinkTime），再按字数一个字一个字敲（typingTime）。
+     中文手打大约每字 100~180ms，短句也要一秒多，长句最多拖到 5 秒。 */
+  function thinkTime() {
+    return 700 + Math.random() * 900;          /* 0.7 ~ 1.6 秒：像刚看到你这条 */
+  }
+  function typingTime(text, cap) {
+    var n = String(text || "").length;
+    var ms = 420 + n * (100 + Math.random() * 80);
+    var max = cap || 4800;
+    return Math.min(max, Math.max(1000, ms));
+  }
+
   function showTyping(senderKey) {
     var m = members[senderKey] || {};
     var row = rowFor(senderKey, false);
@@ -290,7 +303,7 @@
       later(function () {
         if (tip.parentNode) tip.remove();
         addSticker(key, s, false);
-      }, 600 + Math.random() * 500);
+      }, 1000 + Math.random() * 900);
     }, delay || 0);
   }
 
@@ -366,12 +379,12 @@
       var m = intro[flow.introIdx++];
       if (m.type === "text") {
         var tip = showTyping(m.sender);
-        var dur = 650 + Math.min(1500, (m.text || "").length * 34);
+        var dur = typingTime(m.text, 4200);
         later(function () {
           if (!flow.playing) return;
           if (tip.parentNode) tip.remove();
           renderMsg(m);
-          later(next, 240 + Math.random() * 260);
+          later(next, 320 + Math.random() * 420);
         }, dur);
       } else {
         later(function () {
@@ -403,19 +416,29 @@
       if (!pool.length) return;
       if (!flow.pool.length) flow.pool = shuffle(pool.slice());
       var line = flow.pool.pop();
+      var typeMs = typingTime(line[1], 3600);
       var tip2 = showTyping(line[0]);
       later(function () {
         if (!flow.playing) return;
         if (tip2.parentNode) tip2.remove();
         addText(line[0], line[1], false);
         autoScroll();
-      }, 800 + Math.random() * 600);
+      }, typeMs);
     });
   }
 
-  /* 发卡前的铺垫台词 */
-  function emitLead(v, offset) {
-    (v.lead || []).forEach(function (text, i) {
+  /* 发卡前的铺垫台词：一句打完再打下句，整块贴着卡片收尾 */
+  function emitLead(v, offset, cardAt) {
+    var lines = v.lead || [];
+    if (!lines.length) return;
+    var types = lines.map(function (t) { return typingTime(t, 4200); });
+    var total = types.reduce(function (a, b) { return a + b; }, 0) + 600 * (lines.length - 1);
+    var start = offset;
+    if (cardAt) start = Math.max(offset, cardAt - 1900 - total);
+
+    var cursor = start;
+    lines.forEach(function (text, i) {
+      var typeMs = types[i];
       later(function () {
         guard(function () {
           if (!flow.playing) return;
@@ -425,9 +448,10 @@
             if (tip.parentNode) tip.remove();
             addText(v.sender, text, false);
             autoScroll();
-          }, 780 + Math.random() * 400);
+          }, typeMs);
         });
-      }, offset + i * 2400);
+      }, cursor);
+      cursor += typeMs + 600 + Math.random() * 300;
     });
   }
 
@@ -456,7 +480,7 @@
       : rest.map(function (v, i) { return { video: v, leadAt: 1600 + i * MIN_GAP, at: 4000 + i * MIN_GAP, fillers: [] }; });
 
     plan.forEach(function (item) {
-      emitLead(item.video, item.leadAt);
+      emitLead(item.video, item.leadAt, item.at);
       later(function () { guard(function () { pushCard(item.video); }); }, item.at);
       item.fillers.forEach(function (ms) { later(emitChatter, ms); });
     });
@@ -675,26 +699,62 @@
     return pick(lines);
   }
 
-  /* 最高优先级：0.7 秒内一定有人接你 */
+  /* 最高优先级：你说话，一定有人接——但要像人一样慢慢打 */
   function onUserSpoke(text, sticker) {
-    hold(6500);
-    removeTyping();
     var keys = sticker ? [sticker.sender] : respondersFor(text);
     if (!keys.length) keys = memberKeys.slice();
     var key = pick(keys);
-    var wait = 160 + Math.random() * 140 + replySeq * 240;
+    var line = replyLine(key);
+
+    /* 连发几条时，后面的人依次往后排，不抢话 */
+    var think = thinkTime() + replySeq * 320;
+    var typeMs = typingTime(line);
     replySeq++;
+
+    /* 这一轮对话期间自动推送让路 */
+    hold(think + typeMs + 3000);
+    removeTyping();
+
     later(function () {
       var tip = showTyping(key);
+      autoScroll();
+
       later(function () {
         if (tip.parentNode) tip.remove();
-        addText(key, replyLine(key), false);
+        addText(key, line, false);
         autoScroll();
-        toast(((members[key] || {}).name || key) + " 回了你一句");
-        if (sticker && Math.random() < 0.45) emitSticker(key, 600);
         replySeq = Math.max(0, replySeq - 1);
-      }, 520 + Math.random() * 240);
-    }, wait);
+
+        if (sticker && Math.random() < 0.45) {
+          /* 你发表情，他/她看一会儿也回一张表情 */
+          emitSticker(key, 1200 + Math.random() * 900);
+        } else if (!sticker && Math.random() < 0.34) {
+          /* 群里另一个人看到话题，过几秒也插一句 */
+          secondVoice(key);
+        }
+      }, typeMs);
+    }, think);
+  }
+
+  /* 第二个人插话：看你俩聊了几句才接上，打字时间另算 */
+  function secondVoice(exceptKey) {
+    var others = memberKeys.filter(function (k) { return k !== exceptKey; });
+    if (!others.length) return;
+    var key = pick(others);
+    var line = replyLine(key);
+    var think = 1400 + Math.random() * 1800;   /* 1.4 ~ 3.2 秒后才开始打字 */
+    var typeMs = typingTime(line);
+
+    hold(think + typeMs + 2200);
+    later(function () {
+      var tip = showTyping(key);
+      autoScroll();
+      later(function () {
+        if (tip.parentNode) tip.remove();
+        addText(key, line, false);
+        autoScroll();
+      }, typeMs);
+    }, think);
   }
 
   function sendMySticker(s) {

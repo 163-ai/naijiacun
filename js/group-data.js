@@ -306,7 +306,8 @@ window.NAIJIA_GROUP.planTimeline = function (list, opt) {
 
   return (list || []).map(function (v, i) {
     var leads = (v.lead && v.lead.length) || 0;
-    var leadSpan = leads * 2400 + 600;
+    // 台词是一句一句打出来的，每句预留够打字的时间，卡片不会抢在台词前面
+    var leadSpan = leads * 5200 + 900;
     var at = lastVideo == null
       ? cursor + leadSpan
       : Math.max(cursor + leadSpan, lastVideo + gap + rnd() * jitter);
