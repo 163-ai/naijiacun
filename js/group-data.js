@@ -17,7 +17,7 @@
 //   ① 免跳转优先 —— 能在本页内直接播的排前面
 //   ② 热度高优先 —— heat 越大越靠前
 //   ③ 二创优先   —— 真人二创 / 二剪排在官方正片前
-//   三者合成推荐分（见 rank()）；视频之间至少间隔 push.minGapMs（默认 90 秒），
+//   三者合成推荐分（见 rank()）；视频之间至少间隔 push.minGapMs（默认 30 秒），
 //   间隔里由群成员闲聊填满，不会冷场。
 //
 // 合规约定：本文件只存元数据（标题/作者/链接），绝不下载、转存任何视频文件。
@@ -29,9 +29,9 @@ window.NAIJIA_GROUP = {
 
   // 推送节奏与排序权重（想调节奏改这里）
   push: {
-    minGapMs: 90000,      // 两条视频之间至少 90 秒
-    fillerMinMs: 14000,   // 间隔里的闲聊间隔
-    fillerMaxMs: 22000,
+    minGapMs: 30000,      // 两条视频之间至少 30 秒
+    fillerMinMs: 8000,    // 间隔里的闲聊间隔（30 秒窗口够塞 1~2 句）
+    fillerMaxMs: 14000,
     weights: { inline: 1000, window: 400, external: 200, heat: 100, ugc: 60 }
   },
 
@@ -298,8 +298,8 @@ window.NAIJIA_GROUP.rank = function (list) {
 window.NAIJIA_GROUP.planTimeline = function (list, opt) {
   opt = opt || {};
   var P = window.NAIJIA_GROUP.push || {};
-  var gap = opt.minGapMs != null ? opt.minGapMs : (P.minGapMs || 90000);
-  var jitter = opt.jitterMs != null ? opt.jitterMs : 22000; // 在最小间隔上随机加 0~22 秒
+  var gap = opt.minGapMs != null ? opt.minGapMs : (P.minGapMs || 30000);
+  var jitter = opt.jitterMs != null ? opt.jitterMs : 6000;  // 在最小间隔上随机加 0~6 秒
   var rnd = opt.rnd || Math.random;
   var cursor = opt.startMs != null ? opt.startMs : 1200;
   var lastVideo = null;

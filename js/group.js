@@ -1,6 +1,6 @@
 /* 奶家村 · 村口放映厅（相亲相爱一家人）
  * 群聊式的视频索引页：视频按「免跳转 → 热度 → 二创」排序后逐条推送，
- * 两条之间至少隔 90 秒，间隔由群成员闲聊填满。
+ * 两条之间至少隔 30 秒，间隔由群成员闲聊填满。
  * 只做索引，不下载、不转存任何视频文件。
  */
 (function () {
@@ -34,7 +34,7 @@
   var SEEN_KEY = "naijiacun-group-seen-v2";
   var members = D.members || {};
   var memberKeys = Object.keys(members);
-  var MIN_GAP = (D.push && D.push.minGapMs) || 90000;
+  var MIN_GAP = (D.push && D.push.minGapMs) || 30000;
 
   /* ---------- 排片：按推荐分排序 ---------- */
   var ranked = D.rank ? D.rank(D.videos || []) : (D.videos || []).map(function (v) {
