@@ -928,6 +928,10 @@ const seg = (t, a, b) => clamp((t - a) / (b - a || 1e-6), 0, 1);
 const smooth = x => x * x * (3 - 2 * x);
 
 // 有骨骼时的攻击关节目标：返回 name -> [x,y,z]（弧度）
+// ⚠️ 关节角按「垂臂」几何调（nailongStand：手垂在身侧，臂从肩往下）：
+//   x 负 = 手往前抡（-1.6 ≈ 向前平举，-2.6 ≈ 举过头顶），x 正 = 往后拉；
+//   z 是侧摆，垂臂很长，z 过大或符号反了会把整条手臂抡进身体里（脱模）。
+//   外八方向：右臂 z 正 = 向外，左臂 z 负 = 向外，幅度压在 ±.25 以内。
 function attackTargets(mv, t) {
   const su = mv.startup, ac = mv.active, rc = mv.recovery;
   if (mv.id === "light") {
@@ -936,7 +940,7 @@ function attackTargets(mv, t) {
       : t < su + ac ? 1
       : 1 - smooth(seg(t, su + ac, su + ac + rc * .7));
     return {
-      armRight: [-1.62 * ext + -.75 * (1 - ext), 0, -.55 + .45 * ext],
+      armRight: [-1.62 * ext + -.35 * (1 - ext), 0, .12],
       body: [.04 * ext, -.3 * ext, 0],
       head: [-.06 + .12 * ext, 0, 0]
     };
@@ -946,8 +950,8 @@ function attackTargets(mv, t) {
     if (t < su) {
       const w = smooth(seg(t, 0, su));
       return {
-        armRight: [-.75 + 1.45 * w, 0, -.55 - .1 * w],
-        armLeft: [-.9 - .3 * w, 0, .5 + .25 * w],
+        armRight: [-.35 + 1.05 * w, 0, .12 + .03 * w],
+        armLeft: [-.2 - .15 * w, 0, -.12 - .06 * w],
         body: [-.16 * w, .3 * w, 0],
         head: [-.06 - .14 * w, 0, 0],
         hipLeft: [-.12 - .18 * w, 0, 0],
@@ -957,15 +961,16 @@ function attackTargets(mv, t) {
     if (t < su + ac) {
       const hit = smooth(seg(t, 0, ac * .55));
       return {
-        armRight: [.7 - 2.6 * hit, 0, -.65 + .5 * hit],
-        armLeft: [-1.2 + .3 * hit, 0, .75 - .25 * hit],
+        armRight: [.7 - 2.5 * hit, 0, .15 - .05 * hit],
+        armLeft: [-.35 + .15 * hit, 0, -.18 + .04 * hit],
         body: [-.16 + .5 * hit, .3 - .65 * hit, 0],
         head: [-.2 + .24 * hit, 0, 0]
       };
     }
     const back = smooth(seg(t, 0, rc));
     return {
-      armRight: [-1.9 + 1.15 * back, 0, -.15 - .4 * back],
+      armRight: [-1.8 + 1.45 * back, 0, .12],
+      armLeft: [-.2 - .15 * (1 - back), 0, -.15 + .03 * back],
       body: [.34 - .27 * back, -.35 + .35 * back, 0],
       head: [.04 - .1 * back, 0, 0]
     };
@@ -974,8 +979,8 @@ function attackTargets(mv, t) {
   if (t < su) {
     const w = smooth(seg(t, 0, su));
     return {
-      armRight: [-.75 - 1.75 * w, 0, -.55 - .5 * w],
-      armLeft: [-.9 - 1.6 * w, 0, .5 + .5 * w],
+      armRight: [-.35 - 2.25 * w, 0, .18],
+      armLeft: [-.2 - 2.3 * w, 0, -.18],
       body: [-.3 * w, 0, 0],
       head: [-.06 - .3 * w, 0, 0],
       hipLeft: [-.12 - .3 * w, 0, 0],
@@ -987,16 +992,16 @@ function attackTargets(mv, t) {
   if (t < su + ac) {
     const hit = smooth(seg(t, 0, ac * .4));
     return {
-      armRight: [-2.5 + 1.3 * hit, 0, -1.05 + .55 * hit],
-      armLeft: [-2.5 + 1.3 * hit, 0, 1.05 - .55 * hit],
+      armRight: [-2.6 + 1.15 * hit, 0, .18 - .06 * hit],
+      armLeft: [-2.6 + 1.15 * hit, 0, -.18 + .06 * hit],
       body: [-.3 + .72 * hit, 0, 0],
       head: [-.36 + .45 * hit, 0, 0]
     };
   }
   const back = smooth(seg(t, 0, rc * .6));
   return {
-    armRight: [-1.2 + .45 * back, 0, -.5],
-    armLeft: [-1.2 + .3 * back, 0, .5],
+    armRight: [-1.45 + 1.1 * back, 0, .12],
+    armLeft: [-1.45 + 1.25 * back, 0, -.12],
     body: [.42 - .35 * back, 0, 0],
     head: [.09 - .15 * back, 0, 0]
   };
@@ -1183,6 +1188,7 @@ bindKeys();
 if (location.search.indexOf("debug") >= 0) {
   window.__K = {
     get P() { return P; }, get E() { return E; }, get phase() { return phase; },
+    get camera() { return camera; },
     Fight, MOVES, keys,
     damage(d) { if (E) { E.hp = Math.max(0, E.hp - d); E.hpLag = E.hp; syncHud(); if (E.hp <= 0 && !E.ko) knockOut(E); } },
     ko() { if (E && !E.ko) { E.hp = 0; knockOut(E); } },

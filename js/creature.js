@@ -75,10 +75,11 @@ export function makeAnimator(root) {
       bones.body.rotation.x = .07 + s * .01;
       bones.head.rotation.x = -.06;
       if (guard) {
-        bones.armLeft.rotation.x = -.9 + s * .05;
-        bones.armLeft.rotation.z = .5;
-        bones.armRight.rotation.x = -.75 + s * .06;
-        bones.armRight.rotation.z = -.55;
+        // 垂臂几何：z 外八（右正左负），幅度小——垂臂一摆就横穿身体
+        bones.armLeft.rotation.x = -.85 + s * .05;
+        bones.armLeft.rotation.z = -.22;
+        bones.armRight.rotation.x = -.7 + s * .06;
+        bones.armRight.rotation.z = .22;
       }
     } else if (kind === "bowl") {
       bones.pawLeft.rotation.x = -.5 + s * .05;
