@@ -101,10 +101,14 @@ function serveGroupVideos(req, res) {
     .getFeed()
     .then(function (payload) {
       const body = Buffer.from(JSON.stringify(Object.assign({ ok: true }, payload)), "utf8");
+      // 冷启动预热中的空结果不能被缓存，否则页面要等一分钟才拿得到真实数据
+      const empty = !payload.videos || !payload.videos.length;
       res.writeHead(200, {
         "Content-Type": "application/json; charset=utf-8",
         "Content-Length": body.length,
-        "Cache-Control": "public, max-age=60, stale-while-revalidate=600",
+        "Cache-Control": empty
+          ? "no-store"
+          : "public, max-age=60, stale-while-revalidate=600",
         "Access-Control-Allow-Origin": "*",
         "X-Content-Type-Options": "nosniff"
       });
@@ -217,4 +221,8 @@ function serveFile(file, req, res) {
 }
 
 server.keepAliveTimeout = 65000;
-server.listen(PORT, HOST, () => console.log(`static server on ${HOST}:${PORT}`));
+server.listen(PORT, HOST, () => {
+  console.log(`static server on ${HOST}:${PORT}`);
+  // 开机先把群聊视频缓存捂热：抓一轮要八九秒，等第一个访客来才抓就来不及了
+  groupFeed.getFeed().catch(function () {});
+});
