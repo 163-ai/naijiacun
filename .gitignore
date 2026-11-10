@@ -12,6 +12,9 @@ desktop.ini
 *.log
 *.tmp
 
+# 发现脚本的产出（候选清单每次跑都会变，不入库）
+scripts/out/
+
 # 本地工作区数据
 .workbuddy/
 
