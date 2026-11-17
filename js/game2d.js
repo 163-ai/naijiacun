@@ -10,7 +10,7 @@ import { Fight } from "./kof.js?v=57";
 import {
   TS, TI, VILLAGE, TOWN, GROVE, HILL, TOWN_LOTS, TOWN_STALLS, HOUSE, SHOP, STATION, ARCHIVE, MAPS,
   tileAt, setSolid, solidAt, markAt, mapTexture, toTile, toWorld
-} from "./tiles.js?v=5";
+} from "./tiles.js?v=6";
 import { Farm, CROPS, PLOT } from "./farm.js";
 import { portrait, moodFilter, speakerKey, PLAYER_KEY } from "./portraits.js?v=57";
 import { NPCS, DESK_OFFICER, bountyOf } from "./villagers.js";
@@ -98,7 +98,9 @@ const state = {
   pouches: 0,
   arenaWins: 0,
   // 小游戏：钓鱼当天抛了几竿、唱戏当天唱没唱
-  fishDay: 0, fishRods: 0, stageDay: 0
+  fishDay: 0, fishRods: 0, stageDay: 0,
+  // 驿站远行委托：{ day, kind, map, need, got, done, title, desc, reward }
+  courier: null
 };
 const expNeed = lv => 18 + lv * 12;
 
@@ -117,6 +119,7 @@ function save() {
       anchors: state.anchors, pouchDay: state.pouchDay, pouches: state.pouches,
       arenaWins: state.arenaWins,
       fishDay: state.fishDay, fishRods: state.fishRods, stageDay: state.stageDay,
+      courier: state.courier,
       // 存档点永远记在村里：镇上/屋里的位置不入档，下次开局从村的落点开始
       px: roomState.name === "village" ? player.x : roomState.back.x,
       pz: roomState.name === "village" ? player.z : roomState.back.z,
@@ -139,7 +142,8 @@ function load() {
       beatQiyet: !!d.beatQiyet, seenRoom: d.seenRoom || {},
       anchors: d.anchors || {}, pouchDay: d.pouchDay || 0,
       pouches: d.pouches || 0, arenaWins: d.arenaWins || 0,
-      fishDay: d.fishDay || 0, fishRods: d.fishRods || 0, stageDay: d.stageDay || 0
+      fishDay: d.fishDay || 0, fishRods: d.fishRods || 0, stageDay: d.stageDay || 0,
+      courier: d.courier || null
     });
     player.x = d.px ?? SPAWN.x;
     player.z = d.pz ?? SPAWN.z;
@@ -1589,6 +1593,8 @@ function buildTown() {
   addWell(twx(45.5), twz(27), g);
   addSign(twx(24.5), twz(28.6), "戏台", g);
   addSign(twx(53.5), twz(28.6), "驿站", g);
+  // 驿站院子里的委托榜：和逻辑 mark (54~56,30) 对上，站南边朝北按 E 就能接单
+  addSign(twx(55), twz(28.6), "今日远行委托", g);
 
   // ---- 镇外一圈树，把镇子围起来 ----
   const tr = mulberry(20261117);
@@ -1818,6 +1824,7 @@ function tryShoot() {
     o.got = true;
     o.group.visible = false;
     Farm.gold += 8;
+    courierProgress("shoot", "grove");
     Farm.paint(); hudTick(); save();
     sfx("coin");
     blip(760, .12, "sine", .04);
@@ -2908,6 +2915,42 @@ const TOWN_NPCS = [
   }
 ];
 
+// 竹林水塘的钓叟：就蹲在东岸钓位边上，说话能直接借竿
+const GROVE_NPCS = [
+  {
+    id: "capy_angler",
+    name: "卡皮巴拉",
+    char: "capybara",
+    home: { x: -0.5, z: 5.5 },
+    face: -1.2,
+    tag: "蹲在塘边看浮标",
+    greet: [
+      "……（它把钓竿架在石头上，眼睛半睁着）",
+      "水里那位不急。你也别急，坐下来等它咬钩就是。"
+    ],
+    act: "fish",
+    actLabel: "借它的竿试试"
+  }
+];
+
+// 南高草坡的牛来：坡顶开阔，正好陪人练手
+const HILL_NPCS = [
+  {
+    id: "hill_niulai",
+    name: "牛来",
+    char: "niulai",
+    home: { x: 4.5, z: -15.5 },
+    face: 1.0,
+    tag: "在坡顶练手",
+    greet: [
+      "我在这个坡上站了半天，一只像样的都没碰上。",
+      "你敢不敢陪我打一场？这儿的野的，可比村北林子里凶。"
+    ],
+    act: "hillfight",
+    actLabel: "跟它在坡上打一场"
+  }
+];
+
 // 肥嘟嘟掉的三个口袋：戏台边、驿站院子、南街尽头
 const POUCH_SPOTS = [
   { tx: 19.2, tz: 28.4 },
@@ -2965,11 +3008,10 @@ function tryPouch() {
   return false;
 }
 
-async function spawnTownNpcs() {
-  const town = OUTDOOR.town;
-  if (!town) return;
-  for (const def of TOWN_NPCS) {
-    if (npcs.some(n => n.map === "town" && n.def.id === def.id)) continue;
+async function spawnMapNpcs(key, defs, group) {
+  if (!group) return;
+  for (const def of defs) {
+    if (npcs.some(n => n.map === key && n.def.id === def.id)) continue;
     try {
       const obj = await getActor(def.char);
       if (!obj) continue;
@@ -2977,13 +3019,16 @@ async function spawnTownNpcs() {
       g.add(obj);
       g.position.set(def.home.x, 0, def.home.z);
       g.rotation.y = def.face || 0;
-      town.add(g);
-      const n = npcDefObj(def, "town", def.home.x, def.home.z);
+      group.add(g);
+      const n = npcDefObj(def, key, def.home.x, def.home.z);
       n.obj = g;
       npcs.push(n);
-    } catch (e) { console.warn("[game] 镇上的没来：" + def.id, e); }
+    } catch (e) { console.warn("[game] " + key + " 上有人没来：" + def.id, e); }
   }
 }
+function spawnTownNpcs() { return spawnMapNpcs("town", TOWN_NPCS, OUTDOOR.town); }
+function spawnGroveNpcs() { return spawnMapNpcs("grove", GROVE_NPCS, OUTDOOR.grove); }
+function spawnHillNpcs() { return spawnMapNpcs("hill", HILL_NPCS, OUTDOOR.hill); }
 
 function npcOnMap() {
   const key = roomState.name;
@@ -3355,6 +3400,99 @@ function questProgress(kind, n = 1) {
   }
 }
 
+/* =========================================================
+   驿站远行委托：镇上驿站院子每天贴一张，接了去村外跑一趟
+   ========================================================= */
+const COURIER_JOBS = [
+  { kind: "arrive", map: "grove", need: 1, gold: 70, title: "给竹林送封信",
+    desc: "跑一趟竹林水塘，把信交到林子里那块牌子上。" },
+  { kind: "arrive", map: "hill", need: 1, gold: 80, title: "看看坡上的路",
+    desc: "上南高草坡走一趟，坡顶石台那头有人等着回话。" },
+  { kind: "shoot", map: "grove", need: 2, gold: 75, balls: 1, title: "饭馆要两根竹笋",
+    desc: "去竹林水塘掰两根竹笋，东岸沙地上就有。" },
+  { kind: "fish", map: "grove", need: 2, gold: 90, title: "想喝一锅鱼汤",
+    desc: "在竹林水塘钓上两条鱼，带回驿站交差。" },
+  { kind: "battle", map: null, need: 1, gold: 100, balls: 1, title: "草坡太闹腾了",
+    desc: "去野外打赢一场，把闹事的野物吓一吓。" }
+];
+
+function courierToday() {
+  const r = mulberry(Farm.day * 104729 + 17);
+  const j = COURIER_JOBS[Math.floor(r() * COURIER_JOBS.length)];
+  return {
+    day: Farm.day, kind: j.kind, map: j.map, need: j.need, got: 0, done: false,
+    title: j.title, desc: j.desc, reward: { gold: j.gold, balls: j.balls || 0 }
+  };
+}
+
+function activeCourier() {
+  const c = state.courier;
+  return c && c.day === Farm.day ? c : null;
+}
+
+function courierProgress(kind, mapKey, n = 1) {
+  const c = activeCourier();
+  if (!c || c.done || c.kind !== kind || (c.map && c.map !== mapKey)) return;
+  const before = c.got;
+  c.got = Math.min(c.need, c.got + n);
+  if (c.got === before) return;
+  save();
+  toast(c.got >= c.need
+    ? "驿务办妥了 · 回驿站交差"
+    : "驿务有进展（" + c.got + "/" + c.need + "）");
+}
+
+function courierBoard() {
+  const c = activeCourier() || courierToday();
+  const where = c.map ? (MAPS[c.map] ? MAPS[c.map].name : c.map) : "村外的野外";
+  if (c.done) {
+    say("驿站的委托榜", ["今天的活儿已经结了。", "榜上明天才换新单，先去玩吧。"]);
+    return;
+  }
+  if (c.got >= c.need) {
+    say("驿站的委托榜", [
+      "「" + c.title + "」—— 事办完了？",
+      "驿卒把回执收过去，数了数钱。"
+    ], null, [
+      { label: "交差领钱", onPick: claimCourier },
+      { label: "再等等", onPick: null }
+    ], "happy");
+    return;
+  }
+  if (activeCourier()) {
+    say("驿站的委托榜", [
+      "「" + c.title + "」· " + c.desc,
+      "已经办了 " + c.got + "/" + c.need + "。回来找我交差。"
+    ]);
+    return;
+  }
+  say("驿站的委托榜", [
+    "今日远行委托：「" + c.title + "」。",
+    c.desc,
+    "地方在" + where + "。办完回这张榜前按 E 交差。"
+  ], null, [
+    { label: "接下这单", onPick: () => { state.courier = c; save(); toast("接下驿务 · " + c.title); } },
+    { label: "先不接", onPick: null }
+  ]);
+}
+
+function claimCourier() {
+  const c = activeCourier();
+  if (!c || c.done || c.got < c.need) return;
+  c.done = true;
+  const R = c.reward;
+  Farm.gold += R.gold;
+  state.balls += R.balls || 0;
+  grantExp(16);
+  Farm.paint(); hudTick(); save();
+  sfx("coin");
+  say("驿站的委托榜", [
+    "回执对上了。" + (R.gold ? "工钱 " + R.gold + " 金。" : "") +
+      (R.balls ? "再搭你 " + R.balls + " 个球，路上兴许用得上。" : ""),
+    "明天的单子还不知道是什么，明早再来看。"
+  ], null, null, "happy");
+}
+
 function bountyMenu() {
   if (!state.bounty || state.bountyDay !== Farm.day) {
     state.bounty = bountyOf(Farm.day);
@@ -3516,7 +3654,14 @@ function travelTo(key, spawn) {
       // 口袋任务进行中时，没捡的那些要重新露出来
       pouchQuest.objs.forEach(o => { o.group.visible = pouchQuest.active && !o.got; });
     }
-    if (key === "grove") refreshShoots();
+    if (key === "grove") {
+      refreshShoots();
+      spawnGroveNpcs().catch(e => console.warn("[game] 竹林的没来", e));
+    }
+    if (key === "hill") {
+      spawnHillNpcs().catch(e => console.warn("[game] 坡上的没来", e));
+    }
+    courierProgress("arrive", key);
     blip(key === "town" ? 640 : 520, .1, "sine", .035);
     toast(key === "village" ? "回到奶家村" : "来到" + map.name);
   }
@@ -3584,6 +3729,14 @@ function openWorldMap() {
   }
   const hint = $("#mapGold");
   if (hint) hint.textContent = "💰 " + Farm.gold;
+  const cl = $("#courierLine");
+  if (cl) {
+    const c = activeCourier();
+    if (!c) cl.textContent = "驿站今日委托还没接 · 去奶家镇驿站院子的委托榜看看";
+    else if (c.done) cl.textContent = "今日驿务已交差 ✅ 明早再来";
+    else cl.textContent = "今日驿务：「" + c.title + "」· " + c.got + "/" + c.need +
+      (c.got >= c.need ? " · 回驿站交差领钱" : " · " + (c.map && MAPS[c.map] ? MAPS[c.map].name : "野外"));
+  }
   $("#worldmap").classList.add("show");
 }
 function closeWorldMap() {
@@ -3610,6 +3763,7 @@ function interact() {
     if (mk.kind === "anchor") { useAnchor(mk.id); return; }
     if (mk.kind === "fish") { startFishing(); return; }
     if (mk.kind === "stage") { startStage(); return; }
+    if (mk.kind === "courier") { courierBoard(); return; }
     if (mk.kind === "sign") { say("告示", [mk.text]); return; }
     if (mk.kind === "shop") { Farm.openShop(); return; }
     if (mk.kind === "sleep") { Farm.sleepPrompt(); return; }
@@ -3801,6 +3955,7 @@ function reelFish() {
   if (hit) {
     fishing.caught++;
     Farm.gold += 12;
+    courierProgress("fish", "grove");
     sfx("coin");
     blip(920, .12, "sine", .05);
     toast("钓上一条！+12 金");
@@ -3988,6 +4143,22 @@ function runAct(def, n) {
       break;
     }
 
+    // 竹林钓叟：借他的竿，直接开钓鱼小游戏
+    case "fish": {
+      if (Fight.on) break;
+      closeDialog();
+      startFishing();
+      break;
+    }
+
+    // 坡上的牛来：在这儿开一场野战，zone 用 hill
+    case "hillfight": {
+      if (Fight.on) break;
+      say(def.name, ["别看你个头小，这坡上的野的可不客气。", "来，我看看你有多少斤两。"],
+        () => startEncounter("hill", "niulai"), null, "angry");
+      break;
+    }
+
     case "heal": {
       const hurt = state.hp < state.maxHp * .98;
       if (!hurt) {
@@ -4114,6 +4285,7 @@ function onBattleEnd(res) {
 
   state.balls -= res.ballUsed;
   state.hp = res.playerHp;
+  if (res.win || res.captured) courierProgress("battle", roomState.name);
 
   if (res.captured) {
     state.captured[res.enemyKey] = true;
@@ -4354,7 +4526,7 @@ function startGame(fresh) {
       // 重开就是全新的一天：锚点、口袋、擂台、小游戏的每日计数都得归零，
       // 不然同一个浏览器里「重新开始」会带着上一档的进度进新档
       anchors: {}, pouchDay: 0, pouches: 0, arenaWins: 0,
-      fishDay: 0, fishRods: 0, stageDay: 0,
+      fishDay: 0, fishRods: 0, stageDay: 0, courier: null,
       dayFlags: {}, gifts: {}, met: {}, beatQiyet: false
     });
     player.x = SPAWN.x; player.z = SPAWN.z;
@@ -4400,7 +4572,9 @@ if (location.search.indexOf("debug") >= 0) {
     npcs, npcNear, talk, runAct, questProgress, bountyMenu,
     travelTo, openWorldMap, closeWorldMap, useAnchor, roomState, TOWN, VILLAGE, GROVE, HILL,
     ANCHORS, ANCHOR_STONES, startPouchQuest, pouchQuest, spawnTownNpcs, tryPouch,
-    refreshShoots, tryShoot, patches,
+    refreshShoots, tryShoot, shootQuest, patches, onBattleEnd,
+    courierToday, activeCourier, courierProgress, courierBoard, claimCourier, COURIER_JOBS,
+    spawnGroveNpcs, spawnHillNpcs, GROVE_NPCS, HILL_NPCS,
     fishing, stageGame, startFishing, reelFish, closeFishing,
     startStage, hitStage, endStage, closeStage,
     OUTDOOR, outdoorMats, position: () => ({ x: player.x, z: player.z, map: roomState.name }),

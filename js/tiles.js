@@ -1075,6 +1075,11 @@ export const TOWN = (() => {
   // ---- 传送锚点（广场正中）----
   mark(m, 38, 30, { kind: "anchor", id: "town", label: "传送锚点" });
 
+  // ---- 驿站院子：北墙根贴着今日远行委托榜 ----
+  mark(m, 54, 30, { kind: "courier", label: "今日远行委托" });
+  mark(m, 55, 30, { kind: "courier", label: "今日远行委托" });
+  mark(m, 56, 30, { kind: "courier", label: "今日远行委托" });
+
   // ---- 招牌 ----
   mark(m, 38, 37, { kind: "sign", text: "奶家镇　·　东市集，西戏台，南边是驿站" });
   // 招牌挪到台口西边一格，别占着 (21,28) 那个上台位
