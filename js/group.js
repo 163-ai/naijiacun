@@ -86,8 +86,31 @@
       localStorage.setItem(SEEN_KEY, JSON.stringify(next));
     } catch (e) {}
   }
-  function markAllSeen() {
-    markSeenIds(posts.map(function (v) { return v && v.id; }));
+  /* 最近真正播过的（跨次打开也算），用来把刚看过的片压到队尾 */
+  var RECENT_KEY = "naijiacun-group-recent-v1";
+  function recentIds() {
+    try {
+      var raw = JSON.parse(localStorage.getItem(RECENT_KEY) || "[]");
+      return Array.isArray(raw) ? raw : [];
+    } catch (e) { return []; }
+  }
+  function pushRecent(ids) {
+    if (!ids || !ids.length) return;
+    try {
+      var cur = recentIds().filter(function (id) { return ids.indexOf(id) < 0; });
+      localStorage.setItem(RECENT_KEY, JSON.stringify(ids.concat(cur).slice(0, 12)));
+    } catch (e) {}
+  }
+  /* 热度只当倾向，不当决定：同一档位里按分数加权随机洗牌。
+     权重压到 1~3.2 倍，热的更容易排前面，但不会永远第一。 */
+  function weightedShuffle(list) {
+    if (!list.length) return [];
+    var max = 1;
+    list.forEach(function (v) { max = Math.max(max, Number(v._score) || 0); });
+    return list.map(function (v) {
+      var w = 1 + Math.pow((Number(v._score) || 0) / max, 3) * 2.2;
+      return { v: v, k: Math.pow(Math.random(), 1 / w) };
+    }).sort(function (a, b) { return b.k - a.k; }).map(function (x) { return x.v; });
   }
   var toastTimer = null;
   function toast(msg) {
@@ -477,6 +500,7 @@
     addVideo(v.sender, v);
     flow.pushed++;
     markSeenIds([v.id]);
+    pushRecent([v.id]);
     autoScroll();
   }
 
@@ -522,7 +546,7 @@
     removeTyping();
     skipBtn.hidden = true;
     updateCount();
-    markAllSeen();
+    // 只标记真正播过的（pushCard 里逐条标），不再整池标已读
     toBottom();
   }
 
@@ -538,6 +562,7 @@
       var v = posts[flow.pushed];
       (v.lead || []).forEach(function (text) { addText(v.sender, text, false); });
       addVideo(v.sender, v);
+      if (v.id) { markSeenIds([v.id]); pushRecent([v.id]); }
       flow.pushed++;
     }
     newMsgChip.hidden = true;
@@ -947,6 +972,7 @@
         var v = posts[i];
         (v.lead || []).forEach(function (text) { addText(v.sender, text, false); });
         addVideo(v.sender, v);
+        if (v.id) { markSeenIds([v.id]); pushRecent([v.id]); }
       }
       flow.pushed = to;
     }
@@ -954,42 +980,50 @@
     // 按视频 ID 区分看过 / 没看过，不按条数
     var seenSet = Object.create(null);
     seenIds().forEach(function (id) { if (id) seenSet[id] = 1; });
+    var recentSet = Object.create(null);
+    recentIds().forEach(function (id) { if (id) recentSet[id] = 1; });
+    var firstVisit = !seenIds().length;
 
-    var oldPosts = [];
-    var freshPosts = [];
+    /* 四档排片：没看过且最近没播 > 看过但没播 > 没看过但刚播过 > 看过且刚播过。
+       每一档内部按热度加权随机，顺序每次都不同，但热的仍然更容易靠前。 */
+    var buckets = [[], [], [], []];
     posts.forEach(function (v) {
-      if (v.id && seenSet[v.id]) oldPosts.push(v);
-      else freshPosts.push(v);
+      var k = (v.id && seenSet[v.id] ? 2 : 0) + (v.id && recentSet[v.id] ? 1 : 0);
+      buckets[k].push(v);
     });
-
-    // 看过的最多留最近 5 条当上下文，其余不再重复刷屏
-    var tail = oldPosts.slice(-5);
-    posts = tail.concat(freshPosts);
+    posts = weightedShuffle(buckets[0])
+      .concat(weightedShuffle(buckets[2]))
+      .concat(weightedShuffle(buckets[1]))
+      .concat(weightedShuffle(buckets[3]));
     flow.total = posts.length;
+    if (!posts.length) return;
 
-    if (!freshPosts.length && posts.length) {
-      renderIntroAll();
-      renderPosts(0, posts.length);
-      addSystem(pick(D.welcomeBack || ["欢迎回来。"]));
-      var away = shuffle((D.ambient || []).slice()).slice(0, 1 + Math.floor(Math.random() * 2));
-      away.forEach(function (line) { addText(line[0], line[1], false); });
+    var freshCount = buckets[0].length + buckets[1].length;
+
+    /* 首屏先给一条，剩下的按原来的群聊节奏慢慢推 —— 不再把上次看过的 5 条
+       原样堆在最前面充数 */
+    function kick() {
+      var head = Math.min(1, posts.length);
+      renderPosts(0, head);
       toBottom();
-      startAmbient();
+      if (head < posts.length) {
+        runPlan(head);
+      } else {
+        endFlow();
+        startAmbient();
+      }
+    }
+
+    if (firstVisit) {
+      playIntro(kick);
       return;
     }
 
-    if (oldPosts.length) {
-      renderIntroAll();
-      renderPosts(0, tail.length);
-      addSystem("你走之后群里又进了 " + freshPosts.length + " 条 ——");
-      toBottom();
-      runPlan(tail.length);
-      return;
-    }
-
-    playIntro(function () {
-      runPlan(0);
-    });
+    addSystem(pick(D.welcomeBack || ["欢迎回来。"]));
+    addSystem(freshCount
+      ? "你不在的时候群里又进了 " + freshCount + " 条，先看这个 ——"
+      : "今天群里没进新的，翻了翻旧账，换了个顺序 ——");
+    kick();
   })();
 
   loadLive();
