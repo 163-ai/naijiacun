@@ -8,9 +8,9 @@ import { createPetMotion } from "./pet-motion.js?v=2";
 import { makeAnimator } from "./creature.js?v=58";
 import { Fight } from "./kof.js?v=57";
 import {
-  TS, TI, VILLAGE, TOWN, TOWN_LOTS, TOWN_STALLS, HOUSE, SHOP, STATION, ARCHIVE, MAPS,
+  TS, TI, VILLAGE, TOWN, GROVE, HILL, TOWN_LOTS, TOWN_STALLS, HOUSE, SHOP, STATION, ARCHIVE, MAPS,
   tileAt, setSolid, solidAt, markAt, mapTexture, toTile, toWorld
-} from "./tiles.js?v=2";
+} from "./tiles.js?v=3";
 import { Farm, CROPS, PLOT } from "./farm.js";
 import { portrait, moodFilter, speakerKey, PLAYER_KEY } from "./portraits.js?v=57";
 import { NPCS, DESK_OFFICER, bountyOf } from "./villagers.js";
@@ -74,7 +74,9 @@ const ZONES = {
   meadow: { label: "中央草坡", table: [["naiwa", 55], ["niulai", 30], ["capybara", 15]] },
   forest: { label: "村北树林", table: [["niulai", 50], ["baobaolong", 30], ["naiwa", 20]] },
   lake: { label: "水塘边", table: [["naiwa", 45], ["capybara", 35], ["baobaolong", 20]] },
-  flower: { label: "东边花田", table: [["capybara", 42], ["naiwa", 33], ["baobaolong", 25]] }
+  flower: { label: "东边花田", table: [["capybara", 42], ["naiwa", 33], ["baobaolong", 25]] },
+  bamboo: { label: "竹林水塘", table: [["capybara", 45], ["naiwa", 35], ["niulai", 20]] },
+  hill: { label: "南高草坡", table: [["baobaolong", 40], ["niulai", 32], ["capybara", 28]] }
 };
 
 /* =========================================================
@@ -1007,7 +1009,7 @@ const wildStemMat = new T.MeshStandardMaterial({ color: 0x5f9a55, roughness: 1 }
 const wildCols = [0xffd7e6, 0xfff1b8, 0xe4d4ff, 0xffc7a8, 0xffffff, 0xbfe4ff].map(
   c => new T.MeshStandardMaterial({ color: c, roughness: .85, emissive: new T.Color(c).multiplyScalar(.08) })
 );
-function addWildFlowers(x, z, r) {
+function addWildFlowers(x, z, r, parent = world) {
   const g = new T.Group();
   for (let i = 0; i < 5; i++) {
     const fx = (r() - .5) * .9, fz = (r() - .5) * .9;
@@ -1020,7 +1022,7 @@ function addWildFlowers(x, z, r) {
     g.add(f);
   }
   g.position.set(x, 0, z);
-  world.add(g);
+  parent.add(g);
 }
 
 /* ---------- 公园：石桌 + 棋盘面 ---------- */
@@ -1227,7 +1229,7 @@ function labelTexture(text, tone) {
 }
 
 // 字牌铺在世界坐标 (x,z)，width 是世界单位宽；y 抬一点点盖在草/土上
-function addPlaceLabel(x, z, text, width = 2.6, tone = "land") {
+function addPlaceLabel(x, z, text, width = 2.6, tone = "land", parent = world) {
   const tex = labelTexture(text, tone);
   const ratio = tex.userData.h / tex.userData.w;
   const mesh = new T.Mesh(
@@ -1237,7 +1239,7 @@ function addPlaceLabel(x, z, text, width = 2.6, tone = "land") {
   mesh.rotation.x = -Math.PI / 2;
   mesh.position.set(x, .045, z);
   mesh.renderOrder = 2;
-  world.add(mesh);
+  parent.add(mesh);
   return mesh;
 }
 
@@ -1392,10 +1394,10 @@ function buildProps() {
 
   // ---- 高草区（走进去会遇怪）----
   [
-    { x: 12, z: -20, r: 6.5, zone: "meadow" },
-    { x: -12, z: 12, r: 4.6, zone: "forest" },
-    { x: 32, z: 4, r: 6.0, zone: "lake" },
-    { x: 28, z: 26, r: 4.8, zone: "flower" }
+    { x: 12, z: -20, r: 6.5, zone: "meadow", map: "village" },
+    { x: -12, z: 12, r: 4.6, zone: "forest", map: "village" },
+    { x: 32, z: 4, r: 6.0, zone: "lake", map: "village" },
+    { x: 28, z: 26, r: 4.8, zone: "flower", map: "village" }
   ].forEach(p => patches.push(p));
 
   // ---- 地名标注 ----
@@ -1606,6 +1608,219 @@ function buildTown() {
   addAnchorStone(TOWN, 38, 30, g, "town");
   addAnchorStone(VILLAGE, 47, 32, world, "village");
   syncAnchorLook();
+}
+
+/* =========================================================
+   布置竹林水塘 & 南高草坡：村西北、村南的两块野外图
+   格子数据在 tiles.js（GROVE / HILL），这里立成看得见的东西
+   ========================================================= */
+// 一丛竹子：复用国风竹林那套材质，但这丛是实打实的 —— 占格挡路、每张图都显示
+function addBambooClump(x, z, parent, scale = 1) {
+  const r = mulberry(Math.round((x + 50) * 53 + (z + 50) * 17) + 7);
+  const g = new T.Group();
+  const n = 2 + Math.floor(r() * 2);
+  for (let i = 0; i < n; i++) {
+    const h = 2.6 + r() * 2.4;
+    const bx = (r() - .5) * .7, bz = (r() - .5) * .7;
+    const seg = new T.Mesh(new T.CylinderGeometry(.06, .09, h, 5), bambooStalkMat);
+    seg.position.set(bx, h / 2, bz);
+    seg.rotation.z = (r() - .5) * .1;
+    seg.castShadow = true;
+    g.add(seg);
+    for (let k = 0; k < 3; k++) {
+      const leaf = new T.Mesh(new T.ConeGeometry(.1, .8 + r() * .5, 4), bambooLeafMat);
+      leaf.position.set(bx + (r() - .5) * .5, h - .3 - r() * .9, bz + (r() - .5) * .5);
+      leaf.rotation.set(r() * 1.4 - .7, r() * 6.283, r() * 1.4 - .7);
+      g.add(leaf);
+    }
+  }
+  g.position.set(x, 0, z);
+  g.scale.setScalar(scale);
+  parent.add(g);
+  markWorld(x, z, .45, 1);
+}
+
+// 新图专用的空地判定：freeSpot 焊死在 VILLAGE 上，这里认指定地图
+function freeSpotOn(map, x, z, m = .7) {
+  for (const [dx, dz] of [[0, 0], [m, 0], [-m, 0], [0, m], [0, -m]]) {
+    const t = toTile(map, x + dx, z + dz);
+    if (solidAt(map, t.tx, t.tz)) return false;
+    const k = tileAt(map, t.tx, t.tz);
+    if (k !== TI.GRASS && k !== TI.WEED && k !== TI.SAND && k !== TI.FLOWER) return false;
+  }
+  return true;
+}
+
+function buildGrove() {
+  const g = new T.Group();
+  g.visible = false;
+  scene.add(g);
+  OUTDOOR.grove = g;
+  outdoorMats.set("grove", buildGroundFor(GROVE, g));
+
+  const restore = MAP;
+  MAP = GROVE;
+  // 树位表换成局部的：竹林里的竹丛不能被村里/镇上的树挤掉
+  const savedSpots = treeSpots.splice(0, treeSpots.length);
+  const gw = tx => GROVE.ox + tx + .5;
+  const gz = tz => GROVE.oz + tz + .5;
+  const r = mulberry(20261118);
+
+  // ---- 竹丛：北半边密、贴水塘密，路上和水里不长 ----
+  for (let i = 0; i < 220; i++) {
+    const tx = Math.floor(r() * GROVE.w), tz = Math.floor(r() * GROVE.h);
+    if (solidAt(GROVE, tx, tz)) continue;
+    const k = tileAt(GROVE, tx, tz);
+    if (k !== TI.GRASS && k !== TI.WEED && k !== TI.SAND) continue;
+    const x = gw(tx), z = gz(tz);
+    if (treeTooClose(x, z, 1.9)) continue;
+    addBambooClump(x, z, g, .9 + r() * .4);
+  }
+  // ---- 几棵正经大树当背景 ----
+  [[44, 44], [52, 16], [24, 22], [10, 16], [56, 52], [36, 56]].forEach(([tx, tz]) => {
+    const x = gw(tx), z = gz(tz);
+    if (freeSpotOn(GROVE, x, z) && !treeTooClose(x, z, 2.4)) addTree(x, z, 1 + r() * .3, g);
+  });
+  // ---- 石头 ----
+  [[50, 24], [33, 47], [16, 44], [46, 38]].forEach(([tx, tz]) => {
+    const x = gw(tx), z = gz(tz);
+    if (freeSpotOn(GROVE, x, z)) addRock(x, z, g);
+  });
+  // ---- 空地边上两盏灯、一块路牌、一块地名 ----
+  addLamp(gw(36.5), gz(27.5), g);
+  addLamp(gw(43.5), gz(33), g);
+  addSign(gw(58), gz(34.9), "竹林水塘", g);
+  addPlaceLabel(gw(19), gz(28), "竹林水塘", 3.4, "land", g);
+  // ---- 水边零星野花 ----
+  for (let i = 0; i < 40; i++) {
+    const tx = Math.floor(r() * GROVE.w), tz = Math.floor(r() * GROVE.h);
+    const k = tileAt(GROVE, tx, tz);
+    if (k !== TI.GRASS && k !== TI.FLOWER) continue;
+    if (solidAt(GROVE, tx, tz)) continue;
+    const x = gw(tx), z = gz(tz);
+    if (treeTooClose(x, z, 1.2)) continue;
+    addWildFlowers(x, z, r, g);
+  }
+  treeSpots.push(...savedSpots);
+  MAP = restore;
+
+  addAnchorStone(GROVE, 40, 30, g, "grove");
+  buildShoots();
+
+  // ---- 高草区（走进去会遇怪）----
+  [
+    { x: -1.5, z: -17.5, r: 5.5, zone: "bamboo", map: "grove" },
+    { x: 14.5, z: 16.5, r: 5.0, zone: "bamboo", map: "grove" },
+    { x: -19.5, z: 20.5, r: 4.0, zone: "bamboo", map: "grove" }
+  ].forEach(p => patches.push(p));
+}
+
+function buildHill() {
+  const g = new T.Group();
+  g.visible = false;
+  scene.add(g);
+  OUTDOOR.hill = g;
+  outdoorMats.set("hill", buildGroundFor(HILL, g));
+
+  const restore = MAP;
+  MAP = HILL;
+  const savedSpots = treeSpots.splice(0, treeSpots.length);
+  const hw = tx => HILL.ox + tx + .5;
+  const hz = tz => HILL.oz + tz + .5;
+  const r = mulberry(20261119);
+
+  // ---- 坡上的树稀稀拉拉：孤树才是草坡的剪影 ----
+  for (let i = 0; i < 46; i++) {
+    const tx = Math.floor(r() * HILL.w), tz = Math.floor(r() * HILL.h);
+    if (solidAt(HILL, tx, tz)) continue;
+    const k = tileAt(HILL, tx, tz);
+    if (k !== TI.GRASS && k !== TI.FLOWER) continue;
+    const x = hw(tx), z = hz(tz);
+    if (treeTooClose(x, z, 4.5)) continue;      // 坡上要的是疏朗
+    addTree(x, z, 1.1 + r() * .5, g);
+  }
+  // ---- 大石头：草坡的地标 ----
+  [[40, 34], [20, 30], [48, 16], [12, 46], [56, 40], [26, 20]].forEach(([tx, tz]) => {
+    const x = hw(tx), z = hz(tz);
+    if (freeSpotOn(HILL, x, z)) addRock(x, z, g);
+  });
+  addLamp(hw(29.5), hz(15), g);
+  addLamp(hw(34.5), hz(15), g);
+  addSign(hw(34), hz(5.9), "南高草坡", g);
+  addPlaceLabel(hw(32), hz(40), "深草区", 3.2, "land", g);
+  addPlaceLabel(hw(32), hz(10.5), "南高草坡", 3.0, "land", g);
+  treeSpots.push(...savedSpots);
+  MAP = restore;
+
+  addAnchorStone(HILL, 32, 12, g, "hill");
+
+  // ---- 深草区（走进去会遇怪）----
+  [
+    { x: .5, z: 8.5, r: 9.0, zone: "hill", map: "hill" },
+    { x: -17.5, z: -5.5, r: 5.5, zone: "hill", map: "hill" },
+    { x: 16.5, z: -9.5, r: 4.5, zone: "hill", map: "hill" }
+  ].forEach(p => patches.push(p));
+}
+
+/* ---- 竹笋：竹林水塘的每日采集。每天换一批位置，站边上按 E 掰 ---- */
+const SHOOT_SPOTS = [
+  { tx: 26, tz: 30 }, { tx: 22, tz: 26 }, { tx: 15, tz: 43 }, { tx: 25, tz: 42 },
+  { tx: 33, tz: 24 }, { tx: 37, tz: 41 }, { tx: 45, tz: 42 }, { tx: 28, tz: 20 }
+];
+const shootQuest = { day: -1, objs: [] };
+
+function buildShoots() {
+  const g = OUTDOOR.grove;
+  if (!g) return;
+  SHOOT_SPOTS.forEach(sp => {
+    const grp = new T.Group();
+    grp.position.set(GROVE.ox + sp.tx + .5, 0, GROVE.oz + sp.tz + .5);
+    // 一根笋：土黄锥身 + 青尖
+    const body = new T.Mesh(new T.ConeGeometry(.16, .5, 7),
+      new T.MeshStandardMaterial({ color: 0xc9a86a, roughness: .95 }));
+    body.position.y = .25; body.castShadow = true;
+    grp.add(body);
+    const tip = new T.Mesh(new T.ConeGeometry(.09, .26, 6),
+      new T.MeshStandardMaterial({ color: 0x9fb060, roughness: .95 }));
+    tip.position.y = .56;
+    grp.add(tip);
+    grp.visible = false;
+    g.add(grp);
+    shootQuest.objs.push({ group: grp, got: false });
+  });
+}
+
+// 每天换一批：8 个备选点里随机露 4 根，掰完今天就没
+function refreshShoots() {
+  if (shootQuest.day === Farm.day) return;
+  shootQuest.day = Farm.day;
+  const r = mulberry(Farm.day * 7919 + 41);
+  const order = SHOOT_SPOTS.map((_, i) => i);
+  for (let i = order.length - 1; i > 0; i--) {
+    const j = Math.floor(r() * (i + 1));
+    [order[i], order[j]] = [order[j], order[i]];
+  }
+  shootQuest.objs.forEach((o, i) => {
+    o.got = false;
+    o.group.visible = order.slice(0, 4).indexOf(i) >= 0;
+  });
+}
+
+function tryShoot() {
+  if (roomState.name !== "grove") return false;
+  for (const o of shootQuest.objs) {
+    if (o.got || !o.group.visible) continue;
+    if (Math.hypot(player.x - o.group.position.x, player.z - o.group.position.z) > 1.4) continue;
+    o.got = true;
+    o.group.visible = false;
+    Farm.gold += 8;
+    Farm.paint(); hudTick(); save();
+    sfx("coin");
+    blip(760, .12, "sine", .04);
+    toast("掰到一根竹笋 · 镇上饭馆收，+8 金");
+    return true;
+  }
+  return false;
 }
 
 /* =========================================================
@@ -2135,9 +2350,10 @@ function update(dt) {
     player.phase += moved * 3.4;
     state.steps += moved * 1.4;
 
-    if (MAP === VILLAGE && moved > 0 && grace <= 0 && battleGrace <= 0) {
+    if (!MAP.indoor && moved > 0 && grace <= 0 && battleGrace <= 0) {
       grassDist += moved;
-      const p = patches.find(p => Math.hypot(player.x - p.x, (player.z - p.z) / .9) < p.r - .6);
+      const p = patches.find(p => p.map === roomState.name &&
+        Math.hypot(player.x - p.x, (player.z - p.z) / .9) < p.r - .6);
       if (p && grassDist > 6) {
         grassDist = 0;
         if (Math.random() < .26) startEncounter(p.zone);
@@ -2251,6 +2467,20 @@ function areaName() {
     if (tz > 38) return "奶家镇 · 南街";
     return "奶家镇";
   }
+  if (MAP === GROVE) {
+    const tx = player.x - GROVE.ox, tz = player.z - GROVE.oz;
+    if (Math.hypot(tx - 40, tz - 30) < 7) return "竹林水塘 · 林间空地";
+    if (Math.hypot(tx - 19, tz - 36) < 11) return "竹林水塘 · 水塘边";
+    if (tz < 20) return "竹林水塘 · 北竹海";
+    if (tz > 44) return "竹林水塘 · 南竹海";
+    return "竹林水塘";
+  }
+  if (MAP === HILL) {
+    const tx = player.x - HILL.ox, tz = player.z - HILL.oz;
+    if (Math.hypot(tx - 32, tz - 12) < 8) return "南高草坡 · 坡顶";
+    if (tz > 30) return "南高草坡 · 深草区";
+    return "南高草坡";
+  }
   const { x, z } = player;
   if (nearFarm(x, z, 3)) return "我的地";
   if (Math.hypot(x - 14.5, z - 8) < 5.6) return "棋爷的公园";
@@ -2293,14 +2523,13 @@ function drawRadar() {
 
   const put = (x, z) => [R + (x - player.x) * k, R + (z - player.z) * k];
 
-  // 高草（会遇怪的地方）
-  if (MAP === VILLAGE) {
-    patches.forEach(p => {
-      const [px, py] = put(p.x, p.z);
-      rctx.fillStyle = "rgba(62,110,50,.32)";
-      rctx.beginPath(); rctx.ellipse(px, py, p.r * k, p.r * k, 0, 0, 7); rctx.fill();
-    });
-  }
+  // 高草（会遇怪的地方）：只画当前地图上的
+  patches.forEach(p => {
+    if (p.map !== roomState.name) return;
+    const [px, py] = put(p.x, p.z);
+    rctx.fillStyle = "rgba(62,110,50,.32)";
+    rctx.beginPath(); rctx.ellipse(px, py, p.r * k, p.r * k, 0, 0, 7); rctx.fill();
+  });
 
   // 门和锚点：哪张图上都该看得见
   if (!MAP.indoor) {
@@ -3171,7 +3400,9 @@ const roomState = { name: "village", back: { x: 0, z: 0 }, backHeading: 0 };
 // 所有传送锚点：位置按各自地图的格子算，点亮要花钱
 const ANCHORS = {
   village: { name: "奶家村 · 广场", map: "village", tx: 47, tz: 32, cost: 30 },
-  town: { name: "奶家镇 · 市集", map: "town", tx: 38, tz: 30, cost: 40 }
+  town: { name: "奶家镇 · 市集", map: "town", tx: 38, tz: 30, cost: 40 },
+  grove: { name: "竹林水塘 · 林间空地", map: "grove", tx: 40, tz: 30, cost: 35 },
+  hill: { name: "南高草坡 · 坡顶", map: "hill", tx: 32, tz: 12, cost: 45 }
 };
 
 // 锁着的锚点是石灰色，点亮之后泛青光
@@ -3267,8 +3498,9 @@ function travelTo(key, spawn) {
       // 口袋任务进行中时，没捡的那些要重新露出来
       pouchQuest.objs.forEach(o => { o.group.visible = pouchQuest.active && !o.got; });
     }
+    if (key === "grove") refreshShoots();
     blip(key === "town" ? 640 : 520, .1, "sine", .035);
-    toast(key === "town" ? "进了奶家镇" : "回到奶家村");
+    toast(key === "village" ? "回到奶家村" : "来到" + map.name);
   }
   hudTick();
   save();
@@ -3347,6 +3579,9 @@ function interact() {
 
   // ⓪ 肥嘟嘟掉的口袋：站在旁边按 E 就捡
   if (tryPouch()) return;
+
+  // ⓪½ 竹林里的竹笋：每天长几根，站边上按 E 掰走换钱
+  if (tryShoot()) return;
 
   // ① 格子上的标记：门、床、柜台、公告板、灶台……
   if (a && a.mark) {
@@ -3836,6 +4071,8 @@ async function boot() {
     buildGround();
     buildProps();
     buildTown();
+    buildGrove();
+    buildHill();
     buildFar();
     applyStyle();   // 场景搭好后统一套用主题（国风染色 / 飞檐 / 背景）
   } catch (e) { console.error("[game] 场景搭建出错", e); }
@@ -3942,8 +4179,9 @@ if (location.search.indexOf("debug") >= 0) {
     startGame, startEncounter, save, getActor, keys, dlg, say, advanceDialog,
     blocked, toast, interact, tileAhead, aimCell, enterRoom, leaveRoom, rooms, MAPS, cursor, scene,
     npcs, npcNear, talk, runAct, questProgress, bountyMenu,
-    travelTo, openWorldMap, closeWorldMap, useAnchor, roomState, TOWN, VILLAGE,
+    travelTo, openWorldMap, closeWorldMap, useAnchor, roomState, TOWN, VILLAGE, GROVE, HILL,
     ANCHORS, ANCHOR_STONES, startPouchQuest, pouchQuest, spawnTownNpcs, tryPouch,
+    refreshShoots, tryShoot, patches,
     OUTDOOR, outdoorMats, position: () => ({ x: player.x, z: player.z, map: roomState.name }),
     tpYaw: () => TP.yaw, tpDist: () => TP.dist, camPos: () => camTP.position, camOrtho: () => camera, camTP: () => camTP,
     qiyetTalk, qiyetWin, qiyetLose, Gomoku, lieDown, getUp, sleepPose,

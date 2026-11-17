@@ -958,6 +958,17 @@ export const VILLAGE = (() => {
   noWalk(22, 18, 5, 4);
   noWalk(61, 18, 5, 4);
 
+  // ---- 西口：土路往西北出村，去竹林水塘 ----
+  road(m, 3, 14, 14, 14, 1);
+  road(m, 14, 14, 14, 21, 1);
+  // spawn 是到了对面站在哪、朝哪边（heading：0 朝 +z，π/2 朝 +x）
+  mark(m, 2, 13, { kind: "gate", to: "grove", spawn: { tx: 58, tz: 33, heading: -Math.PI / 2 }, label: "去竹林水塘" });
+  mark(m, 2, 14, { kind: "gate", to: "grove", spawn: { tx: 58, tz: 33, heading: -Math.PI / 2 }, label: "去竹林水塘" });
+
+  // ---- 南口：主路往南出村，去南高草坡 ----
+  mark(m, 44, 64, { kind: "gate", to: "hill", spawn: { tx: 32, tz: 4, heading: 0 }, label: "去南高草坡" });
+  mark(m, 44, 65, { kind: "gate", to: "hill", spawn: { tx: 32, tz: 4, heading: 0 }, label: "去南高草坡" });
+
   // ---- 东边村口：土路接出去就是奶家镇 ----
   road(m, 82, 35, 86, 35, 1.4);
   // spawn 是到了对面站在哪、朝哪边（heading：0 朝 +z，π/2 朝 +x）
@@ -974,7 +985,7 @@ export const VILLAGE = (() => {
   mark(m, 63, 22, { kind: "door", to: "station", label: "进奶察局" });
 
   // ---- 招牌 ----
-  mark(m, 46, 40, { kind: "sign", text: "奶家村　·　往北是树林，往西是水塘" });
+  mark(m, 46, 40, { kind: "sign", text: "奶家村　·　西北出村是竹林水塘，往南是高草坡，往东是奶家镇" });
   // 井：站边上按 E 也能灌水壶
   mark(m, 45, 37, { kind: "well", label: "打水" });
   mark(m, 45, 36, { kind: "well", label: "打水" });
@@ -1078,6 +1089,94 @@ export const TOWN = (() => {
 
   // ---- 水面不能走 ----
   for (let i = 0; i < m.tiles.length; i++) if (m.tiles[i] === TI.WATER) m.solid[i] = 1;
+
+  // ---- 边界 ----
+  for (let tz = 0; tz < m.h; tz++)
+    for (let tx = 0; tx < m.w; tx++)
+      if (tx < 1 || tz < 1 || tx > m.w - 2 || tz > m.h - 2) setSolid(m, tx, tz, 1);
+
+  return m;
+})();
+
+/* =========================================================
+   竹林水塘：村西北门出去的一片竹林，西半边一汪水。
+   竹笋每天长几根，掐了能换钱；林子深处的草窠里有野怪。
+   ========================================================= */
+export const GROVE = (() => {
+  const m = makeMap(64, 64, "竹林水塘", -32, -32);
+  m.tiles.fill(TI.GRASS);
+
+  // ---- 水塘（西半边），岸边一圈沙 ----
+  fillEll(m, 19, 36, 8.6, 6.0, TI.WATER);
+  ring(m, 19, 36, 8.6, 6.0, TI.SAND);
+
+  // ---- 林子深处的高草（走进去会遇怪）----
+  fillEll(m, 30, 14, 7, 5, TI.WEED);
+  fillEll(m, 46, 48, 6.5, 5, TI.WEED);
+  fillEll(m, 12, 52, 5.5, 4, TI.WEED);
+
+  // ---- 林间空地（锚点立在这）----
+  fillEll(m, 40, 30, 6, 4.5, TI.STONE);
+
+  // ---- 路：东口进来的主路，一条接空地，一条往水塘东岸 ----
+  road(m, 61, 33, 45, 33, 1.3);
+  road(m, 45, 33, 41, 30, 1.1);
+  road(m, 45, 33, 30, 40, 1.1);
+  road(m, 30, 40, 28.5, 40, 1);     // 到岸边就停，别铺进水里
+
+  // ---- 传送锚点 ----
+  mark(m, 40, 30, { kind: "anchor", id: "grove", label: "传送锚点" });
+
+  // ---- 东口：回村 ----
+  mark(m, 61, 32, { kind: "gate", to: "village", spawn: { tx: 4, tz: 14, heading: Math.PI / 2 }, label: "回奶家村" });
+  mark(m, 61, 33, { kind: "gate", to: "village", spawn: { tx: 4, tz: 14, heading: Math.PI / 2 }, label: "回奶家村" });
+
+  // ---- 招牌 ----
+  mark(m, 57, 35, { kind: "sign", text: "竹林水塘　·　竹笋掐了能换钱，水边地滑当心" });
+
+  // ---- 水面不能走 ----
+  for (let i = 0; i < m.tiles.length; i++) if (m.tiles[i] === TI.WATER) m.solid[i] = 1;
+
+  // ---- 边界 ----
+  for (let tz = 0; tz < m.h; tz++)
+    for (let tx = 0; tx < m.w; tx++)
+      if (tx < 1 || tz < 1 || tx > m.w - 2 || tz > m.h - 2) setSolid(m, tx, tz, 1);
+
+  return m;
+})();
+
+/* =========================================================
+   南高草坡：村南门出去的野坡，草长得比人高。
+   深草区是野怪的老窝，坡顶石台上立着锚点，视野最好。
+   ========================================================= */
+export const HILL = (() => {
+  const m = makeMap(64, 64, "南高草坡", -32, -32);
+  m.tiles.fill(TI.GRASS);
+
+  // ---- 深草区（遇怪）----
+  fillEll(m, 32, 40, 13, 9.5, TI.WEED);
+  fillEll(m, 14, 26, 8, 6, TI.WEED);
+  fillEll(m, 48, 22, 7, 5.5, TI.WEED);
+
+  // ---- 坡顶石台（锚点）----
+  fillEll(m, 32, 12, 6.5, 5, TI.STONE);
+
+  // ---- 路：北口下来一条主路，直穿草坡到南边；岔一条往东坡 ----
+  road(m, 32, 2, 32, 56, 1.3);
+  road(m, 32, 56, 50, 50, 1);
+
+  // ---- 坡顶的野花，别让石台看着太秃 ----
+  fillEll(m, 24, 50, 5, 3.5, TI.FLOWER);
+
+  // ---- 传送锚点 ----
+  mark(m, 32, 12, { kind: "anchor", id: "hill", label: "传送锚点" });
+
+  // ---- 北口：回村 ----
+  mark(m, 31, 2, { kind: "gate", to: "village", spawn: { tx: 44, tz: 62, heading: Math.PI }, label: "回奶家村" });
+  mark(m, 32, 2, { kind: "gate", to: "village", spawn: { tx: 44, tz: 62, heading: Math.PI }, label: "回奶家村" });
+
+  // ---- 招牌 ----
+  mark(m, 34, 7, { kind: "sign", text: "南高草坡　·　草深没人，野怪出没，结伴再往深处走" });
 
   // ---- 边界 ----
   for (let tz = 0; tz < m.h; tz++)
@@ -1267,7 +1366,7 @@ export const ARCHIVE = (() => {
   return m;
 })();
 
-export const MAPS = { village: VILLAGE, town: TOWN, house: HOUSE, shop: SHOP, station: STATION, archive: ARCHIVE };
+export const MAPS = { village: VILLAGE, town: TOWN, grove: GROVE, hill: HILL, house: HOUSE, shop: SHOP, station: STATION, archive: ARCHIVE };
 
 /* =========================================================
    把地图画成 three 的贴图
