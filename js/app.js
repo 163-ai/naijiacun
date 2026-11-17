@@ -466,29 +466,117 @@
     boxReturnFocus = null;
   }
 
-  // ---------- 提名新人 ----------
+  // ---------- 提名新人（支持用户上传自己的图片） ----------
+  // 图片压缩：canvas 等比缩到 MAX 边、转 JPEG/WebP dataURL，避免撑爆 localStorage/KV。
+  // 返回 Promise<dataURL>；无图片时 resolve("")。
+  var NOM_IMG_MAX = 480;      // 最长边像素
+  var NOM_IMG_QUALITY = 0.82; // JPEG 质量
+  function compressImage(file) {
+    return new Promise(function (resolve, reject) {
+      if (!file || !/^image\//.test(file.type)) { resolve(""); return; }
+      var reader = new FileReader();
+      reader.onerror = function () { reject(new Error("读取图片失败")); };
+      reader.onload = function () {
+        var img = new Image();
+        img.onerror = function () { reject(new Error("图片解析失败")); };
+        img.onload = function () {
+          var w = img.naturalWidth, h = img.naturalHeight;
+          var scale = Math.min(1, NOM_IMG_MAX / Math.max(w, h));
+          var cw = Math.max(1, Math.round(w * scale));
+          var ch = Math.max(1, Math.round(h * scale));
+          var canvas = document.createElement("canvas");
+          canvas.width = cw; canvas.height = ch;
+          var ctx = canvas.getContext("2d");
+          // 透明底（PNG）铺白，避免 JPEG 把透明区压成黑块
+          ctx.fillStyle = "#ffffff";
+          ctx.fillRect(0, 0, cw, ch);
+          ctx.drawImage(img, 0, 0, cw, ch);
+          var type = "image/jpeg";
+          resolve(canvas.toDataURL(type, NOM_IMG_QUALITY));
+        };
+        img.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
   function setupAddForm() {
-    document.getElementById("addForm").addEventListener("submit", function (e) {
+    var form = document.getElementById("addForm");
+    if (!form) return;
+    var photoInput = document.getElementById("nomPhoto");
+    var photoPreview = document.getElementById("nomPhotoPreview");
+    var photoHint = document.getElementById("nomPhotoHint");
+    var photoRemove = document.getElementById("nomPhotoRemove");
+
+    // 当前待提交的压缩后图片 dataURL
+    var pendingImage = "";
+
+    function clearPhoto() {
+      pendingImage = "";
+      if (photoInput) photoInput.value = "";
+      if (photoPreview) photoPreview.classList.add("hidden");
+      if (photoHint) photoHint.classList.remove("hidden");
+      if (photoRemove) photoRemove.classList.add("hidden");
+    }
+
+    if (photoInput) {
+      photoInput.addEventListener("change", function () {
+        var file = photoInput.files && photoInput.files[0];
+        if (!file) { return; }
+        if (file.size > 12 * 1024 * 1024) {
+          showToast("图片太大了，请选 12MB 以内的图片");
+          photoInput.value = "";
+          return;
+        }
+        showToast("正在处理图片…");
+        compressImage(file).then(function (dataUrl) {
+          if (!dataUrl) { return; }
+          pendingImage = dataUrl;
+          if (photoPreview) {
+            photoPreview.src = dataUrl;
+            photoPreview.classList.remove("hidden");
+          }
+          if (photoHint) photoHint.classList.add("hidden");
+          if (photoRemove) photoRemove.classList.remove("hidden");
+        }).catch(function (err) {
+          showToast(err.message || "图片处理失败，换一张试试");
+        });
+      });
+    }
+    if (photoRemove) photoRemove.addEventListener("click", clearPhoto);
+
+    form.addEventListener("submit", function (e) {
       e.preventDefault();
-      var form = e.target;
       var name = form.name.value.trim();
       if (!name) return;
       var emoji = form.emoji.value.trim() || "🙂";
-      var person = {
-        name: name,
-        emoji: emoji,
-        category: form.category.value,
-        title: form.title.value.trim() || "新来的村民",
-        quote: form.quote.value.trim(),
-        desc: form.desc.value.trim() || "这位村民由观众提名，介绍待补充。"
-      };
 
       var api = (window.NAIJIACUN_CONFIG && window.NAIJIACUN_CONFIG.apiBase) || "";
       var submitBtn = form.querySelector("button[type='submit']");
       submitBtn.disabled = true;
 
+      function buildPerson() {
+        var p = {
+          name: name,
+          emoji: emoji,
+          category: form.category.value,
+          title: form.title.value.trim() || "新来的村民",
+          quote: form.quote.value.trim(),
+          desc: form.desc.value.trim() || "这位村民由观众提名，介绍待补充。"
+        };
+        if (pendingImage) p.image = pendingImage;
+        return p;
+      }
+
+      function resetForm() {
+        form.reset();
+        clearPhoto();
+        submitBtn.disabled = false;
+      }
+
       function finishLocal() {
         // 回退：网络提名不可用时存本机（仅提名者自己可见）
+        var person = buildPerson();
         var extra = getExtra();
         var local = {
           id: "local-" + Date.now(),
@@ -501,10 +589,10 @@
           desc: person.desc,
           tags: ["本地提名"]
         };
+        if (person.image) local.image = person.image;
         extra.push(local);
         writeJSON(EXTRA_KEY, extra);
-        form.reset();
-        submitBtn.disabled = false;
+        resetForm();
         closeModals();
         renderAll();
         openDetail(local.id);
@@ -513,6 +601,7 @@
 
       if (!api) { finishLocal(); return; }
 
+      var person = buildPerson();
       fetch(api.replace(/\/+$/, "") + "/api/nominate", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -522,9 +611,8 @@
           return { ok: res.ok, data: data };
         });
       }).then(function (r) {
-        submitBtn.disabled = false;
+        resetForm();
         if (r.ok && r.data && r.data.ok) {
-          form.reset();
           closeModals();
           showToast(r.data.detail || "提名已提交，等待管理员审核");
         } else {

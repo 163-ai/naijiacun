@@ -429,7 +429,40 @@ export function paintMap(m) {
   // 家具
   m.deco.forEach(d => drawDeco(g, d));
 
+  // 大尺度柔和明暗斑：模拟树荫和光照起伏，让整片地面不再是一个平色块
+  if (!m.indoor) ambientShade(g, m);
+
   return c;
+}
+
+// 在贴图上叠一层低频的明暗斑块（径向渐变叠加），营造室外的光照/树荫层次。
+// 只画在草/花/荒地这类自然地面上，路径和水面保持干净。
+function ambientShade(g, m) {
+  const R = rng(20261117);
+  g.save();
+  g.globalCompositeOperation = "multiply";
+  const step = PX * 3;
+  for (let tz = 0; tz < m.h; tz += 3) {
+    for (let tx = 0; tx < m.w; tx += 3) {
+      const t = m.tiles[tz * m.w + tx];
+      if (t !== TI.GRASS && t !== TI.FLOWER && t !== TI.WEED && t !== TI.WEED_EDGE) continue;
+      const cx = (tx + 1.5) * PX + (R() - .5) * PX;
+      const cy = (tz + 1.5) * PX + (R() - .5) * PX;
+      const rad = step * (.9 + R() * .9);
+      const dark = R() < .55;
+      const grad = g.createRadialGradient(cx, cy, 0, cx, cy, rad);
+      if (dark) {
+        grad.addColorStop(0, "rgba(150,168,130,.30)");
+        grad.addColorStop(1, "rgba(255,255,255,0)");
+      } else {
+        grad.addColorStop(0, "rgba(255,250,214,.18)");
+        grad.addColorStop(1, "rgba(255,255,255,0)");
+      }
+      g.fillStyle = grad;
+      g.fillRect(cx - rad, cy - rad, rad * 2, rad * 2);
+    }
+  }
+  g.restore();
 }
 
 const SOFT = new Set([TI.PATH, TI.STONE, TI.WATER, TI.FIELD, TI.WOOD, TI.RUG, TI.MAT, TI.SAND]);

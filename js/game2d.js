@@ -191,20 +191,125 @@ renderer.shadowMap.type = T.PCFSoftShadowMap;
 
 Fight.init(renderer);
 
+/* ---- 画面风格：几套滤镜 + 曝光，一键循环切换，存本地 ---- */
+const STYLES = [
+  // 国风：宣纸淡彩 + 青绿山水，配水墨远山 / 竹林 / 红灯笼 / 飞檐翘角
+  { id: "guofeng", name: "国风",   filter: "sepia(.2) saturate(.86) contrast(.95) brightness(1.03)", exp: 1.02 },
+  { id: "fresh",  name: "清新",   filter: "none",                                              exp: 1.00 },
+  { id: "warm",   name: "暖阳",   filter: "sepia(.18) saturate(1.16) brightness(1.03)",        exp: 1.03 },
+  { id: "dusk",   name: "黄昏",   filter: "sepia(.36) saturate(1.22) hue-rotate(-10deg) contrast(1.04)", exp: 1.00 },
+  { id: "mint",   name: "薄荷",   filter: "hue-rotate(22deg) saturate(.92) brightness(1.05)",  exp: 1.02 },
+  { id: "retro",  name: "复古",   filter: "sepia(.3) saturate(.8) contrast(1.06) brightness(.98)", exp: 1.00 }
+];
+let guofengGroup = null;          // 国风装饰组（竹林 / 红灯笼），场景搭好后再填充
+const guofengEaves = [];          // 房子飞檐翘角，随主题显隐
+const themeTints = [];            // 随主题换色的材质 { mat, base, guofeng }
+const STYLE_KEY = "naijiacun_game_style_v2";   // 换 key：让所有人默认进入国风
+let styleIdx = 0;
+try {
+  const savedStyle = localStorage.getItem(STYLE_KEY);
+  const at = STYLES.findIndex(s => s.id === savedStyle);
+  if (at >= 0) styleIdx = at;
+} catch (e) {}
+const STYLE_STATE = { exp: STYLES[styleIdx].exp };
+function applyStyle() {
+  const s = STYLES[styleIdx];
+  canvas.style.filter = s.filter;
+  STYLE_STATE.exp = s.exp;
+  const guo = s.id === "guofeng";
+  if (guofengGroup) guofengGroup.visible = guo;
+  for (const e of guofengEaves) e.visible = guo;
+  for (const t of themeTints) t.mat.color.copy(guo ? t.guofeng : t.base);
+  // 国风用整屏水墨远山背景；其它风格恢复纯色天空
+  if (guo) {
+    scene.background = makeGuofengBackground();
+  } else {
+    scene.background = new T.Color(SKY);
+  }
+  if (lastLightO) setLight(lastLightO); // 让曝光 / 主题色调立即生效
+  try { localStorage.setItem(STYLE_KEY, s.id); } catch (e) {}
+}
+// 初始套用（在 canvas 存在后立即生效）；背景/主题色在 boot() 里 applyStyle 统一设置
+canvas.style.filter = STYLES[styleIdx].filter;
+
 const SKY = 0xdcefe4;
 const scene = new T.Scene();
 scene.background = new T.Color(SKY);
+// 远景线性雾：正交相机下玩家脚下距相机约 60（=VIEW.dist），
+// 所以雾从 62 才开始、到 86 结束——近景和角色完全清晰，只有画面上方最远处柔化融进天空。
+// 颜色随昼夜在 setLight 里同步。
+const FOG_COLOR = new T.Color(SKY);
+scene.fog = new T.Fog(FOG_COLOR, 72, 105);
+
+/* ---- 国风主题：宣纸天空 + 青绿远山背景 + 调色 ---- */
+const GUOFENG = {
+  paper: new T.Color(0xeef1e8),
+  fog: new T.Color(0xe0e9e2),
+  ink: new T.Color(0x909d97),   // 夜里雾转淡墨，而不是深蓝，保住水墨味
+  sun: new T.Color(0xfff6e2)
+};
+function isGuofeng() { return STYLES[styleIdx].id === "guofeng"; }
+
+// 把宣纸底色和几层青绿水墨远山画成一张背景图，作为整屏天空。
+// 用 scene.background 承载：永远在最后面，不受雾和相机角度影响，绝不穿帮。
+let guofengBg = null;
+function makeGuofengBackground() {
+  if (guofengBg) return guofengBg;
+  const c = document.createElement("canvas");
+  c.width = 1024; c.height = 512;
+  const g = c.getContext("2d");
+  const sky = g.createLinearGradient(0, 0, 0, 512);
+  sky.addColorStop(0, "#f5f5ec");
+  sky.addColorStop(.55, "#eaf0e8");
+  sky.addColorStop(1, "#dbe7df");
+  g.fillStyle = sky; g.fillRect(0, 0, 1024, 512);
+  // 一轮淡墨太阳
+  const sun = g.createRadialGradient(770, 120, 8, 770, 120, 96);
+  sun.addColorStop(0, "rgba(255,246,220,.9)");
+  sun.addColorStop(1, "rgba(255,246,220,0)");
+  g.fillStyle = sun; g.fillRect(650, 0, 250, 250);
+  // 三层远山：越远越淡，越近越青
+  const rnd = mulberry(20241117);
+  const layers = [
+    { base: 300, amp: 66, color: "rgba(163,182,177,.34)", k: 3 },
+    { base: 354, amp: 84, color: "rgba(120,148,143,.42)", k: 7 },
+    { base: 416, amp: 64, color: "rgba(86,116,112,.5)",  k: 11 }
+  ];
+  for (const L of layers) {
+    g.beginPath(); g.moveTo(0, 512); g.lineTo(0, L.base);
+    for (let x = 0; x <= 1024; x += 24) {
+      const y = L.base
+        - Math.sin(x * .010 + L.k) * L.amp * .62
+        - Math.sin(x * .026 + L.k * 2) * L.amp * .28
+        - rnd() * L.amp * .16;
+      g.lineTo(x, y);
+    }
+    g.lineTo(1024, 512); g.closePath();
+    g.fillStyle = L.color; g.fill();
+  }
+  // 几缕横向淡云
+  g.fillStyle = "rgba(255,255,255,.32)";
+  [[120, 96, 210, 9], [430, 70, 160, 7], [690, 168, 250, 8], [300, 150, 130, 6]]
+    .forEach(([x, y, w, h]) => { g.beginPath(); g.ellipse(x, y, w / 2, h / 2, 0, 0, 6.283); g.fill(); });
+  const tex = new T.CanvasTexture(c);
+  tex.colorSpace = T.SRGBColorSpace;
+  guofengBg = tex;
+  return tex;
+}
 
 const camera = new T.OrthographicCamera(-10, 10, 10, -10, .1, 200);
 
-const hemi = new T.HemisphereLight(0xffffff, 0xcbb894, 2.1);
+// 半球光：天空暖白、地面反射偏暖褐；柔和不刺眼
+const hemi = new T.HemisphereLight(0xfff6e8, 0xb9a481, 2.1);
 scene.add(hemi);
-const sun = new T.DirectionalLight(0xfff4e4, 2.2);
+// 太阳光偏暖金，斜俯角下投射更长的影子，立体感更强
+const sun = new T.DirectionalLight(0xffe9c8, 2.3);
 sun.position.set(12, 20, 8);
 sun.castShadow = true;
-sun.shadow.mapSize.set(1024, 1024);
+sun.shadow.mapSize.set(2048, 2048);
 const sc = sun.shadow.camera;
-sc.left = -14; sc.right = 14; sc.top = 14; sc.bottom = -14; sc.near = 1; sc.far = 60;
+// 斜俯角下地面可见纵深更长，阴影范围跟着放大，边缘才不会出现阴影断层
+sc.left = -20; sc.right = 20; sc.top = 20; sc.bottom = -20; sc.near = 1; sc.far = 70;
 sun.shadow.bias = -.0014;
 sun.shadow.normalBias = .02;
 scene.add(sun);
@@ -330,10 +435,18 @@ scene.add(cursor);
 /* =========================================================
    道具：树 / 房 / 石 / 篱笆
    ========================================================= */
-const trunkMat = new T.MeshStandardMaterial({ color: 0x8d6743, roughness: 1 });
-const leafMatA = new T.MeshStandardMaterial({ color: 0x5c9a62, roughness: .95, flatShading: true });
-const leafMatB = new T.MeshStandardMaterial({ color: 0x4b8654, roughness: .95, flatShading: true });
-const leafMatC = new T.MeshStandardMaterial({ color: 0x76ad6c, roughness: .95, flatShading: true });
+const trunkMat = new T.MeshStandardMaterial({ color: 0x7d5a3c, roughness: 1 });
+// 明暗两套叶色交错堆叠，低多边形也能有星露谷那种蓬松的层次感
+const leafMatA = new T.MeshStandardMaterial({ color: 0x6fae66, roughness: .92, flatShading: true });
+const leafMatB = new T.MeshStandardMaterial({ color: 0x4e8f57, roughness: .94, flatShading: true });
+const leafMatC = new T.MeshStandardMaterial({ color: 0x8cc274, roughness: .9, flatShading: true });
+const leafDark = new T.MeshStandardMaterial({ color: 0x3d7349, roughness: 1, flatShading: true });
+// 几种树冠几何体复用，避免每棵树都新建导致显存暴涨
+const CANOPY_GEOS = [
+  new T.IcosahedronGeometry(1, 1),
+  new T.IcosahedronGeometry(.72, 1),
+  new T.IcosahedronGeometry(.5, 0)
+];
 
 const treeGroup = new T.Group();
 world.add(treeGroup);
@@ -347,23 +460,35 @@ function treeTooClose(x, z, d = 2.1) {
 function addTree(x, z, scale = 1) {
   const r = mulberry(Math.round((x + 100) * 37 + (z + 100) * 91));
   const g = new T.Group();
-  const trunk = new T.Mesh(new T.CylinderGeometry(.18, .26, .9, 6), trunkMat);
-  trunk.position.y = .45; trunk.castShadow = true;
+  // 树干：略带锥度、八面、稍微倾斜，比笔直圆柱自然
+  const trunk = new T.Mesh(new T.CylinderGeometry(.16, .28, 1.05, 8), trunkMat);
+  trunk.position.y = .52; trunk.rotation.z = (r() - .5) * .09; trunk.castShadow = true;
   g.add(trunk);
-  const canopyMat = [leafMatA, leafMatB, leafMatC][Math.floor(r() * 3)];
-  const c1 = new T.Mesh(new T.IcosahedronGeometry(.86, 0), canopyMat);
-  c1.position.set(0, 1.25, 0); c1.castShadow = true;
-  c1.rotation.set(r() * 3, r() * 3, r() * 3);
-  g.add(c1);
-  const c2 = new T.Mesh(new T.IcosahedronGeometry(.58, 0), canopyMat);
-  c2.position.set(.3, 1.82, -.2); c2.castShadow = true;
-  c2.rotation.set(r() * 3, r() * 3, r() * 3);
-  g.add(c2);
-  // 第三团，让树冠不是一个规矩的球
-  const c3 = new T.Mesh(new T.IcosahedronGeometry(.44, 0), canopyMat);
-  c3.position.set(-.42, 1.55, .28); c3.castShadow = true;
-  c3.rotation.set(r() * 3, r() * 3, r() * 3);
-  g.add(c3);
+
+  const species = [
+    [leafMatA, leafMatB, leafMatC],  // 明亮阔叶
+    [leafMatB, leafDark, leafMatA],  // 深绿
+    [leafMatC, leafMatA, leafMatB]   // 嫩绿
+  ][Math.floor(r() * 3)];
+  // 内层暗团垫底，外层几团明暗交错 → 有体积而不是几个纯色球
+  const inner = new T.Mesh(CANOPY_GEOS[0], leafDark);
+  inner.position.set(0, 1.42, 0); inner.scale.setScalar(.82); inner.castShadow = true;
+  g.add(inner);
+  const lobes = [
+    [0, 1.72, 0, 1.0, 0],
+    [-.52, 1.48, .18, .68, 1],
+    [.5, 1.55, -.14, .72, 2],
+    [.12, 2.16, .1, .62, 2],
+    [-.2, 1.85, -.5, .6, 1]
+  ];
+  lobes.forEach(([lx, ly, lz, s, gi]) => {
+    const m = new T.Mesh(CANOPY_GEOS[gi], species[Math.floor(r() * 3)]);
+    m.position.set(lx, ly, lz);
+    m.scale.setScalar(s * (.85 + r() * .3));
+    m.rotation.set(r() * 4, r() * 4, r() * 4);
+    m.castShadow = true;
+    g.add(m);
+  });
   g.position.set(x, 0, z);
   g.scale.setScalar(scale * (.72 + r() * .26));
   g.rotation.y = r() * 6.283;
@@ -430,70 +555,148 @@ function roofTex() {
   return t;
 }
 
+// 房子用的共享材质/几何体（4 栋复用，避免每栋新建一堆）
+const houseMats = {
+  skirt: new T.MeshStandardMaterial({ color: 0x9c7f57, roughness: .95 }),
+  beam: new T.MeshStandardMaterial({ color: 0x7d5c3a, roughness: .95 }),
+  frame: new T.MeshStandardMaterial({ color: 0xf3e8ce, roughness: .95 }),
+  door: new T.MeshStandardMaterial({ color: 0x8d6a44, roughness: .85 }),
+  knob: new T.MeshStandardMaterial({ color: 0xe0b25c, roughness: .4, metalness: .5 }),
+  glass: new T.MeshStandardMaterial({ color: 0xf7eec4, roughness: .3, emissive: 0x2a2412 }),
+  eave: new T.MeshStandardMaterial({ color: 0xcdbfa4, roughness: .95 }),
+  step: new T.MeshStandardMaterial({ color: 0xd9cdb4, roughness: 1 }),
+  chimney: new T.MeshStandardMaterial({ color: 0xa8674c, roughness: .95 }),
+  sill: new T.MeshStandardMaterial({ color: 0xe4d7b8, roughness: .95 })
+};
+
 function addHouse(x, z, w, d, bodyColor, roofColor, rot = 0) {
   const g = new T.Group();
   const H = 2.0;                       // 墙高：俯视时刚好能露出正面
+  const M = houseMats;
+  const box = (geo, mat, px, py, pz, shadow) => {
+    const m = new T.Mesh(geo, mat);
+    m.position.set(px, py, pz);
+    if (shadow) { m.castShadow = true; m.receiveShadow = true; }
+    g.add(m); return m;
+  };
 
-  const body = new T.Mesh(new T.BoxGeometry(w, H, d),
-    new T.MeshStandardMaterial({ color: bodyColor, roughness: .92 }));
-  body.position.y = H / 2;
-  body.castShadow = true; body.receiveShadow = true;
-  g.add(body);
+  // 主墙体（国风时转粉墙）
+  const bodyMat = new T.MeshStandardMaterial({ color: bodyColor, roughness: .92 });
+  themeTints.push({ mat: bodyMat, base: new T.Color(bodyColor), guofeng: new T.Color(0xf3efe2) });
+  box(new T.BoxGeometry(w, H, d), bodyMat, 0, H / 2, 0, true);
 
-  // 矮坡屋顶。原来那个又高又尖，俯视下整栋房子只剩一个红三角，
-  // 门和窗全被屋檐盖住——压到 1.1 高、和墙体同宽，才看得见墙
-  const rad = Math.max(w, d) / Math.SQRT2;
-  const roof = new T.Mesh(new T.ConeGeometry(rad, .9, 4),
-    new T.MeshStandardMaterial({ color: roofColor, roughness: .9, flatShading: true, map: roofTex() }));
-  roof.rotation.y = Math.PI / 4;
-  roof.scale.set(w / Math.max(w, d), 1, d / Math.max(w, d));
-  roof.position.y = H + .45;
-  roof.castShadow = true;
-  g.add(roof);
+  // 墙裙：下半截深色木护墙，上半截浅墙，横向分层不再是一整块色
+  const skirtH = .52;
+  box(new T.BoxGeometry(w + .04, skirtH, d + .04), M.skirt, 0, skirtH / 2, 0, true);
+  // 墙裙顶沿的一圈压条
+  box(new T.BoxGeometry(w + .08, .07, d + .08), M.beam, 0, skirtH, 0, false);
 
-  // 屋脊压条：让屋顶不要像块塑料片
-  const ridge = new T.Mesh(new T.BoxGeometry(w * .96, .09, d * .1),
-    new T.MeshStandardMaterial({ color: roofColor, roughness: .9 }));
-  ridge.position.y = H + .88;
-  g.add(ridge);
+  // 四角木柱：让墙角有结构感
+  const cx = w / 2 - .09, cz = d / 2 - .09;
+  [[-cx, -cz], [cx, -cz], [-cx, cz], [cx, cz]].forEach(([bx, bz]) => {
+    box(new T.BoxGeometry(.17, H, .17), M.beam, bx, H / 2, bz, true);
+  });
 
-  // 屋檐：一圈薄板，屋顶和墙之间不要是硬切的
-  const eave = new T.Mesh(new T.BoxGeometry(w * .99, .09, d * .99),
-    new T.MeshStandardMaterial({ color: 0xcdbfa4, roughness: .95 }));
-  eave.position.y = H;
-  eave.castShadow = true;
-  g.add(eave);
+  // 人字双坡屋顶：两片斜板沿屋脊对称。比四棱锥自然，瓦纹顺坡面铺不会扭。
+  const roofH = .82;                          // 屋顶高度
+  const overhang = .18;                       // 出檐
+  const slopeLen = Math.hypot(d / 2 + overhang, roofH); // 斜板长度（沿 d 方向倾斜）
+  const tilt = Math.atan2(roofH, d / 2 + overhang);      // 倾角
+  const roofMat = new T.MeshStandardMaterial({ color: roofColor, roughness: .9, flatShading: true });
+  // 黛瓦：国风时屋顶转青灰瓦色（保留瓦纹贴图）
+  const tileColor = new T.Color(roofColor);
+  const tileGuo = new T.Color(0x4a5c5b);
+  [-1, 1].forEach(side => {
+    const tex = roofTex().clone();
+    tex.needsUpdate = true;
+    tex.repeat.set(Math.max(1, Math.round(w / 1.5)), 2);
+    const slopeMat = new T.MeshStandardMaterial({ color: roofColor, roughness: .9, map: tex });
+    themeTints.push({ mat: slopeMat, base: tileColor, guofeng: tileGuo });
+    const slab = new T.Mesh(
+      new T.BoxGeometry(w + overhang * 2, .1, slopeLen),
+      slopeMat
+    );
+    // 板子绕 X 轴倾斜，两片在屋脊交汇、檐口下垂
+    slab.rotation.x = side * tilt;
+    slab.position.set(0, H + roofH / 2 + .05, side * (d / 4 + overhang / 2));
+    slab.castShadow = true; slab.receiveShadow = true;
+    g.add(slab);
+  });
+  // 山墙三角：填住两端屋顶和墙之间的空三角，不然会漏空
+  const gableShape = new T.Shape();
+  gableShape.moveTo(-d / 2, 0);
+  gableShape.lineTo(d / 2, 0);
+  gableShape.lineTo(0, roofH);
+  gableShape.closePath();
+  const gableGeo = new T.ExtrudeGeometry(gableShape, { depth: .1, bevelEnabled: false });
+  const gableMat = new T.MeshStandardMaterial({ color: bodyColor, roughness: .92 });
+  themeTints.push({ mat: gableMat, base: new T.Color(bodyColor), guofeng: new T.Color(0xf3efe2) });
+  themeTints.push({ mat: roofMat, base: new T.Color(roofColor), guofeng: tileGuo });
+  [-1, 1].forEach(side => {
+    const gable = new T.Mesh(gableGeo, gableMat);
+    gable.rotation.y = Math.PI / 2;
+    gable.position.set(side * (w / 2 - .05), H, 0);
+    gable.castShadow = true;
+    g.add(gable);
+  });
+
+  // 屋脊压条
+  box(new T.BoxGeometry(w + overhang * 2, .12, .16), roofMat, 0, H + roofH + .06, 0, false);
+
+  // 国风飞檐：屋脊两端各一个上翘的檐角（青瓦色），平时藏起来
+  const eaveMat = new T.MeshStandardMaterial({ color: 0x405453, roughness: .85, flatShading: true });
+  [-1, 1].forEach(side => {
+    const horn = new T.Mesh(new T.ConeGeometry(.15, .5, 4), eaveMat);
+    horn.rotation.set(0, Math.PI / 4, side * .62);
+    horn.position.set(side * (w / 2 + overhang - .02), H + roofH + .2, 0);
+    horn.castShadow = true;
+    horn.visible = isGuofeng();
+    g.add(horn);
+    guofengEaves.push(horn);
+    // 脊端小兽（宝珠）：檐角顶一颗
+    const bead = new T.Mesh(new T.SphereGeometry(.1, 8, 6), M.knob);
+    bead.position.set(side * (w / 2 + overhang + .07), H + roofH + .38, 0);
+    bead.visible = isGuofeng();
+    g.add(bead);
+    guofengEaves.push(bead);
+  });
+
+  // 屋檐：一圈薄板
+  box(new T.BoxGeometry(w * 1.02, .1, d * 1.02), M.eave, 0, H, 0, true);
+  // 檐下横梁，增加阴影层次
+  box(new T.BoxGeometry(w * .9, .08, .08), M.beam, 0, H - .12, d / 2 - .04, false);
+
+  // 烟囱（偏屋顶一侧）
+  const chim = box(new T.BoxGeometry(.42, .78, .42), M.chimney,
+    -w * .26, H + .82, -d * .16, true);
+  box(new T.BoxGeometry(.52, .1, .52), M.sill, -w * .26, H + 1.22, -d * .16, false);
 
   // 门（正面，朝 +z）
-  const door = new T.Mesh(new T.BoxGeometry(.82, 1.32, .09),
-    new T.MeshStandardMaterial({ color: 0x8d6a44, roughness: .88 }));
-  door.position.set(0, .66, d / 2 + .06);
-  g.add(door);
-  // 门框：比门浅一圈，在阴影里也能看出这是个门
-  const frame = new T.Mesh(new T.BoxGeometry(1.06, 1.5, .05),
-    new T.MeshStandardMaterial({ color: 0xf3e8ce, roughness: .95 }));
-  frame.position.set(0, .75, d / 2 + .02);
-  g.add(frame);
+  box(new T.BoxGeometry(.82, 1.34, .09), M.door, 0, .69, d / 2 + .06, false);
+  // 门框
+  box(new T.BoxGeometry(1.08, 1.52, .05), M.frame, 0, .76, d / 2 + .02, false);
+  // 门楣雨棚
+  const canopy = box(new T.BoxGeometry(1.32, .1, .5),
+    new T.MeshStandardMaterial({ color: roofColor, roughness: .9 }), 0, 1.58, d / 2 + .22, true);
+  canopy.rotation.x = -.12;
   // 门把手
-  const knob = new T.Mesh(new T.SphereGeometry(.06, 8, 6),
-    new T.MeshStandardMaterial({ color: 0xe0b25c, roughness: .4, metalness: .5 }));
+  const knob = new T.Mesh(new T.SphereGeometry(.06, 8, 6), M.knob);
   knob.position.set(.28, .72, d / 2 + .12);
   g.add(knob);
 
-  // 窗
-  const winMat = new T.MeshStandardMaterial({ color: 0xf7eec4, roughness: .35, emissive: 0x0 });
-  [[-w / 2 + .95, d / 2 + .03], [w / 2 - .95, d / 2 + .03]].forEach(([wx, wz]) => {
-    const win = new T.Mesh(new T.BoxGeometry(.66, .62, .07), winMat);
-    win.position.set(wx, 1.34, wz);
-    g.add(win);
+  // 窗：左右各一，带窗框、十字格、窗台
+  const winX = w / 2 - .95;
+  [-winX, winX].forEach(wx => {
+    const wz = d / 2 + .035;
+    box(new T.BoxGeometry(.74, .7, .06), M.frame, wx, 1.36, wz, false);       // 外框
+    box(new T.BoxGeometry(.6, .56, .07), M.glass, wx, 1.36, wz + .02, false);  // 玻璃
+    box(new T.BoxGeometry(.62, .05, .09), M.frame, wx, 1.36, wz + .04, false); // 十字横
+    box(new T.BoxGeometry(.05, .58, .09), M.frame, wx, 1.36, wz + .04, false); // 十字竖
+    box(new T.BoxGeometry(.82, .08, .22), M.sill, wx, 1.0, wz + .08, false);   // 窗台
   });
 
-  // 门前台阶：一格宽，踩上去就知道是门
-  const step = new T.Mesh(new T.BoxGeometry(1.1, .12, .7),
-    new T.MeshStandardMaterial({ color: 0xd9cdb4, roughness: 1 }));
-  step.position.set(0, .06, d / 2 + .42);
-  step.receiveShadow = true;
-  g.add(step);
+  // 门前台阶：一格宽
+  box(new T.BoxGeometry(1.1, .12, .7), M.step, 0, .06, d / 2 + .42, true);
 
   g.position.set(x, 0, z);
   g.rotation.y = rot;
@@ -595,6 +798,80 @@ function addLamp(x, z) {
   markRect(x, z, 1, 1, 1);
 }
 
+/* ---- 国风装饰：竹林 / 红灯笼（只在国风显示，不占格子不挡路）---- */
+const bambooStalkMat = new T.MeshStandardMaterial({ color: 0x6f9b57, roughness: .9, flatShading: true });
+const bambooJointMat = new T.MeshStandardMaterial({ color: 0x4f7a3c, roughness: .95 });
+const bambooLeafMat = new T.MeshStandardMaterial({ color: 0x4e8a4a, roughness: .9, side: T.DoubleSide });
+const lanternPaperMat = new T.MeshStandardMaterial({ color: 0xd8433a, roughness: .7, emissive: 0x521814 });
+const lanternCapMat = new T.MeshStandardMaterial({ color: 0xe0b25c, roughness: .7, metalness: .25 });
+
+function addBamboo(x, z, r) {
+  const g = new T.Group();
+  const n = 3 + Math.floor(r() * 3);
+  for (let i = 0; i < n; i++) {
+    const h = 2.6 + r() * 1.5;
+    const bx = (r() - .5) * .8, bz = (r() - .5) * .8;
+    const stalk = new T.Mesh(new T.CylinderGeometry(.055, .075, h, 6), bambooStalkMat);
+    stalk.position.set(bx, h / 2, bz);
+    stalk.rotation.z = (r() - .5) * .12;
+    stalk.castShadow = true;
+    g.add(stalk);
+    // 竹节
+    for (let y = .6; y < h; y += .6) {
+      const joint = new T.Mesh(new T.CylinderGeometry(.082, .082, .05, 6), bambooJointMat);
+      joint.position.set(bx, y, bz);
+      g.add(joint);
+    }
+    // 竹叶：顶端几片细长叶子
+    for (let k = 0; k < 5; k++) {
+      const leaf = new T.Mesh(new T.SphereGeometry(1, 5, 4), bambooLeafMat);
+      leaf.scale.set(.42, .03, .13);
+      leaf.position.set(bx + (r() - .5) * .7, h - .35 + r() * .55, bz + (r() - .5) * .7);
+      leaf.rotation.set((r() - .5) * .5, r() * 6.283, (r() - .5) * .8);
+      leaf.castShadow = true;
+      g.add(leaf);
+    }
+  }
+  g.position.set(x, 0, z);
+  guofengGroup.add(g);
+}
+
+function addRedLantern(x, z, hangY = 2.5) {
+  const g = new T.Group();
+  const cord = new T.Mesh(new T.CylinderGeometry(.02, .02, .5, 5), lanternCapMat);
+  cord.position.y = hangY + .28;
+  g.add(cord);
+  const body = new T.Mesh(new T.SphereGeometry(.26, 12, 9), lanternPaperMat);
+  body.scale.set(1, 1.18, 1);
+  body.position.y = hangY;
+  body.castShadow = true;
+  g.add(body);
+  // 上下铜盖
+  [hangY + .31, hangY - .31].forEach(y => {
+    const cap = new T.Mesh(new T.CylinderGeometry(.12, .12, .09, 8), lanternCapMat);
+    cap.position.y = y;
+    g.add(cap);
+  });
+  // 流苏
+  const tassel = new T.Mesh(new T.CylinderGeometry(.02, .05, .26, 6), lanternPaperMat);
+  tassel.position.y = hangY - .48;
+  g.add(tassel);
+  g.position.set(x, 0, z);
+  guofengGroup.add(g);
+}
+
+function buildGuofengDecor() {
+  const r = mulberry(7788);
+  // 竹林：村北与外圈的几丛，避开路和房子
+  [[-30, -24], [-26, -28], [30, -26], [36, -22], [-38, 8], [40, 16],
+   [-34, 30], [34, 34], [-16, -30], [18, -30], [46, 40], [-42, -6]]
+    .forEach(([x, z]) => { if (freeSpot(x, z, .9)) addBamboo(x, z, r); });
+  // 红灯笼：挂在广场、路口、房前
+  [[3.2, 7.6], [-3.2, 7.6], [3.2, -6.2], [-3.2, -6.2],
+   [11.2, 5], [18, 11], [-7.5, 22.4], [15.5, 20.4], [1.4, 26]]
+    .forEach(([x, z]) => addRedLantern(x, z));
+}
+
 function addFlowerBed(x, z, w = 2, d = 1) {
   const g = new T.Group();
   const box = new T.Mesh(new T.BoxGeometry(w, .32, d),
@@ -617,6 +894,29 @@ function addFlowerBed(x, z, w = 2, d = 1) {
   g.position.set(x, 0, z);
   world.add(g);
   markRect(x, z, w, d, 1);
+}
+
+/* ---------- 野生小花 / 草簇：轻量装饰，不阻挡行走 ---------- */
+const wildGeo = new T.IcosahedronGeometry(.075, 0);
+const wildStem = new T.CylinderGeometry(.012, .012, .22, 4);
+const wildStemMat = new T.MeshStandardMaterial({ color: 0x5f9a55, roughness: 1 });
+const wildCols = [0xffd7e6, 0xfff1b8, 0xe4d4ff, 0xffc7a8, 0xffffff, 0xbfe4ff].map(
+  c => new T.MeshStandardMaterial({ color: c, roughness: .85, emissive: new T.Color(c).multiplyScalar(.08) })
+);
+function addWildFlowers(x, z, r) {
+  const g = new T.Group();
+  for (let i = 0; i < 5; i++) {
+    const fx = (r() - .5) * .9, fz = (r() - .5) * .9;
+    const stem = new T.Mesh(wildStem, wildStemMat);
+    stem.position.set(fx, .11, fz);
+    g.add(stem);
+    const f = new T.Mesh(wildGeo, wildCols[Math.floor(r() * wildCols.length)]);
+    f.position.set(fx, .25, fz);
+    f.scale.setScalar(.8 + r() * .7);
+    g.add(f);
+  }
+  g.position.set(x, 0, z);
+  world.add(g);
 }
 
 /* ---------- 公园：石桌 + 棋盘面 ---------- */
@@ -890,6 +1190,11 @@ function freeSpot(x, z, m = .7) {
 function buildProps() {
   const r = mulberry(99);
 
+  // 国风装饰组：挂在 world 下，进屋时会跟着一起隐藏
+  guofengGroup = new T.Group();
+  guofengGroup.visible = isGuofeng();
+  world.add(guofengGroup);
+
   // ---- 外圈的树林（把地图围起来，别让人走没影）----
   for (let i = 0; i < 210; i++) {
     const a = r() * 6.283;
@@ -971,6 +1276,16 @@ function buildProps() {
   // ---- 农场里的稻草人 ----
   addScarecrow(PLOT.x0 + PLOT.cols - 1.5, PLOT.z0 + 1.4);
 
+  // ---- 野生花草点缀：沿树林和草地散布，纯装饰不挡路 ----
+  for (let i = 0; i < 120; i++) {
+    const x = (r() - .5) * (W - 6), z = (r() - .5) * (H - 6);
+    const t = toTile(VILLAGE, x, z);
+    // 只长在草地/花地上，避开水、路、房子和树荫正下方
+    if (t !== TI.GRASS && t !== TI.FLOWER) continue;
+    if (!freeSpot(x, z, .5) || treeTooClose(x, z, 1.0)) continue;
+    addWildFlowers(x, z, r);
+  }
+
   // ---- 高草区（走进去会遇怪）----
   [
     { x: 12, z: -20, r: 6.5, zone: "meadow" },
@@ -993,6 +1308,9 @@ function buildProps() {
   addPlaceLabel(-25.4, 21.6, "我的地", 2.2);
   addPlaceLabel(24, 21.4, "花田", 2.0);
   addPlaceLabel(3.0, -16.6, "村北树林", 2.6);
+
+  // ---- 国风装饰（竹林 / 红灯笼），最后加，不影响上面的占地判断 ----
+  buildGuofengDecor();
 }
 
 /* =========================================================
@@ -1222,8 +1540,11 @@ playerObj.position.set(player.x, 0, player.z);
 
 /* =========================================================
    相机（固定俯角，不旋转 → 键位永远对应屏幕方向）
+   elev 是视线与水平面的夹角：原来 1.15≈66° 接近顶视，画面偏扁；
+   改成 0.62≈35° 的斜俯视（饥荒式），能看到角色/树/房子的正面和立体感。
+   相机仍只在 +Z 方向偏移、X 不偏 → 屏幕「上」=世界北，WASD 手感不变。
    ========================================================= */
-const VIEW = { h: 12.5, dist: 60, elev: 1.15 };
+const VIEW = { h: 13.2, dist: 60, elev: 0.82 };
 let viewH = VIEW.h, viewW = VIEW.h * 1.6;
 
 function resize() {
@@ -1260,7 +1581,10 @@ function shake(power = .5, dur = .35) {
   camShakeT = Math.max(camShakeT, dur);
 }
 
-function updateCamera() {
+// 相机平滑跟随：镜头不再每帧瞬移到玩家脚下，而是缓缓追上去。
+// 这是斜俯角游戏防晕的关键——画面平移有了缓冲，不再随每一步硬跳。
+const camSmooth = { x: null, z: null };
+function updateCamera(snap) {
   let px = player.x, pz = player.z;
   // 屋里放得下整间，就把镜头钉在屋子中间：屋子像一间布景，人在里面走
   if (MAP && MAP.indoor && MAP.room) {
@@ -1270,16 +1594,29 @@ function updateCamera() {
       pz = MAP.oz + R.z0 + R.h / 2;
     }
   }
+  // 首次、传送、切场景时直接归位；平时每帧向目标插值靠近
+  if (snap || camSmooth.x === null) {
+    camSmooth.x = px; camSmooth.z = pz;
+  } else {
+    const follow = .12; // 每帧追近 12%，约 0.25 秒跟上，平滑但不拖沓
+    camSmooth.x += (px - camSmooth.x) * follow;
+    camSmooth.z += (pz - camSmooth.z) * follow;
+  }
+  const cx = camSmooth.x, cz = camSmooth.z;
   const y = Math.sin(VIEW.elev) * VIEW.dist;
   const z = Math.cos(VIEW.elev) * VIEW.dist;
-  camera.position.set(px, y, pz + z);
+  // 斜俯角时把注视点略微抬高、相机目标往角色前方偏一点，
+  // 让地平线落在画面上方而不是正中，角色周围留出更多可走的地面。
+  const lookY = .9;
+  const aheadZ = cz - 1.2;
+  camera.position.set(cx, y + lookY, cz + z);
   if (camShake > 0) {
     const k = camShake * .55;
     camera.position.x += (Math.random() - .5) * k;
     camera.position.y += (Math.random() - .5) * k;
     camera.position.z += (Math.random() - .5) * k * .5;
   }
-  camera.lookAt(px, 0, pz);
+  camera.lookAt(cx, lookY, aheadZ);
   sun.position.set(player.x + 12, 20, player.z + 8);
   sun.target.position.set(player.x, 0, player.z);
 }
@@ -2325,7 +2662,7 @@ function enterRoom(to) {
   playerObj.rotation.y = Math.PI;
   cursor.visible = false;
   resize();
-  updateCamera();
+  updateCamera(true);
   blip(560, .1, "sine", .04);
   toast("进了" + map.name);
   if (!state.seenRoom) state.seenRoom = {};
@@ -2350,7 +2687,7 @@ function leaveRoom() {
   playerObj.position.set(player.x, 0, player.z);
   playerObj.rotation.y = 0;
   resize();
-  updateCamera();
+  updateCamera(true);
   blip(520, .1, "sine", .035);
   hudTick();
 }
@@ -2704,6 +3041,15 @@ function toggleSound() {
 }
 
 $("#btnDex").onclick = () => { buildDex(); $("#dex").classList.add("show"); };
+$("#btnStyle").onclick = () => {
+  styleIdx = (styleIdx + 1) % STYLES.length;
+  applyStyle();
+  const s = STYLES[styleIdx];
+  $("#btnStyle").textContent = "🎨 " + s.name;
+  toast("画面风格：" + s.name);
+};
+// 按钮上显示当前风格名
+$("#btnStyle").textContent = "🎨 " + STYLES[styleIdx].name;
 $("#btnHelp").onclick = () => $("#help").classList.add("show");
 $("#btnDexClose").onclick = () => $("#dex").classList.remove("show");
 $("#btnHelpClose").onclick = () => $("#help").classList.remove("show");
@@ -2738,15 +3084,26 @@ resize();
 window.addEventListener("resize", () => { resize(); syncPad(); });
 
 // 星露谷里天黑要真的黑下来。地面是不受光材质，所以直接调曝光 + 天空色
+let lastLightO = null;
 function setLight(o) {
-  renderer.toneMappingExposure = o.exposure;
+  lastLightO = o;
+  renderer.toneMappingExposure = o.exposure * (STYLE_STATE.exp || 1);
   if (o.groundColor) for (const m of groundMats) m.color.copy(o.groundColor);
-  if (scene.background && scene.background.isColor) scene.background.copy(o.sky);
+  // 国风背景是纹理，别用纯色覆盖它；其它风格照旧跟天空色走
+  if (!isGuofeng() && scene.background && scene.background.isColor) scene.background.copy(o.sky);
+  const dark = 1 - Math.min(1, o.sunI / 1.2);   // 0=白天, 1=夜
+  // 国风：水墨远山背景跟着夜色一起暗下去，不再出现「天亮着地却黑了」
+  if ("backgroundIntensity" in scene) scene.backgroundIntensity = isGuofeng() ? 1 - dark * .82 : 1;
+  // 雾色：国风白天宣纸青、夜里淡墨；其它风格跟天空走，夜里才不会远处发光
+  if (scene.fog && scene.fog.color) {
+    if (isGuofeng()) scene.fog.color.copy(GUOFENG.ink).lerp(GUOFENG.fog, 1 - dark);
+    else scene.fog.color.copy(o.sky);
+  }
   sun.color.copy(o.sunColor);
+  if (isGuofeng()) sun.color.lerp(GUOFENG.sun, .35); // 国风的太阳更暖更柔
   sun.intensity = o.sunI;
   hemi.intensity = o.hemiI;
   // 天黑点灯
-  const dark = 1 - Math.min(1, sun.intensity / 1.2);
   for (const g of lampGlasses) g.emissive.setRGB(1 * dark, .8 * dark, .42 * dark);
 }
 
@@ -2756,6 +3113,7 @@ async function boot() {
   try {
     buildGround();
     buildProps();
+    applyStyle();   // 场景搭好后统一套用主题（国风染色 / 飞檐 / 背景）
   } catch (e) { console.error("[game] 场景搭建出错", e); }
 
   Farm.init({
@@ -2841,7 +3199,7 @@ function startGame(fresh) {
   hudTick();
   Farm.paint();
   blip(660, .1, "sine", .04);
-  updateCamera();
+  updateCamera(true);
   // 开局不弹对话框——对话框一开就走不了路，会被当成卡死
   setTimeout(() => {
     toast(state.metNpc ? "第 " + Farm.day + " 天 · " + Farm.fmtTime() + "　屋后的地还等着你" : "WASD 走动 · 1–5 换工具 · E 使用。先去屋后那块空地");
@@ -2869,7 +3227,7 @@ if (location.search.indexOf("debug") >= 0) {
     get MAP() { return MAP; }, get roomName() { return roomName; },
     markAt() { const g = tileAhead(); return g ? { tx: g.tx, tz: g.tz, type: g.type, mark: g.mark, plot: g.plot } : null; },
     tileAt: (x, z) => { const t = toTile(MAP, x, z); return tileAt(MAP, t.tx, t.tz); },
-    teleport(x, z) { player.x = x; player.z = z; playerObj.position.set(x, 0, z); updateCamera(); },
+    teleport(x, z) { player.x = x; player.z = z; playerObj.position.set(x, 0, z); updateCamera(true); },
     face(h) { player.heading = h; }
   };
 }

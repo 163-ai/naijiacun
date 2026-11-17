@@ -133,8 +133,19 @@
     <h2 class="modal-title">提名一位新村民</h2>
     <form id="addForm" class="add-form">
       <label>名字 *<input name="name" required maxlength="20" placeholder="例如：奶龙"></label>
+      <div class="nom-photo-field">
+        <span class="nom-photo-label">形象图片（可选）</span>
+        <div class="nom-photo-row">
+          <label class="nom-photo-drop" id="nomPhotoDrop" for="nomPhoto">
+            <input id="nomPhoto" name="photo" type="file" accept="image/*">
+            <span class="nom-photo-hint" id="nomPhotoHint">＋ 选一张图片<br><small>头像 / 全身照都行，会自动压缩</small></span>
+            <img class="nom-photo-preview hidden" id="nomPhotoPreview" alt="图片预览">
+          </label>
+          <button type="button" class="btn ghost tiny-btn hidden" id="nomPhotoRemove">移除</button>
+        </div>
+      </div>
       <div class="form-row">
-        <label>头像 Emoji<input name="emoji" maxlength="4" placeholder="🐲"></label>
+        <label>头像 Emoji（没传图片时用）<input name="emoji" maxlength="4" placeholder="🐲"></label>
         <label>类别
           <select name="category">
             <option>官方IP</option>

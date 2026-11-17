@@ -209,7 +209,8 @@
   }
 
   // 把提名作为新村民条目插进 data.js 的 PEOPLE 数组末尾
-  function insertPerson(src, item) {
+  // imageUrl 可选：审核通过时已上传到仓库的形象图片路径
+  function insertPerson(src, item, imageUrl) {
     var start = src.indexOf("const PEOPLE");
     if (start === -1) return src;
     var end = src.indexOf("\n];", start);
@@ -221,6 +222,7 @@
       "  {\n" +
       "    id: " + JSON.stringify(item.id) + ",\n" +
       "    name: " + JSON.stringify(item.name) + ",\n" +
+      (imageUrl ? "    image: " + JSON.stringify(imageUrl) + ",\n" : "") +
       "    emoji: " + JSON.stringify(item.emoji || "🙂") + ",\n" +
       "    category: " + JSON.stringify(item.category || "其他") + ",\n" +
       "    title: " + JSON.stringify(item.title || "新来的村民") + ",\n" +
@@ -231,6 +233,35 @@
       '    origin: "观众提名，经管理员审核收录"\n' +
       "  },\n";
     return before + "\n" + entry + src.slice(end + 1);
+  }
+
+  // dataURL → {ext, base64}，只认常见的三种图片格式
+  function parseDataImage(dataUrl) {
+    var m = /^data:image\/(jpeg|jpg|png|webp);base64,([A-Za-z0-9+/=]+)$/.exec(String(dataUrl || ""));
+    if (!m) return null;
+    return { ext: m[1] === "jpeg" ? "jpg" : m[1], base64: m[2] };
+  }
+
+  // 把提名图片上传到仓库 assets/characters/nominated/<id>.<ext>，返回带缓存号的站点相对路径。
+  // 图片上传失败不阻断审核：退回无图（用 emoji 头像）并提示管理员。
+  function uploadNominationImage(item) {
+    var parsed = parseDataImage(item.image);
+    if (!parsed) return Promise.resolve("");
+    var imgPath = "assets/characters/nominated/" + item.id + "." + parsed.ext;
+    setStatus("正在上传「" + item.name + "」的形象图片…");
+    return api("/repos/" + REPO + "/contents/" + imgPath, {
+      method: "PUT",
+      body: {
+        message: "feat(assets): 观众提名「" + item.name + "」的形象图片 (" + item.id + ")",
+        content: parsed.base64,
+        branch: BRANCH
+      }
+    }).then(function () {
+      return imgPath + "?v=" + Date.now().toString(36);
+    }).catch(function (err) {
+      toast("形象图片上传失败，先按无图通过：" + err.message);
+      return "";
+    });
   }
 
   function renderPending() {
@@ -253,6 +284,9 @@
         el.className = "admin-row pending-row";
         el.innerHTML =
           '<div class="admin-meta">' +
+            (item.image
+              ? '<img class="pending-thumb" src="' + escapeText(item.image) + '" alt="提名图片">'
+              : "") +
             "<strong>" + escapeText(item.emoji + " " + item.name) + "</strong>" +
             "<span>" + escapeText(item.category) +
               (item.title ? " · " + escapeText(item.title) : "") +
@@ -313,26 +347,30 @@
     if (!confirm("通过「" + item.name + "」的提名？\n\n会写入仓库 js/data.js 并提交 main，全站 1~2 分钟后可见。")) return;
 
     busy = true;
-    setStatus("正在把「" + item.name + "」写入 " + DATA_PATH + " …");
     var fileSha = null;
     var newText = null;
 
-    api("/repos/" + REPO + "/contents/" + DATA_PATH + "?ref=" + BRANCH)
-      .then(function (file) {
-        fileSha = file.sha;
-        var text = decodeBase64(file.content);
-        newText = insertPerson(text, item);
-        if (newText === text) throw new Error("写入失败：data.js 内容没有变化。");
-        setStatus("正在提交到 " + BRANCH + " …");
-        return api("/repos/" + REPO + "/contents/" + DATA_PATH, {
-          method: "PUT",
-          body: {
-            message: "feat(data): 审核通过观众提名「" + item.name + "」(" + item.id + ")",
-            content: encodeBase64(newText),
-            sha: fileSha,
-            branch: BRANCH
-          }
-        });
+    // 先上传形象图片（如果有），拿到仓库内的路径再写进 data.js
+    uploadNominationImage(item)
+      .then(function (imageUrl) {
+        setStatus("正在把「" + item.name + "」写入 " + DATA_PATH + " …");
+        return api("/repos/" + REPO + "/contents/" + DATA_PATH + "?ref=" + BRANCH)
+          .then(function (file) {
+            fileSha = file.sha;
+            var text = decodeBase64(file.content);
+            newText = insertPerson(text, item, imageUrl);
+            if (newText === text) throw new Error("写入失败：data.js 内容没有变化。");
+            setStatus("正在提交到 " + BRANCH + " …");
+            return api("/repos/" + REPO + "/contents/" + DATA_PATH, {
+              method: "PUT",
+              body: {
+                message: "feat(data): 审核通过观众提名「" + item.name + "」(" + item.id + ")",
+                content: encodeBase64(newText),
+                sha: fileSha,
+                branch: BRANCH
+              }
+            });
+          });
       })
       .then(function (res) {
         // 仓库写入成功后，把这条提名从 Worker 队列里移出

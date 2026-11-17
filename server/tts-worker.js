@@ -30,12 +30,18 @@ const NOM_PENDING_KEY = "noms:pending";
 const NOM_APPROVED_KEY = "noms:approved";
 const NOM_MAX_PENDING = 50;
 const NOM_RATE_MS = 60 * 60 * 1000; // 同一 IP 一小时一条
+const NOM_IMG_MAX_BYTES = 600 * 1024; // 单张提名图片上限（压缩后 dataURL 的体积）
 
 function nomSanitize(body) {
   if (!body || typeof body !== "object") return null;
   const name = String(body.name || "").trim().slice(0, 20);
   if (!name) return null;
   const clean = (v, n) => String(v || "").trim().slice(0, n);
+  // 只接受 image/jpeg、image/png、image/webp 的 dataURL，且限制体积
+  let image = "";
+  const raw = typeof body.image === "string" ? body.image : "";
+  const m = /^data:(image\/(?:jpeg|jpg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(raw);
+  if (m && m[2].length <= NOM_IMG_MAX_BYTES) image = raw;
   return {
     id: "nom-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
     name: name,
@@ -45,6 +51,7 @@ function nomSanitize(body) {
     quote: clean(body.quote, 80),
     desc: clean(body.desc, 200) || "这位村民由观众提名，介绍待补充。",
     submitter: clean(body.submitter, 24),
+    image: image,
     status: "pending",
     created: new Date().toISOString()
   };
