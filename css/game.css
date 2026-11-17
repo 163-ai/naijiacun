@@ -509,3 +509,39 @@ body:has(#help.show) #toast{top:auto;bottom:22px}
 @media (max-width:640px){
   .mapline{padding:11px 12px;font-size:13px}
 }
+
+/* =========================================================
+   小游戏：钓鱼（竹林水塘）/ 唱戏（奶家镇戏台）
+   ========================================================= */
+#fishing,#stage{z-index:35}
+.game-inner{max-width:620px}
+.game-inner .shop-head{margin-bottom:10px}
+.fish-ok{color:#2f7a63;font-weight:700}
+.pond{position:relative;height:132px;margin:22px 0 14px;border-radius:16px;overflow:hidden;
+  background:linear-gradient(180deg,#bfe0d6 0%,#9ccbbd 45%,#6fa997 100%);
+  border:1px solid #a4c9bb;box-shadow:inset 0 8px 20px rgba(34,88,70,.14)}
+.pond::before{content:"";position:absolute;inset:0;
+  background:repeating-linear-gradient(90deg,rgba(255,255,255,.08) 0 2px,transparent 2px 26px)}
+.pond-ok{position:absolute;top:0;bottom:0;left:50%;width:18%;transform:translateX(-50%);
+  background:rgba(48,140,100,.3);border-left:2px dashed #d9f7e8;border-right:2px dashed #d9f7e8}
+.pond-fish{position:absolute;top:52px;left:0;font-size:30px;line-height:1;
+  transform:translate(-50%,-50%);filter:drop-shadow(0 3px 4px rgba(20,60,50,.3));pointer-events:none}
+.pond-line{position:absolute;bottom:0;left:50%;width:2px;height:26px;
+  background:rgba(60,80,70,.4);transform:translateX(-50%)}
+.fish-stat{font-size:12px;color:var(--ink-2);margin-top:6px}
+.fish-stat b{color:var(--green)}
+.stage-beats{display:flex;gap:8px;justify-content:center;margin:28px 0 16px}
+.stage-beats i{width:46px;height:46px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-style:normal;font-size:20px;background:#f2eee4;border:2px solid #ddd6c7;color:#b8b2a4;
+  transition:transform .1s ease,background .1s ease,border-color .1s ease}
+.stage-beats i.next{background:#fdf3d8;border-color:#d9a12b;color:#a8761d;transform:scale(1.08)}
+.stage-beats i.hit{background:#d8f2e5;border-color:#3f9e6b;color:#20674a}
+.stage-beats i.miss{background:#f6dedb;border-color:#d05a4e;color:#a13c34}
+.stage-judge{text-align:center;font-size:16px;font-weight:700;color:var(--ink-2);min-height:24px}
+.stage-judge.good{color:#2f7a63}
+.stage-judge.bad{color:#a13c34}
+@media (max-width:640px){
+  .pond{height:110px}
+  .stage-beats{gap:5px}
+  .stage-beats i{width:38px;height:38px;font-size:17px}
+}

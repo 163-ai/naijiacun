@@ -1067,12 +1067,18 @@ export const TOWN = (() => {
   mark(m, 5, 30, { kind: "gate", to: "village", spawn: { tx: 83, tz: 35, heading: -Math.PI / 2 }, label: "回奶家村" });
   mark(m, 5, 31, { kind: "gate", to: "village", spawn: { tx: 83, tz: 35, heading: -Math.PI / 2 }, label: "回奶家村" });
 
+  // ---- 戏台前的三个台口位：站这儿按 E 上台唱一段 ----
+  mark(m, 20, 28, { kind: "stage", label: "上台唱一段" });
+  mark(m, 21, 28, { kind: "stage", label: "上台唱一段" });
+  mark(m, 22, 28, { kind: "stage", label: "上台唱一段" });
+
   // ---- 传送锚点（广场正中）----
   mark(m, 38, 30, { kind: "anchor", id: "town", label: "传送锚点" });
 
   // ---- 招牌 ----
   mark(m, 38, 37, { kind: "sign", text: "奶家镇　·　东市集，西戏台，南边是驿站" });
-  mark(m, 21, 28, { kind: "sign", text: "戏台　·　初一十五有班子来唱" });
+  // 招牌挪到台口西边一格，别占着 (21,28) 那个上台位
+  mark(m, 17, 28, { kind: "sign", text: "戏台　·　初一十五有班子来唱，上台唱一段也给赏" });
 
   // ---- 广场边上点几处花，别是光板子水泥地 ----
   {
@@ -1123,6 +1129,11 @@ export const GROVE = (() => {
   road(m, 45, 33, 41, 30, 1.1);
   road(m, 45, 33, 30, 40, 1.1);
   road(m, 30, 40, 28.5, 40, 1);     // 到岸边就停，别铺进水里
+
+  // ---- 水塘东岸：三个钓鱼位（沙岸上，站在岸边按 E 抛竿）----
+  mark(m, 28, 35, { kind: "fish", label: "钓一会儿鱼" });
+  mark(m, 28, 36, { kind: "fish", label: "钓一会儿鱼" });
+  mark(m, 28, 37, { kind: "fish", label: "钓一会儿鱼" });
 
   // ---- 传送锚点 ----
   mark(m, 40, 30, { kind: "anchor", id: "grove", label: "传送锚点" });

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
   <title>奶家村 · 大冒险</title>
-  <link rel="stylesheet" href="css/game.css?v=16">
+  <link rel="stylesheet" href="css/game.css?v=17">
 </head>
 <body>
   <canvas id="gl"></canvas>
@@ -192,6 +192,58 @@
     </div>
   </div>
 
+  <!-- ========== 钓鱼小游戏（竹林水塘） ========== -->
+  <div class="overlay" id="fishing">
+    <div class="veil"></div>
+    <div class="sheet">
+      <div class="sheet-inner game-inner">
+        <div class="shop-head">
+          <div>
+            <div class="shop-kicker">竹林水塘 · 小游戏</div>
+            <h2>稳住，等鱼进嘴</h2>
+          </div>
+          <div class="shop-gold" id="fishGold">💰 0</div>
+        </div>
+        <p class="sub">鱼影游进<span class="fish-ok">绿区</span>时按 <b>E / 空格</b> 收竿，或者点下面的按钮。
+          早了晚了都跑鱼 —— 一天只有 8 竿。</p>
+        <div class="pond">
+          <div class="pond-ok" id="fishZone"></div>
+          <div class="pond-fish" id="fishBob">🐟</div>
+          <div class="pond-line" id="fishLine"></div>
+        </div>
+        <div class="fish-stat" id="fishStat">钓到 0 条 · 还剩 8 竿</div>
+        <div class="closebar">
+          <button class="btn" id="btnReel">收竿！</button>
+          <button class="btn dark" id="btnFishClose">不钓了</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== 唱戏小游戏（奶家镇戏台） ========== -->
+  <div class="overlay" id="stage">
+    <div class="veil"></div>
+    <div class="sheet">
+      <div class="sheet-inner game-inner">
+        <div class="shop-head">
+          <div>
+            <div class="shop-kicker">奶家镇 · 戏台</div>
+            <h2>上台唱一段</h2>
+          </div>
+          <div class="shop-gold" id="stageGold">💰 0</div>
+        </div>
+        <p class="sub">拍子走到<span class="fish-ok">亮点</span>时按 <b>E / 空格</b>，或者点下面的按钮。
+          唱满八拍，台下才肯赏钱 —— 一天只唱一场。</p>
+        <div class="stage-beats" id="stageBeats"></div>
+        <div class="stage-judge" id="stageJudge">等锣鼓响……</div>
+        <div class="closebar">
+          <button class="btn" id="btnStageHit">唱！</button>
+          <button class="btn dark" id="btnStageClose">下台</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- ========== 图鉴 ========== -->
   <div class="overlay" id="dex">
     <div class="veil"></div>
@@ -237,6 +289,12 @@
           灯一关就是第二天，体力全满；
           撑到凌晨 2:00 会累倒在路边，只能恢复一半体力。<br>
           <b style="color:var(--ink)">买卖</b>：村口的杂货铺里，小七在柜台后头，对着柜台按 E 买种子、卖收成。<br>
+          <b style="color:var(--ink)">大世界</b>：村西北门出去是竹林水塘，南门出去是高草坡，东门出去是奶家镇；
+          每张图都有传送锚点，走到跟前按 E 花金币点亮，之后按 M 就能在点亮的地方之间跳。<br>
+          <b style="color:var(--ink)">钓鱼</b>：竹林水塘东岸的沙地上有钓位，按 E 抛竿。鱼影游进绿区时按 E / 空格收竿，
+          一天八竿，钓到的鱼当场折钱；凑够三条再送一个捕捉球。<br>
+          <b style="color:var(--ink)">唱戏</b>：奶家镇戏台前按 E 上台，锣鼓响后拍子走到亮点时按 E / 空格，
+          唱满五拍有赏钱和阅历，一天只唱一场。<br>
           <b style="color:var(--ink)">遇怪</b>：走进深绿色的高草丛，走着走着会有东西跳出来，就是一场街机式单挑。<br>
           <b style="color:var(--ink)">对战</b>：左右移动、跳，J 轻拳快、K 重拳沉、L 放必杀（要半管气）。往后走就是防御。<br>
           <b style="color:var(--ink)">捕捉</b>：把对手打到三成血以下，球才会亮起来，这时按空格扔。<br>
@@ -274,6 +332,6 @@
   <script src="js/rain.js?v=1"></script>
   <script src="js/3d-models.js"></script>
   <script src="js/site-pet.js?v=fast-pet-2"></script>
-  <script type="module" src="js/game2d.js?v=74"></script>
+  <script type="module" src="js/game2d.js?v=76"></script>
 </body>
 </html>

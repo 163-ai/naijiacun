@@ -10,7 +10,7 @@ import { Fight } from "./kof.js?v=57";
 import {
   TS, TI, VILLAGE, TOWN, GROVE, HILL, TOWN_LOTS, TOWN_STALLS, HOUSE, SHOP, STATION, ARCHIVE, MAPS,
   tileAt, setSolid, solidAt, markAt, mapTexture, toTile, toWorld
-} from "./tiles.js?v=3";
+} from "./tiles.js?v=5";
 import { Farm, CROPS, PLOT } from "./farm.js";
 import { portrait, moodFilter, speakerKey, PLAYER_KEY } from "./portraits.js?v=57";
 import { NPCS, DESK_OFFICER, bountyOf } from "./villagers.js";
@@ -96,7 +96,9 @@ const state = {
   anchors: {},             // "village" / "town" → true（花过钱点亮）
   pouchDay: 0,             // 口袋任务今天做没做
   pouches: 0,
-  arenaWins: 0
+  arenaWins: 0,
+  // 小游戏：钓鱼当天抛了几竿、唱戏当天唱没唱
+  fishDay: 0, fishRods: 0, stageDay: 0
 };
 const expNeed = lv => 18 + lv * 12;
 
@@ -114,6 +116,7 @@ function save() {
       beatQiyet: !!state.beatQiyet, seenRoom: state.seenRoom,
       anchors: state.anchors, pouchDay: state.pouchDay, pouches: state.pouches,
       arenaWins: state.arenaWins,
+      fishDay: state.fishDay, fishRods: state.fishRods, stageDay: state.stageDay,
       // 存档点永远记在村里：镇上/屋里的位置不入档，下次开局从村的落点开始
       px: roomState.name === "village" ? player.x : roomState.back.x,
       pz: roomState.name === "village" ? player.z : roomState.back.z,
@@ -135,7 +138,8 @@ function load() {
       bounty: d.bounty || null, bountyDay: d.bountyDay || 0,
       beatQiyet: !!d.beatQiyet, seenRoom: d.seenRoom || {},
       anchors: d.anchors || {}, pouchDay: d.pouchDay || 0,
-      pouches: d.pouches || 0, arenaWins: d.arenaWins || 0
+      pouches: d.pouches || 0, arenaWins: d.arenaWins || 0,
+      fishDay: d.fishDay || 0, fishRods: d.fishRods || 0, stageDay: d.stageDay || 0
     });
     player.x = d.px ?? SPAWN.x;
     player.z = d.pz ?? SPAWN.z;
@@ -2208,6 +2212,16 @@ function blocked(x, z, r = .34) {
 
 window.addEventListener("keydown", e => {
   const k = e.key;
+  // 小游戏开着时：键盘只交给小游戏，别让人一边钓鱼一边把人走进水里
+  if (fishing.on || stageGame.on) {
+    if (k === "e" || k === "E" || k === "Enter" || k === " ") {
+      if (fishing.on) reelFish(); else hitStage();
+      e.preventDefault();
+    } else if (k === "Escape") {
+      closeFishing(); closeStage(); e.preventDefault();
+    }
+    return;
+  }
   if (k === "w" || k === "W" || k === "ArrowUp") { keys.up = true; e.preventDefault(); }
   if (k === "s" || k === "S" || k === "ArrowDown") { keys.down = true; e.preventDefault(); }
   if (k === "a" || k === "A" || k === "ArrowLeft") { keys.left = true; e.preventDefault(); }
@@ -2685,13 +2699,17 @@ function overlayOpen() {
     || $("#help").classList.contains("show")
     || $("#shop").classList.contains("show")
     || $("#go").classList.contains("show")
-    || ($("#worldmap") && $("#worldmap").classList.contains("show"));
+    || ($("#worldmap") && $("#worldmap").classList.contains("show"))
+    || ($("#fishing") && $("#fishing").classList.contains("show"))
+    || ($("#stage") && $("#stage").classList.contains("show"));
 }
 function closeOverlays() {
   $("#dex").classList.remove("show");
   $("#help").classList.remove("show");
   $("#shop").classList.remove("show");
   if ($("#worldmap")) $("#worldmap").classList.remove("show");
+  if ($("#fishing")) closeFishing();
+  if ($("#stage")) closeStage();
 }
 
 /* =========================================================
@@ -3590,6 +3608,8 @@ function interact() {
     if (mk.kind === "exit") { leaveRoom(); return; }
     if (mk.kind === "gate") { travelTo(mk.to, mk.spawn); return; }
     if (mk.kind === "anchor") { useAnchor(mk.id); return; }
+    if (mk.kind === "fish") { startFishing(); return; }
+    if (mk.kind === "stage") { startStage(); return; }
     if (mk.kind === "sign") { say("告示", [mk.text]); return; }
     if (mk.kind === "shop") { Farm.openShop(); return; }
     if (mk.kind === "sleep") { Farm.sleepPrompt(); return; }
@@ -3716,6 +3736,196 @@ function qiyetQuit(result) {
     result === "quit" ? "（他抬了下眼皮，把子收回罐里。）" : "（两个人都没地儿下了，他把棋盘一推。）",
     result === "quit" ? "不下了？行。明天我还在这儿。" : "这盘算和。你比我年轻时候稳。"
   ], null, null, "normal", "棋爷");
+}
+
+/* =========================================================
+   嵌入小游戏 ①：竹林水塘钓鱼
+   鱼影左右游，进绿区按 E / 空格 / 点按钮收竿。一天 8 竿，
+   钓到的鱼当场折成钱，凑够 3 条再送一个球。
+   ========================================================= */
+const FISH_RODS = 8;
+const fishing = { on: false, raf: 0, last: 0, pos: 0, dir: 1, speed: 34,
+                  zoneA: 41, zoneB: 59, rods: 0, caught: 0 };
+
+function fishUI() {
+  const zone = $("#fishZone"), bob = $("#fishBob");
+  if (!zone || !bob) return;
+  zone.style.left = fishing.zoneA + "%";
+  zone.style.width = (fishing.zoneB - fishing.zoneA) + "%";
+  zone.style.transform = "none";
+  bob.style.left = fishing.pos + "%";
+  $("#fishStat").innerHTML = "钓到 <b>" + fishing.caught + "</b> 条 · 还剩 <b>" +
+    (FISH_RODS - fishing.rods) + "</b> 竿";
+  $("#fishGold").textContent = "💰 " + Farm.gold;
+}
+
+function fishTick(ts) {
+  if (!fishing.on) return;
+  const dt = Math.min(60, ts - (fishing.last || ts));
+  fishing.last = ts;
+  fishing.pos += fishing.dir * fishing.speed * dt / 1000;
+  if (fishing.pos >= 100) { fishing.pos = 100; fishing.dir = -1; }
+  if (fishing.pos <= 0) { fishing.pos = 0; fishing.dir = 1; }
+  fishUI();
+  fishing.raf = requestAnimationFrame(fishTick);
+}
+
+function startFishing() {
+  if (fishing.on) return;
+  if (state.fishDay !== Farm.day) { state.fishDay = Farm.day; state.fishRods = 0; }
+  if (state.fishRods >= FISH_RODS) {
+    say("水塘边", ["岸边坐着个老钓翁的旧蒲团，竿架还搁在那儿。", "今天钓得够多了，手都酸了 —— 明天再来吧。"], null, null, "normal", "capybara");
+    return;
+  }
+  fishing.on = true;
+  fishing.rods = state.fishRods;
+  fishing.caught = 0;
+  fishing.pos = 0; fishing.dir = 1;
+  fishing.speed = 30 + Math.random() * 12;
+  const width = 16 + Math.random() * 8;
+  fishing.zoneA = 20 + Math.random() * (60 - width);
+  fishing.zoneB = fishing.zoneA + width;
+  fishing.last = 0;
+  $("#fishing").classList.add("show");
+  fishUI();
+  fishing.raf = requestAnimationFrame(fishTick);
+  blip(620, .12, "sine", .035);
+  blip(880, .16, "sine", .02);
+}
+
+function reelFish() {
+  if (!fishing.on) return;
+  const hit = fishing.pos >= fishing.zoneA && fishing.pos <= fishing.zoneB;
+  fishing.rods++;
+  state.fishRods = fishing.rods;
+  if (hit) {
+    fishing.caught++;
+    Farm.gold += 12;
+    sfx("coin");
+    blip(920, .12, "sine", .05);
+    toast("钓上一条！+12 金");
+    // 下一条更快、绿区挪个地方
+    fishing.speed = Math.min(62, fishing.speed + 5);
+    const width = 16 + Math.random() * 8;
+    fishing.zoneA = 20 + Math.random() * (60 - width);
+    fishing.zoneB = fishing.zoneA + width;
+  } else {
+    sfx("deny");
+    toast("跑了 —— 早了或晚了，鱼都没进嘴");
+  }
+  fishUI();
+  save();
+  if (fishing.rods >= FISH_RODS) {
+    const bonus = fishing.caught >= 3;
+    if (bonus) { state.balls += 1; toast("今天钓了 " + fishing.caught + " 条 · 送一个捕捉球"); }
+    else toast("今天收竿 · 钓到 " + fishing.caught + " 条");
+    hudTick(); save();
+    setTimeout(closeFishing, 900);
+  }
+}
+
+function closeFishing() {
+  if (!fishing.on) return;
+  fishing.on = false;
+  cancelAnimationFrame(fishing.raf);
+  $("#fishing").classList.remove("show");
+}
+
+/* =========================================================
+   嵌入小游戏 ②：奶家镇戏台唱一段
+   八拍锣鼓，拍子走到亮点按 E / 空格 / 点按钮。唱满五拍有赏。
+   ========================================================= */
+const STAGE_BEATS = 8;
+const stageGame = { on: false, timer: 0, beat: -1, t0: 0, marks: [], hits: 0 };
+
+function stageUI(judge, tone) {
+  const box = $("#stageBeats");
+  if (box) {
+    [...box.children].forEach((el, i) => {
+      el.className = "";
+      if (stageGame.marks[i] === "hit") el.className = "hit";
+      else if (stageGame.marks[i] === "miss") el.className = "miss";
+      else if (i === stageGame.beat && tone !== "done") el.className = "next";
+    });
+  }
+  const j = $("#stageJudge");
+  if (j && judge) { j.textContent = judge; j.className = "stage-judge " + (tone || ""); }
+  $("#stageGold").textContent = "💰 " + Farm.gold;
+}
+
+function startStage() {
+  if (stageGame.on) return;
+  if (state.stageDay === Farm.day) {
+    say("戏台", ["今天这一段唱完了，台下的人也散了。", "明天这个时辰，班子还来。"], null, null, "normal", "xiaoqi");
+    return;
+  }
+  stageGame.on = true;
+  stageGame.beat = -1;
+  stageGame.t0 = performance.now() + 700;   // 先敲一声锣，才起拍
+  stageGame.marks = new Array(STAGE_BEATS).fill("");
+  stageGame.hits = 0;
+  const box = $("#stageBeats");
+  box.innerHTML = "";
+  for (let i = 0; i < STAGE_BEATS; i++) box.appendChild(document.createElement("i"));
+  stageUI("锣鼓响了 —— 跟着拍子！", "");
+  $("#stage").classList.add("show");
+  blip(180, .22, "triangle", .05);
+  stageGame.timer = setInterval(() => {
+    if (!stageGame.on) return;
+    const t = performance.now() - stageGame.t0;
+    const b = Math.floor(t / 620);
+    if (b >= STAGE_BEATS) { endStage(); return; }
+    if (b !== stageGame.beat) {
+      // 上一拍没赶上的，直接判丢
+      if (stageGame.beat >= 0 && !stageGame.marks[stageGame.beat]) stageGame.marks[stageGame.beat] = "miss";
+      stageGame.beat = b;
+      blip(340 + b * 18, .06, "triangle", .025);
+    }
+    stageUI("", "");
+  }, 50);
+}
+
+function hitStage() {
+  if (!stageGame.on || stageGame.beat < 0) return;
+  const i = stageGame.beat;
+  if (stageGame.marks[i]) return;
+  const into = performance.now() - stageGame.t0 - i * 620;
+  // 亮点在前四成：220~420ms 之间最准
+  const good = into >= 180 && into <= 440;
+  stageGame.marks[i] = good ? "hit" : "miss";
+  if (good) {
+    stageGame.hits++;
+    blip(760 + i * 24, .09, "sine", .035);
+    stageUI("好！", "good");
+  } else {
+    sfx("deny");
+    stageUI("乱了板眼", "bad");
+  }
+  stageUI("", "");
+}
+
+function endStage() {
+  if (!stageGame.on) return;
+  stageGame.on = false;
+  clearInterval(stageGame.timer);
+  const good = stageGame.hits >= 5;
+  const pay = good ? 50 + stageGame.hits * 6 : 20;
+  Farm.gold += pay;
+  state.stageDay = Farm.day;
+  if (good) grantExp(10);
+  Farm.paint(); hudTick(); save();
+  stageUI(good
+    ? "满堂彩！赏钱 +" + pay + " 金 · 阅历 +10"
+    : "唱得磕磕绊绊……台下赏了 " + pay + " 金", good ? "good" : "bad");
+  sfx("coin");
+  setTimeout(closeStage, 1400);
+}
+
+function closeStage() {
+  if (!stageGame.on && !$("#stage").classList.contains("show")) return;
+  stageGame.on = false;
+  clearInterval(stageGame.timer);
+  $("#stage").classList.remove("show");
 }
 
 /* ---- 村民能给你的东西 ---- */
@@ -4006,6 +4216,10 @@ $("#btnHelp").onclick = () => $("#help").classList.add("show");
 if ($("#btnMap")) $("#btnMap").onclick = () => openWorldMap();
 if ($("#btnMapClose")) $("#btnMapClose").onclick = closeWorldMap;
 $("#btnDexClose").onclick = () => $("#dex").classList.remove("show");
+if ($("#btnReel")) $("#btnReel").onclick = reelFish;
+if ($("#btnFishClose")) $("#btnFishClose").onclick = closeFishing;
+if ($("#btnStageHit")) $("#btnStageHit").onclick = hitStage;
+if ($("#btnStageClose")) $("#btnStageClose").onclick = closeStage;
 $("#btnHelpClose").onclick = () => $("#help").classList.remove("show");
 $("#btnShopClose").onclick = () => { $("#shop").classList.remove("show"); save(); };
 $("#btnSound").onclick = toggleSound;
@@ -4136,7 +4350,12 @@ function startGame(fresh) {
   if (fresh) {
     Object.assign(state, {
       lv: 3, exp: 0, maxHp: 62, hp: 62, atk: 28,
-      balls: 8, captured: {}, metNpc: false, steps: 0
+      balls: 8, captured: {}, metNpc: false, steps: 0,
+      // 重开就是全新的一天：锚点、口袋、擂台、小游戏的每日计数都得归零，
+      // 不然同一个浏览器里「重新开始」会带着上一档的进度进新档
+      anchors: {}, pouchDay: 0, pouches: 0, arenaWins: 0,
+      fishDay: 0, fishRods: 0, stageDay: 0,
+      dayFlags: {}, gifts: {}, met: {}, beatQiyet: false
     });
     player.x = SPAWN.x; player.z = SPAWN.z;
     Farm.reset();
@@ -4182,6 +4401,8 @@ if (location.search.indexOf("debug") >= 0) {
     travelTo, openWorldMap, closeWorldMap, useAnchor, roomState, TOWN, VILLAGE, GROVE, HILL,
     ANCHORS, ANCHOR_STONES, startPouchQuest, pouchQuest, spawnTownNpcs, tryPouch,
     refreshShoots, tryShoot, patches,
+    fishing, stageGame, startFishing, reelFish, closeFishing,
+    startStage, hitStage, endStage, closeStage,
     OUTDOOR, outdoorMats, position: () => ({ x: player.x, z: player.z, map: roomState.name }),
     tpYaw: () => TP.yaw, tpDist: () => TP.dist, camPos: () => camTP.position, camOrtho: () => camera, camTP: () => camTP,
     qiyetTalk, qiyetWin, qiyetLose, Gomoku, lieDown, getUp, sleepPose,
