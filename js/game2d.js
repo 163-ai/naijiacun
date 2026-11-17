@@ -8,7 +8,7 @@ import { createPetMotion } from "./pet-motion.js?v=2";
 import { makeAnimator } from "./creature.js?v=58";
 import { Fight } from "./kof.js?v=57";
 import {
-  TS, TI, VILLAGE, HOUSE, SHOP, STATION, ARCHIVE, MAPS,
+  TS, TI, VILLAGE, TOWN, TOWN_LOTS, TOWN_STALLS, HOUSE, SHOP, STATION, ARCHIVE, MAPS,
   tileAt, setSolid, solidAt, markAt, mapTexture, toTile, toWorld
 } from "./tiles.js";
 import { Farm, CROPS, PLOT } from "./farm.js";
@@ -62,6 +62,11 @@ const CAST = {
     name: "奶蛋", h: 1.12, npc: true, model: true,
     img: "assets/characters/naidan.png",
     desc: "圆滚滚的黄色蛋形小伙伴，住在田边，见谁都劝人下地干活。"
+  },
+  feidudu: {
+    name: "肥嘟嘟袋鼠", h: 1.55, model: true,
+    img: "assets/characters/feidudu.png",
+    desc: "圆肚子的小袋鼠，肚皮上的口袋老是漏东西，一走路就掉一地。"
   }
 };
 
@@ -84,7 +89,12 @@ const state = {
   dayFlags: {},            // "xiaocao:3" → true（每天一次的事）
   gifts: {},               // 一次性送礼
   bounty: null,            // 奶察局的悬赏
-  bountyDay: 0
+  bountyDay: 0,
+  // 大世界：点亮过的锚点、肥嘟嘟的口袋、暴暴龙的擂台连胜
+  anchors: {},             // "village" / "town" → true（花过钱点亮）
+  pouchDay: 0,             // 口袋任务今天做没做
+  pouches: 0,
+  arenaWins: 0
 };
 const expNeed = lv => 18 + lv * 12;
 
@@ -100,6 +110,9 @@ function save() {
       met: state.met, dayFlags: state.dayFlags, gifts: state.gifts,
       bounty: state.bounty, bountyDay: state.bountyDay,
       beatQiyet: !!state.beatQiyet, seenRoom: state.seenRoom,
+      anchors: state.anchors, pouchDay: state.pouchDay, pouches: state.pouches,
+      arenaWins: state.arenaWins,
+      // 存档点永远记在村里：镇上/屋里的位置不入档，下次开局从村的落点开始
       px: roomState.name === "village" ? player.x : roomState.back.x,
       pz: roomState.name === "village" ? player.z : roomState.back.z,
       farm: Farm.serialize()
@@ -118,7 +131,9 @@ function load() {
       metNpc: !!d.metNpc, steps: d.steps || 0, muted: !!d.muted,
       met: d.met || {}, dayFlags: d.dayFlags || {}, gifts: d.gifts || {},
       bounty: d.bounty || null, bountyDay: d.bountyDay || 0,
-      beatQiyet: !!d.beatQiyet, seenRoom: d.seenRoom || {}
+      beatQiyet: !!d.beatQiyet, seenRoom: d.seenRoom || {},
+      anchors: d.anchors || {}, pouchDay: d.pouchDay || 0,
+      pouches: d.pouches || 0, arenaWins: d.arenaWins || 0
     });
     player.x = d.px ?? SPAWN.x;
     player.z = d.pz ?? SPAWN.z;
@@ -324,8 +339,13 @@ const H = MH * TILE;
 
 const world = new T.Group();
 scene.add(world);
-let MAP = VILLAGE;          // 当前所在地图（村庄 / 屋里 / 杂货铺）
+let MAP = VILLAGE;          // 当前所在地图（村庄 / 奶家镇 / 屋里 / 杂货铺…）
 let roomName = "";          // 室内时显示的名字
+
+/* 户外的每张图各占一个 group：同一时刻只显示一张。
+   之所以不共用 world，是因为各图原点、尺寸都不一样，混在一个组里没法整体隐藏。 */
+const OUTDOOR = { village: world };
+const outdoorMats = new Map();   // mapKey → 地面材质（雷达缩略图要用）
 
 const patches = [];         // 高草区 {x,z,r,zone}
 const obstacles = [];       // 圆形阻挡 {x,z,r}
@@ -388,6 +408,7 @@ function buildGroundFor(map, group) {
 
 function buildGround() {
   groundMat = buildGroundFor(VILLAGE, world);
+  outdoorMats.set("village", groundMat);
 }
 
 function ensureRoom(name, map) {
@@ -457,7 +478,7 @@ function treeTooClose(x, z, d = 2.1) {
   return false;
 }
 
-function addTree(x, z, scale = 1) {
+function addTree(x, z, scale = 1, parent = treeGroup) {
   const r = mulberry(Math.round((x + 100) * 37 + (z + 100) * 91));
   const g = new T.Group();
   // 树干：略带锥度、八面、稍微倾斜，比笔直圆柱自然
@@ -492,20 +513,20 @@ function addTree(x, z, scale = 1) {
   g.position.set(x, 0, z);
   g.scale.setScalar(scale * (.72 + r() * .26));
   g.rotation.y = r() * 6.283;
-  treeGroup.add(g);
+  parent.add(g);
   treeSpots.push([x, z]);
   markWorld(x, z, .5, 1);
   obstacles.push({ x, z, r: .5 });
 }
 
-function addRock(x, z) {
+function addRock(x, z, parent = world) {
   const r = mulberry(Math.round(x * 13 + z * 7) + 3);
   const m = new T.Mesh(new T.DodecahedronGeometry(.42 + r() * .22, 0),
     new T.MeshStandardMaterial({ color: 0xa9a89c, roughness: 1, flatShading: true }));
   m.position.set(x, .28, z);
   m.rotation.set(r() * 3, r() * 3, r() * 3);
   m.castShadow = true; m.receiveShadow = true;
-  world.add(m);
+  parent.add(m);
   markWorld(x, z, .42, 1);
 }
 
@@ -569,7 +590,7 @@ const houseMats = {
   sill: new T.MeshStandardMaterial({ color: 0xe4d7b8, roughness: .95 })
 };
 
-function addHouse(x, z, w, d, bodyColor, roofColor, rot = 0) {
+function addHouse(x, z, w, d, bodyColor, roofColor, rot = 0, parent = world) {
   const g = new T.Group();
   const H = 2.0;                       // 墙高：俯视时刚好能露出正面
   const M = houseMats;
@@ -700,7 +721,7 @@ function addHouse(x, z, w, d, bodyColor, roofColor, rot = 0) {
 
   g.position.set(x, 0, z);
   g.rotation.y = rot;
-  world.add(g);
+  parent.add(g);
   // 房子按格子方正地占住，不用圆去糊
   markRect(x, z, w, d, 1);
   obstacles.push({ x, z, r: Math.hypot(w, d) * .45 });
@@ -713,7 +734,7 @@ const woodMat = new T.MeshStandardMaterial({ color: 0xb08a5c, roughness: .95 });
 const darkWood = new T.MeshStandardMaterial({ color: 0x8a6540, roughness: .95 });
 const stoneMat = new T.MeshStandardMaterial({ color: 0x9d9b90, roughness: 1, flatShading: true });
 
-function addWell(x, z) {
+function addWell(x, z, parent = world) {
   const g = new T.Group();
   // 井圈
   const ring = new T.Mesh(new T.CylinderGeometry(.78, .84, .78, 12), stoneMat);
@@ -745,12 +766,12 @@ function addWell(x, z) {
   rope.position.y = 1.1;
   g.add(rope);
   g.position.set(x, 0, z);
-  world.add(g);
+  parent.add(g);
   markRect(x, z, 2, 2, 1);
   obstacles.push({ x, z, r: 1 });
 }
 
-function addBench(x, z, rot = 0) {
+function addBench(x, z, rot = 0, parent = world) {
   const g = new T.Group();
   const seat = new T.Mesh(new T.BoxGeometry(1.5, .1, .52), woodMat);
   seat.position.y = .46; seat.castShadow = true;
@@ -766,11 +787,11 @@ function addBench(x, z, rot = 0) {
   });
   g.position.set(x, 0, z);
   g.rotation.y = rot;
-  world.add(g);
+  parent.add(g);
   markRect(x, z, 2, 1, 1);
 }
 
-function addLamp(x, z) {
+function addLamp(x, z, parent = world) {
   const g = new T.Group();
   const post = new T.Mesh(new T.CylinderGeometry(.08, .12, 2.3, 6), darkWood);
   post.position.y = 1.15; post.castShadow = true;
@@ -794,7 +815,7 @@ function addLamp(x, z) {
   cap.position.set(.34, 2.31, 0);
   g.add(cap);
   g.position.set(x, 0, z);
-  world.add(g);
+  parent.add(g);
   markRect(x, z, 1, 1, 1);
 }
 
@@ -1151,7 +1172,7 @@ function addRoofLabel(x, y, z, text, width = 2.0) {
   return sp;
 }
 
-function addSign(x, z, text) {
+function addSign(x, z, text, parent = world) {
   const g = new T.Group();
   const post = new T.Mesh(new T.CylinderGeometry(.07, .07, 1.1, 6), trunkMat);
   post.position.y = .55; post.castShadow = true;
@@ -1161,7 +1182,7 @@ function addSign(x, z, text) {
   board.position.y = 1.15; board.castShadow = true;
   g.add(board);
   g.position.set(x, 0, z);
-  world.add(g);
+  parent.add(g);
   return g;
 }
 
@@ -1311,6 +1332,197 @@ function buildProps() {
 
   // ---- 国风装饰（竹林 / 红灯笼），最后加，不影响上面的占地判断 ----
   buildGuofengDecor();
+}
+
+/* =========================================================
+   布置奶家镇
+   格子数据都在 tiles.js（TOWN / TOWN_LOTS / TOWN_STALLS），
+   这里只把同一份数据立成看得见的东西 —— 画面和碰撞不能各写一遍。
+   ========================================================= */
+const townTrees = new T.Group();     // 镇外的树单独一组，别和村里的 treeSpots 混
+
+function townBox(parent, w, h, d, mat, x, y, z, shadow = true) {
+  const m = new T.Mesh(new T.BoxGeometry(w, h, d), mat);
+  m.position.set(x, y, z);
+  if (shadow) { m.castShadow = true; m.receiveShadow = true; }
+  parent.add(m);
+  return m;
+}
+const twx = tx => TOWN.ox + tx + .5;
+const twz = tz => TOWN.oz + tz + .5;
+
+// 传送锚点：石座 + 浮着的晶体。锁着的时候是灰的，点亮后会亮起来。
+const ANCHOR_STONES = [];
+function addAnchorStone(map, tx, tz, parent, key) {
+  const g = new T.Group();
+  g.position.set(map.ox + tx + .5, 0, map.oz + tz + .5);
+  parent.add(g);
+
+  const base = new T.Mesh(new T.CylinderGeometry(1.02, 1.14, .22, 8), stoneMat);
+  base.position.y = .11; base.receiveShadow = true; base.castShadow = true;
+  g.add(base);
+  const ring = new T.Mesh(new T.TorusGeometry(.86, .07, 6, 16), stoneMat);
+  ring.rotation.x = Math.PI / 2; ring.position.y = .24;
+  g.add(ring);
+  // 三根小柱围一圈
+  for (let i = 0; i < 3; i++) {
+    const a = i / 3 * Math.PI * 2;
+    const p = new T.Mesh(new T.BoxGeometry(.14, .6, .14), stoneMat);
+    p.position.set(Math.cos(a) * .92, .5, Math.sin(a) * .92);
+    p.castShadow = true;
+    g.add(p);
+  }
+  // 晶体：锁着是石灰色，点亮后是青色的光
+  const mat = new T.MeshStandardMaterial({
+    color: 0x8e9a9c, emissive: 0x000000, roughness: .35, metalness: .25, flatShading: true
+  });
+  const cry = new T.Mesh(new T.OctahedronGeometry(.34, 0), mat);
+  cry.position.y = 1.28; cry.castShadow = true;
+  g.add(cry);
+
+  const stone = { key, group: g, crystal: cry, mat, glow: 0 };
+  ANCHOR_STONES.push(stone);
+  return stone;
+}
+
+function buildTown() {
+  const g = new T.Group();
+  g.visible = false;
+  scene.add(g);
+  OUTDOOR.town = g;
+  outdoorMats.set("town", buildGroundFor(TOWN, g));
+
+  // 建房要按 TOWN 的坐标记格，所以临时把 MAP 切过去，建完立刻切回来。
+  // 这段只在启动时跑一次，不会有玩家正好在走。
+  const restore = MAP;
+  MAP = TOWN;
+
+  // ---- 沿街的瓦房 ----
+  for (const b of TOWN_LOTS) {
+    const cx = twx(b.tx + b.w / 2 - .5);   // 房屋中心的世界坐标
+    const cz = twz(b.tz + b.d / 2 - .5);
+    addHouse(cx, cz, b.w - .12, b.d - .12, b.body, b.roof,
+      b.face === 1 ? 0 : Math.PI, g);
+  }
+
+  // ---- 市集摊位 ----
+  for (const s of TOWN_STALLS) {
+    const sg = new T.Group();
+    sg.position.set(twx(s.tx + s.w / 2 - .5), 0, twz(s.tz + s.d / 2 - .5));
+    // 北边那排朝南（+z），南边那排朝北
+    sg.rotation.y = s.tz < 30 ? 0 : Math.PI;
+    g.add(sg);
+    townBox(sg, s.w - .3, .58, .76, woodMat, 0, .29, .06);                 // 柜台
+    townBox(sg, s.w - .22, .07, .9, houseMats.frame, 0, .61, .06);         // 台板
+    [-1, 1].forEach(sx => {
+      const pole = new T.Mesh(new T.CylinderGeometry(.05, .05, 2.1, 6), darkWood);
+      pole.position.set(sx * (s.w / 2 - .22), 1.05, -.34);
+      pole.castShadow = true;
+      sg.add(pole);
+    });
+    const clothMat = new T.MeshStandardMaterial({ color: s.cloth, roughness: .92, side: T.DoubleSide });
+    const aw = townBox(sg, s.w - .06, .06, 1.44, clothMat, 0, 2.0, -.06);
+    aw.rotation.x = .16;
+    townBox(sg, s.w - .06, .34, .05, clothMat, 0, 1.83, .62, false);       // 前檐垂布
+    // 摊上摆点货：几颗圆货 + 两个小筐
+    for (let i = 0; i < 5; i++) {
+      const ball = new T.Mesh(new T.SphereGeometry(.1, 8, 6),
+        new T.MeshStandardMaterial({ color: [0xd8694f, 0xe0b25c, 0x7d9e6a][i % 3], roughness: .8 }));
+      ball.position.set(-.9 + i * .45, .7, .02 + (i % 2) * .18);
+      ball.castShadow = true;
+      sg.add(ball);
+    }
+  }
+
+  // ---- 戏台（西边）：台基 + 四根红柱 + 一个顶 ----
+  {
+    const st = new T.Group();
+    st.position.set(twx(21), 0, twz(25.5));
+    g.add(st);
+    townBox(st, 6.5, .52, 2.4, stoneMat, 0, .26, 0);              // 台基
+    townBox(st, 6.1, .09, 2.05, woodMat, 0, .56, 0);              // 台面
+    const red = new T.MeshStandardMaterial({ color: 0xa8443a, roughness: .85 });
+    [[-2.6, -.85], [2.6, -.85], [-2.6, .85], [2.6, .85]].forEach(([px, pz]) => {
+      const col = new T.Mesh(new T.CylinderGeometry(.13, .15, 3.0, 8), red);
+      col.position.set(px, 2.06, pz);
+      col.castShadow = true;
+      st.add(col);
+    });
+    townBox(st, 6.8, .16, 2.9, houseMats.eave, 0, 3.58, 0);       // 檐板
+    const roofMat = new T.MeshStandardMaterial({ color: 0x4a5c5b, roughness: .9, flatShading: true });
+    [-1, 1].forEach(side => {
+      const slab = townBox(st, 7.1, .1, 1.72, roofMat, 0, 3.98, side * .78);
+      slab.rotation.x = side * .34;
+    });
+    townBox(st, 7.2, .12, .16, roofMat, 0, 4.32, 0, false);       // 屋脊
+    // 台口两根杆子，挂着灯，晚上有戏的样子
+    [-1, 1].forEach(sx => {
+      const pole = new T.Mesh(new T.CylinderGeometry(.05, .05, 2.2, 6), darkWood);
+      pole.position.set(3.15 * sx, 1.1, 1.28);
+      pole.castShadow = true;
+      st.add(pole);
+    });
+  }
+
+  // ---- 镇口牌坊：两根柱子 + 横梁 + 匾 ----
+  {
+    const pa = new T.Group();
+    pa.position.set(twx(5), 0, twz(30.5));
+    g.add(pa);
+    const red = new T.MeshStandardMaterial({ color: 0x9e3f36, roughness: .88 });
+    [-1.9, 1.9].forEach(pz => {
+      const col = new T.Mesh(new T.CylinderGeometry(.17, .2, 3.5, 8), red);
+      col.position.set(0, 1.75, pz);
+      col.castShadow = true;
+      pa.add(col);
+      const foot = new T.Mesh(new T.BoxGeometry(.7, .26, .7), stoneMat);
+      foot.position.set(0, .13, pz);
+      pa.add(foot);
+    });
+    townBox(pa, .42, .34, 5.1, red, 0, 3.62, 0);                  // 大横梁
+    townBox(pa, .5, .2, 4.2, red, 0, 3.16, 0, false);             // 下横枋
+    const roof = townBox(pa, .8, .12, 5.4, new T.MeshStandardMaterial({ color: 0x4a5c5b, roughness: .9 }), 0, 3.86, 0);
+    roof.rotation.z = 0;
+    // 匾
+    const plaque = townBox(pa, .1, .52, 1.5,
+      new T.MeshStandardMaterial({ color: 0xe8d9b4, roughness: .85 }), -.24, 3.3, 0, false);
+    plaque.rotation.y = 0;
+  }
+
+  // ---- 街灯、长椅、水井、路牌 ----
+  [[14, 27], [26, 27], [38, 27], [50, 27], [62, 27],
+   [14, 33.4], [26, 33.4], [50, 33.4], [62, 33.4]].forEach(([tx, tz]) => {
+    addLamp(twx(tx), twz(tz), g);
+  });
+  addBench(twx(34.5), twz(34.6), Math.PI, g);
+  addBench(twx(41.5), twz(25.4), 0, g);
+  addBench(twx(34.5), twz(25.4), 0, g);
+  addWell(twx(45.5), twz(27), g);
+  addSign(twx(24.5), twz(28.6), "戏台", g);
+  addSign(twx(53.5), twz(28.6), "驿站", g);
+
+  // ---- 镇外一圈树，把镇子围起来 ----
+  const tr = mulberry(20261117);
+  for (let i = 0; i < 150; i++) {
+    const tx = Math.floor(tr() * TOWN.w), tz = Math.floor(tr() * TOWN.h);
+    const edge = Math.min(tx, tz, TOWN.w - 1 - tx, TOWN.h - 1 - tz);
+    if (edge > 6 && tr() > .08) continue;          // 绝大部分贴边，少量零散
+    if (solidAt(TOWN, tx, tz)) continue;
+    if (tileAt(TOWN, tx, tz) !== TI.GRASS) continue;
+    const x = twx(tx), z = twz(tz);
+    if (Math.hypot(z - twz(30)) < 4) continue;     // 主街两头留出口
+    if (treeTooClose(x, z, 2.2)) continue;
+    addTree(x, z, .95 + tr() * .4, townTrees);
+  }
+  MAP = restore;
+
+  g.add(townTrees);
+  townTrees.visible = true;
+
+  // ---- 传送锚点（两张图各一根）----
+  addAnchorStone(TOWN, 38, 30, g, "town");
+  addAnchorStone(VILLAGE, 47, 32, world, "village");
+  syncAnchorLook();
 }
 
 /* =========================================================
@@ -1652,7 +1864,12 @@ window.addEventListener("keydown", e => {
     interact();
     e.preventDefault();
   }
-  if (k === "m" || k === "M") toggleSound();
+  if (k === "m" || k === "M") {
+    if (Fight.on || dlg.open) return;
+    if ($("#worldmap").classList.contains("show")) closeWorldMap();
+    else openWorldMap();
+    e.preventDefault();
+  }
   if (k === "Escape") closeOverlays();
 });
 window.addEventListener("keyup", e => {
@@ -1838,7 +2055,7 @@ function hudTick() {
 }
 
 function areaName() {
-  if (MAP !== VILLAGE) {
+  if (MAP.indoor) {
     const base = roomName || "屋里";
     // 屋里隔成了几间：看人现在站在哪一间
     if (MAP.zones && MAP.room) {
@@ -1847,6 +2064,15 @@ function areaName() {
       if (zn) return base + " · " + zn.name;
     }
     return base;
+  }
+  if (MAP === TOWN) {
+    const tx = player.x - TOWN.ox, tz = player.z - TOWN.oz;
+    if (Math.hypot(tx - 21, tz - 28) < 6.5) return "奶家镇 · 戏台";
+    if (Math.hypot(tx - 57, tz - 30) < 7.5) return "奶家镇 · 驿站";
+    if (Math.hypot(tx - 38, tz - 30) < 9.5) return "奶家镇 · 市集";
+    if (tx < 11) return "奶家镇 · 镇口";
+    if (tz > 38) return "奶家镇 · 南街";
+    return "奶家镇";
   }
   const { x, z } = player;
   if (nearFarm(x, z, 3)) return "我的地";
@@ -1871,9 +2097,11 @@ function drawRadar() {
   rctx.fillStyle = "#dfe9d2"; rctx.fillRect(0, 0, S, S);
 
   const k = S / RADAR_SPAN;     // 每格多少像素
-  const room = MAP === VILLAGE ? null : rooms.get(roomState.name);
-  const tex = MAP === VILLAGE ? (groundMat && groundMat.map) : (room && room.mat.map);
-  const cv = tex && tex.userData && tex.userData.canvas;
+  const tex = MAP.indoor
+    ? (rooms.get(roomState.name) || {}).mat
+    : outdoorMats.get(roomState.name);
+  const texMap = tex && tex.map;
+  const cv = texMap && texMap.userData && texMap.userData.canvas;
   if (cv) {
     const pxc = (player.x - MAP.ox) / MAP.w * cv.width;
     const pzc = (player.z - MAP.oz) / MAP.h * cv.height;
@@ -1895,12 +2123,21 @@ function drawRadar() {
       rctx.fillStyle = "rgba(62,110,50,.32)";
       rctx.beginPath(); rctx.ellipse(px, py, p.r * k, p.r * k, 0, 0, 7); rctx.fill();
     });
-    // 门
+  }
+
+  // 门和锚点：哪张图上都该看得见
+  if (!MAP.indoor) {
     MAP.marks.forEach((mk, key) => {
-      if (mk.kind !== "door") return;
+      if (mk.kind !== "door" && mk.kind !== "gate" && mk.kind !== "anchor") return;
       const [tx, tz] = key.split(",").map(Number);
       const [px, py] = put(MAP.ox + tx + .5, MAP.oz + tz + .5);
-      rctx.fillStyle = "rgba(196,116,72,.95)";
+      if (mk.kind === "anchor") {
+        const on = !!state.anchors[mk.id];
+        rctx.fillStyle = on ? "rgba(64,180,168,.95)" : "rgba(120,130,132,.9)";
+        rctx.beginPath(); rctx.arc(px, py, 2.2, 0, 7); rctx.fill();
+        return;
+      }
+      rctx.fillStyle = mk.kind === "gate" ? "rgba(150,96,178,.95)" : "rgba(196,116,72,.95)";
       rctx.fillRect(px - 1.8, py - 1.8, 3.6, 3.6);
     });
   }
@@ -2041,12 +2278,14 @@ function overlayOpen() {
   return $("#dex").classList.contains("show")
     || $("#help").classList.contains("show")
     || $("#shop").classList.contains("show")
-    || $("#go").classList.contains("show");
+    || $("#go").classList.contains("show")
+    || ($("#worldmap") && $("#worldmap").classList.contains("show"));
 }
 function closeOverlays() {
   $("#dex").classList.remove("show");
   $("#help").classList.remove("show");
   $("#shop").classList.remove("show");
+  if ($("#worldmap")) $("#worldmap").classList.remove("show");
 }
 
 /* =========================================================
@@ -2208,6 +2447,117 @@ async function spawnRoomNpcs(map, mapKey) {
       npcs.push(n);
       setSolid(map, spec.tx, spec.tz, 1);
     } catch (e) { console.warn("[game] 值班的没在", e); }
+  }
+}
+
+/* =========================================================
+   奶家镇的两位：暴暴龙摆擂、肥嘟嘟丢口袋
+   ========================================================= */
+const TOWN_NPCS = [
+  {
+    id: "baobaolong",
+    name: "暴暴龙",
+    char: "baobaolong",
+    home: { x: 3.5, z: .5 },
+    face: 2.4,
+    tag: "在镇上摆擂台",
+    greet: [
+      "站住。这儿是擂台，我是擂主。",
+      "三天没人敢上来了。你要是赢了，钱归你；输了也别哭。"
+    ],
+    act: "arena",
+    actLabel: "上台打一场"
+  },
+  {
+    id: "feidudu",
+    name: "肥嘟嘟袋鼠",
+    char: "feidudu",
+    home: { x: -4.5, z: 1.5 },
+    face: -1.2,
+    tag: "口袋又漏了",
+    greet: [
+      "（它捂着肚皮上的口袋，一脸发愁）",
+      "我一路走过来，口袋里的东西掉光了。三只，三只都没了。"
+    ],
+    act: "pouch",
+    actLabel: "帮它找口袋"
+  }
+];
+
+// 肥嘟嘟掉的三个口袋：戏台边、驿站院子、南街尽头
+const POUCH_SPOTS = [
+  { tx: 19.2, tz: 28.4 },
+  { tx: 56.6, tz: 31.4 },
+  { tx: 38.4, tz: 44.2 }
+];
+const pouchQuest = { active: false, got: 0, objs: [] };
+let arenaPending = false;
+
+function buildPouches() {
+  if (pouchQuest.objs.length) return;
+  const town = OUTDOOR.town;
+  if (!town) return;
+  POUCH_SPOTS.forEach((sp, i) => {
+    const g = new T.Group();
+    g.position.set(TOWN.ox + sp.tx, 0, TOWN.oz + sp.tz);
+    const sack = new T.Mesh(new T.SphereGeometry(.26, 10, 8),
+      new T.MeshStandardMaterial({ color: 0xc9a877, roughness: .95 }));
+    sack.scale.set(1, 1.15, 1);
+    sack.position.y = .28;
+    sack.castShadow = true;
+    g.add(sack);
+    const tie = new T.Mesh(new T.ConeGeometry(.1, .18, 6),
+      new T.MeshStandardMaterial({ color: 0x8a6540, roughness: .95 }));
+    tie.position.y = .58;
+    g.add(tie);
+    g.visible = false;
+    town.add(g);
+    pouchQuest.objs.push({ group: g, got: false, i });
+  });
+}
+
+function startPouchQuest() {
+  buildPouches();
+  pouchQuest.active = true;
+  pouchQuest.got = 0;
+  pouchQuest.objs.forEach(o => { o.got = false; o.group.visible = true; });
+  toast("三只口袋掉在镇上了 · 戏台边、驿站院子、南街尽头");
+}
+
+function tryPouch() {
+  if (!pouchQuest.active || roomState.name !== "town") return false;
+  for (const o of pouchQuest.objs) {
+    if (o.got) continue;
+    if (Math.hypot(player.x - o.group.position.x, player.z - o.group.position.z) > 1.5) continue;
+    o.got = true;
+    o.group.visible = false;
+    pouchQuest.got++;
+    sfx("coin");
+    blip(760, .12, "sine", .04);
+    toast("捡到一只口袋（" + pouchQuest.got + "/3）");
+    if (pouchQuest.got >= 3) setTimeout(() => toast("三只都找回来了 · 拿回去给肥嘟嘟"), 900);
+    return true;
+  }
+  return false;
+}
+
+async function spawnTownNpcs() {
+  const town = OUTDOOR.town;
+  if (!town) return;
+  for (const def of TOWN_NPCS) {
+    if (npcs.some(n => n.map === "town" && n.def.id === def.id)) continue;
+    try {
+      const obj = await getActor(def.char);
+      if (!obj) continue;
+      const g = new T.Group();
+      g.add(obj);
+      g.position.set(def.home.x, 0, def.home.z);
+      g.rotation.y = def.face || 0;
+      town.add(g);
+      const n = npcDefObj(def, "town", def.home.x, def.home.z);
+      n.obj = g;
+      npcs.push(n);
+    } catch (e) { console.warn("[game] 镇上的没来：" + def.id, e); }
   }
 }
 
@@ -2636,71 +2986,195 @@ function boardMenu() {
   say("公告板", lines);
 }
 
-/* ---- 进屋 / 出屋 ---- */
+/* =========================================================
+   场景切换：户外的几张图 + 室内房间，都从这里换
+   ========================================================= */
 const roomState = { name: "village", back: { x: 0, z: 0 }, backHeading: 0 };
 
-function enterRoom(to) {
-  const map = MAPS[to];
-  if (!map || roomState.name !== "village") return;
-  const r = ensureRoom(to, map);
-  roomState.name = to;
-  roomState.back = { x: player.x, z: player.z };
-  roomState.backHeading = player.heading;
+// 所有传送锚点：位置按各自地图的格子算，点亮要花钱
+const ANCHORS = {
+  village: { name: "奶家村 · 广场", map: "village", tx: 47, tz: 32, cost: 30 },
+  town: { name: "奶家镇 · 市集", map: "town", tx: 38, tz: 30, cost: 40 }
+};
 
-  world.visible = false;
-  rooms.forEach((v, k) => { v.group.visible = (k === to); });
-  MAP = map;
-  roomName = map.name;
+// 锁着的锚点是石灰色，点亮之后泛青光
+function syncAnchorLook() {
+  for (const s of ANCHOR_STONES) {
+    const on = !!state.anchors[s.key];
+    s.mat.color.setHex(on ? 0x7fe3d4 : 0x8e9a9c);
+    s.mat.emissive.setHex(on ? 0x1f6f66 : 0x000000);
+  }
+}
 
-  // 站在门口内侧
-  const R = map.room;
-  const spawn = toWorld(map, R.x0 + R.exitTx, R.z0 + R.h - 3);
-  player.x = spawn.x; player.z = spawn.z;
-  player.heading = Math.PI;
+// 锚点晶体：点亮后会转、会浮、会呼吸
+let anchorT = 0;
+function animateAnchors(dt) {
+  anchorT += dt;
+  for (const st of ANCHOR_STONES) {
+    const on = !!state.anchors[st.key];
+    st.crystal.rotation.y += dt * (on ? 1.1 : .18);
+    st.crystal.position.y = 1.28 + Math.sin(anchorT * (on ? 2.2 : .8)) * (on ? .09 : .025);
+    if (on) {
+      const p = .55 + Math.sin(anchorT * 2.4) * .25;
+      st.mat.emissive.setRGB(.10 * p, .42 * p, .38 * p);
+    }
+  }
+}
+
+function setOutdoorVisible(key) {
+  for (const k in OUTDOOR) if (OUTDOOR[k]) OUTDOOR[k].visible = (k === key);
+}
+
+function placePlayer(x, z, heading) {
+  player.x = x; player.z = z;
+  if (heading != null) player.heading = heading;
   player.moving = false;
-  playerObj.position.set(player.x, 0, player.z);
-  playerObj.rotation.y = Math.PI;
+  playerObj.position.set(x, 0, z);
+  playerObj.rotation.y = player.heading;
   cursor.visible = false;
   resize();
   updateCamera(true);
-  blip(560, .1, "sine", .04);
-  toast("进了" + map.name);
-  if (!state.seenRoom) state.seenRoom = {};
-  state.seenRoom[to] = true;
-  spawnRoomNpcs(map, to);
-  hudTick();
 }
 
-function leaveRoom() {
-  if (roomState.name === "village") return;
+/* 换场景只有一个入口：室内、户外、门、锚点全走这里。
+   spawn 支持两种写法：{ tx, tz } 按目标地图的格子给，{ x, z } 直接给世界坐标。 */
+function travelTo(key, spawn) {
+  const map = MAPS[key];
+  if (!map || key === roomState.name) return false;
   if (sleepPose.on) getUp();
+  if (dlg.open) closeDialog();
+  closeWorldMap();
+
+  // 离开村子时记下位置：存档点、被抬回村口都靠它
+  if (roomState.name === "village") {
+    roomState.back.x = player.x;
+    roomState.back.z = player.z;
+    roomState.backHeading = player.heading;
+  }
+
   rooms.forEach(v => { v.group.visible = false; });
-  world.visible = true;
-  MAP = VILLAGE;
-  roomName = "";
-  roomState.name = "village";
-  // 站到门格子外侧一点，免得一出门又踩在门上
-  player.x = roomState.back.x;
-  player.z = roomState.back.z + .55;
-  player.heading = 0;
-  player.moving = false;
-  playerObj.position.set(player.x, 0, player.z);
-  playerObj.rotation.y = 0;
-  resize();
-  updateCamera(true);
-  blip(520, .1, "sine", .035);
+  roomState.name = key;
+  MAP = map;
+  roomName = map.indoor ? map.name : "";
+
+  if (map.indoor) {
+    setOutdoorVisible(null);
+    const r = ensureRoom(key, map);
+    r.group.visible = true;
+    const R = map.room;
+    const p = toWorld(map, R.x0 + R.exitTx, R.z0 + R.h - 3);
+    placePlayer(p.x, p.z, Math.PI);
+    if (!state.seenRoom) state.seenRoom = {};
+    state.seenRoom[key] = true;
+    spawnRoomNpcs(map, key);
+    blip(560, .1, "sine", .04);
+    toast("进了" + map.name);
+  } else {
+    setOutdoorVisible(key);
+    let x = player.x, z = player.z, h = player.heading;
+    if (spawn && typeof spawn.tx === "number") {
+      const p = toWorld(map, spawn.tx, spawn.tz);
+      x = p.x; z = p.z;
+    } else if (spawn && typeof spawn.x === "number") {
+      x = spawn.x; z = spawn.z;
+    }
+    if (spawn && spawn.heading != null) h = spawn.heading;
+    // 落点万一压在实体上，往南挪一格再试，别把人塞进房子里
+    for (let i = 0; i < 8 && blocked(x, z); i++) z += 1;
+    placePlayer(x, z, h);
+    if (key === "town") {
+      spawnTownNpcs().catch(e => console.warn("[game] 镇上的没来", e));
+      // 口袋任务进行中时，没捡的那些要重新露出来
+      pouchQuest.objs.forEach(o => { o.group.visible = pouchQuest.active && !o.got; });
+    }
+    blip(key === "town" ? 640 : 520, .1, "sine", .035);
+    toast(key === "town" ? "进了奶家镇" : "回到奶家村");
+  }
   hudTick();
+  save();
+  return true;
+}
+
+function enterRoom(to) { travelTo(to, null); }
+
+function leaveRoom() {
+  if (!MAP.indoor) return;
+  travelTo("village", { x: roomState.back.x, z: roomState.back.z + .55, heading: 0 });
+}
+
+/* ---- 锚点：第一次按 E 花钱点亮，之后按 E（或 M）开地图跳 ---- */
+function useAnchor(id) {
+  const a = ANCHORS[id];
+  if (!a) return;
+  if (state.anchors[id]) { openWorldMap(); return; }
+  const ok = Farm.gold >= a.cost;
+  say("传送锚点", [
+    "石座是凉的，中间那颗晶体一点光都没有。",
+    ok ? "往里搁 " + a.cost + " 金，它能接上力气。"
+       : "得往里搁 " + a.cost + " 金才点得亮 —— 你现在只有 " + Farm.gold + "。"
+  ], null, [
+    {
+      label: "点亮（" + a.cost + " 金）",
+      onPick: () => {
+        if (Farm.gold < a.cost) { toast("钱不够"); return; }
+        Farm.gold -= a.cost;
+        state.anchors[id] = true;
+        syncAnchorLook();
+        Farm.paint(); hudTick(); save();
+        sfx("coin");
+        blip(880, .18, "sine", .05);
+        toast("锚点点亮了 · 按 M 打开地图");
+      }
+    },
+    { label: "先不点", onPick: null }
+  ]);
+}
+
+/* ---- 世界地图（M 键）---- */
+function openWorldMap() {
+  if (Fight.on || dlg.open || overlayOpen()) return;
+  const list = $("#mapList");
+  if (!list) return;
+  list.innerHTML = "";
+  for (const k in ANCHORS) {
+    const a = ANCHORS[k];
+    const unlocked = !!state.anchors[k];
+    const here = roomState.name === k;
+    const row = document.createElement("button");
+    row.className = "mapline" + (unlocked ? "" : " locked") + (here ? " here" : "");
+    row.innerHTML =
+      '<span class="mp-name">' + a.name + '</span>' +
+      '<span class="mp-tag">' + (here ? "你在这儿" : unlocked ? "可传送" : "未点亮 · " + a.cost + " 金") + '</span>';
+    row.disabled = !unlocked || here;
+    row.addEventListener("click", () => {
+      closeWorldMap();
+      travelTo(a.map, { tx: a.tx, tz: a.tz + 2, heading: 0 });
+    });
+    list.appendChild(row);
+  }
+  const hint = $("#mapGold");
+  if (hint) hint.textContent = "💰 " + Farm.gold;
+  $("#worldmap").classList.add("show");
+}
+function closeWorldMap() {
+  const el = $("#worldmap");
+  if (el) el.classList.remove("show");
 }
 
 function interact() {
   const a = aimCell();
   const npc = npcNear(2.2);
 
+  // ⓪ 肥嘟嘟掉的口袋：站在旁边按 E 就捡
+  if (tryPouch()) return;
+
   // ① 格子上的标记：门、床、柜台、公告板、灶台……
   if (a && a.mark) {
     const mk = a.mark;
     if (mk.kind === "door") { enterRoom(mk.to); return; }
     if (mk.kind === "exit") { leaveRoom(); return; }
+    if (mk.kind === "gate") { travelTo(mk.to, mk.spawn); return; }
+    if (mk.kind === "anchor") { useAnchor(mk.id); return; }
     if (mk.kind === "sign") { say("告示", [mk.text]); return; }
     if (mk.kind === "shop") { Farm.openShop(); return; }
     if (mk.kind === "sleep") { Farm.sleepPrompt(); return; }
@@ -2909,6 +3383,52 @@ function runAct(def, n) {
       break;
     }
 
+    case "arena": {
+      if (Fight.on) break;
+      say(def.name, [
+        "规矩很简单：站上去，把我打趴下。",
+        "输赢都不记仇，钱是真给。"
+      ], () => {
+        arenaPending = true;
+        startEncounter("meadow", "baobaolong");
+      }, null, "angry");
+      break;
+    }
+
+    case "pouch": {
+      if (pouchQuest.active && pouchQuest.got >= 3) {
+        pouchQuest.active = false;
+        state.pouchDay = Farm.day;
+        state.pouches++;
+        Farm.gold += 60;
+        state.balls += 1;
+        grantExp(10);
+        Farm.paint(); hudTick(); save();
+        sfx("coin");
+        say(def.name, [
+          "（它把三只口袋一只一只塞回肚皮，拍了拍）",
+          "钱不多，是我攒的。球也给你一个 —— 你比我用得着。"
+        ], () => toast("口袋全找回来了 · +60 金 · 捕捉球 +1"), null, "happy");
+        break;
+      }
+      if (pouchQuest.active) {
+        say(def.name, [
+          "还有 " + (3 - pouchQuest.got) + " 只在外头。",
+          "戏台边上、驿站院子里、南街尽头 —— 我是一路走一路掉的。"
+        ]);
+        break;
+      }
+      if (state.pouchDay === Farm.day) {
+        say(def.name, ["今天找回来的那些，我收好了。", "明天……明天它还会漏。"], null, null, "happy");
+        break;
+      }
+      say(def.name, [
+        "你帮我找找？我不乱跑，就在这儿等你。",
+        "三只，都装着路上捡的碎东西，不值钱，但我不想丢。"
+      ], () => startPouchQuest(), null, "worry");
+      break;
+    }
+
     default:
       say(def.name, def.greet);
   }
@@ -2963,6 +3483,9 @@ function onBattleEnd(res) {
   endBattleUi();
   encounterLock = false;
   if (!res) return;
+  // 擂台标记只对「刚打完的这一场」有效，别带到下一场野怪
+  const wasArena = arenaPending;
+  arenaPending = false;
 
   state.balls -= res.ballUsed;
   state.hp = res.playerHp;
@@ -2978,11 +3501,25 @@ function onBattleEnd(res) {
   } else if (res.win) {
     grantExp(8 + Math.round(res.enemyMaxHp * .18));
     toast("打赢了，捡回一点经验");
+    if (wasArena) {
+      state.arenaWins = (state.arenaWins || 0) + 1;
+      const prize = state.arenaWins === 1 ? 120 : 40;
+      Farm.gold += prize;
+      Farm.paint(); hudTick();
+      setTimeout(() => toast("守擂赢了一场 · +" + prize + " 金"), 700);
+      if (state.arenaWins === 3) setTimeout(() => toast("三连胜，暴暴龙认了"), 1600);
+    }
   } else {
     state.hp = Math.max(1, Math.round(state.maxHp * .35));
-    player.x = SPAWN.x; player.z = SPAWN.z;
-    playerObj.position.set(player.x, 0, player.z);
-    toast("被抬回了村口");
+    // 被打趴的人一律送回村里，别把人留在镇上却看不见村子的场景
+    if (roomState.name !== "village") {
+      travelTo("village", { x: SPAWN.x, z: SPAWN.z, heading: Math.PI });
+    } else {
+      player.x = SPAWN.x; player.z = SPAWN.z;
+      playerObj.position.set(player.x, 0, player.z);
+    }
+    // 在擂台上输了：人被送回村口，这也算一场结束
+    toast(wasArena ? "被打下擂台，暴暴龙让人把你抬回了村口" : "被抬回了村口");
   }
 
   battleGrace = 1.6;
@@ -3051,6 +3588,8 @@ $("#btnStyle").onclick = () => {
 // 按钮上显示当前风格名
 $("#btnStyle").textContent = "🎨 " + STYLES[styleIdx].name;
 $("#btnHelp").onclick = () => $("#help").classList.add("show");
+if ($("#btnMap")) $("#btnMap").onclick = () => openWorldMap();
+if ($("#btnMapClose")) $("#btnMapClose").onclick = closeWorldMap;
 $("#btnDexClose").onclick = () => $("#dex").classList.remove("show");
 $("#btnHelpClose").onclick = () => $("#help").classList.remove("show");
 $("#btnShopClose").onclick = () => { $("#shop").classList.remove("show"); save(); };
@@ -3073,6 +3612,7 @@ function loop() {
     return;
   }
   update(dt);
+  animateAnchors(dt);
   if (state.started) drawRadar();
   renderer.render(scene, camera);
 }
@@ -3113,6 +3653,7 @@ async function boot() {
   try {
     buildGround();
     buildProps();
+    buildTown();
     applyStyle();   // 场景搭好后统一套用主题（国风染色 / 飞檐 / 背景）
   } catch (e) { console.error("[game] 场景搭建出错", e); }
 
@@ -3156,6 +3697,8 @@ async function boot() {
 
   const has = load();
   Farm.rebuild();
+  // 读档之后才知道哪些锚点点亮过，晶体颜色要重新刷一遍
+  syncAnchorLook();
   if (has) {
     $("#btnContinue").style.display = "";
     $("#btnContinue").dataset.has = "1";
@@ -3216,6 +3759,9 @@ if (location.search.indexOf("debug") >= 0) {
     startGame, startEncounter, save, getActor, keys, dlg, say, advanceDialog,
     blocked, toast, interact, tileAhead, aimCell, enterRoom, leaveRoom, rooms, MAPS, cursor, scene,
     npcs, npcNear, talk, runAct, questProgress, bountyMenu,
+    travelTo, openWorldMap, closeWorldMap, useAnchor, roomState, TOWN, VILLAGE,
+    ANCHORS, ANCHOR_STONES, startPouchQuest, pouchQuest, spawnTownNpcs, tryPouch,
+    OUTDOOR, outdoorMats, position: () => ({ x: player.x, z: player.z, map: roomState.name }),
     qiyetTalk, qiyetWin, qiyetLose, Gomoku, lieDown, getUp, sleepPose,
     modelDbg: () => ({
       loadedNailong: srcScenes.has("nailong") ? "3d" : (loaded.get("nailong") === null ? "billboard" : "unset"),

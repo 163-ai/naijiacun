@@ -958,6 +958,15 @@ export const VILLAGE = (() => {
   noWalk(22, 18, 5, 4);
   noWalk(61, 18, 5, 4);
 
+  // ---- 东边村口：土路接出去就是奶家镇 ----
+  road(m, 82, 35, 86, 35, 1.4);
+  // spawn 是到了对面站在哪、朝哪边（heading：0 朝 +z，π/2 朝 +x）
+  mark(m, 85, 34, { kind: "gate", to: "town", spawn: { tx: 7, tz: 30, heading: Math.PI / 2 }, label: "去奶家镇" });
+  mark(m, 85, 35, { kind: "gate", to: "town", spawn: { tx: 7, tz: 30, heading: Math.PI / 2 }, label: "去奶家镇" });
+
+  // ---- 传送锚点（广场东边，靠主路）----
+  mark(m, 47, 32, { kind: "anchor", id: "village", label: "传送锚点" });
+
   // ---- 门 ----
   mark(m, 36, 56, { kind: "door", to: "house", label: "进屋里" });
   mark(m, 59, 54, { kind: "door", to: "shop", label: "进杂货铺" });
@@ -986,6 +995,29 @@ export const VILLAGE = (() => {
    奶家镇：村子往东的镇子，主街一条、南北街一条，市集广场居中。
    镇口立牌坊（回奶家村），广场中央一根传送锚点。
    ========================================================= */
+// 镇上的房子：tx/tz 是西南角那一格，face = 门朝哪边（1 朝南 +z，-1 朝北 -z）。
+// 单独导出，是因为 3D 那边要按同一份数据把房子立起来 —— 数据和画面不能各写一遍。
+export const TOWN_LOTS = [
+  { id: "s1", tx: 14, tz: 36, w: 6, d: 5, face: -1, body: 0xf0e3c8, roof: 0xc4795f },
+  { id: "s2", tx: 24, tz: 36, w: 6, d: 5, face: -1, body: 0xf6ead2, roof: 0xb8694f },
+  { id: "s3", tx: 46, tz: 36, w: 6, d: 5, face: -1, body: 0xe9dcc2, roof: 0xb46b52 },
+  { id: "s4", tx: 56, tz: 36, w: 6, d: 5, face: -1, body: 0xe6edf3, roof: 0x4e6f8f },
+  { id: "n1", tx: 16, tz: 18, w: 6, d: 5, face: 1, body: 0xf3e6cc, roof: 0xc06a4e },
+  { id: "n2", tx: 28, tz: 18, w: 6, d: 5, face: 1, body: 0xefe0c2, roof: 0xb3654c },
+  { id: "n3", tx: 48, tz: 18, w: 6, d: 5, face: 1, body: 0xf6ead2, roof: 0x9f5a48 },
+  { id: "n4", tx: 60, tz: 18, w: 6, d: 5, face: 1, body: 0xe9dcc2, roof: 0x4e6f8f },
+  // 驿站的正屋：比民居宽一点，门朝南对着驿站院子
+  { id: "inn", tx: 54, tz: 23, w: 7, d: 4, face: 1, body: 0xf2e4c8, roof: 0xa85a3f, big: true }
+];
+
+// 市集摊位：广场四角各一个，摆货的台面占两格半
+export const TOWN_STALLS = [
+  { tx: 32, tz: 26, w: 3, d: 1, cloth: 0xe0785a },
+  { tx: 42, tz: 26, w: 3, d: 1, cloth: 0x5f8fa8 },
+  { tx: 32, tz: 33, w: 3, d: 1, cloth: 0xd8a24c },
+  { tx: 42, tz: 33, w: 3, d: 1, cloth: 0x7d9e6a }
+];
+
 export const TOWN = (() => {
   const m = makeMap(76, 60, "奶家镇", -38, -30);
   m.tiles.fill(TI.GRASS);
@@ -1003,23 +1035,26 @@ export const TOWN = (() => {
   fillEll(m, 57, 30, 5.5, 4.6, TI.STONE);   // 驿站院子
 
   // ---- 房子：沿街两排 ----
-  const lots = [
-    [14, 36, 6, 5], [24, 36, 6, 5], [46, 36, 6, 5], [56, 36, 6, 5],
-    [16, 18, 6, 5], [28, 18, 6, 5], [48, 18, 6, 5], [60, 18, 6, 5]
-  ];
-  lots.forEach(function (b) {
-    rect(m, b[0], b[1], b[2], b[3], TI.WOOD);
-    for (let tz = b[1]; tz < b[1] + b[3]; tz++)
-      for (let tx = b[0]; tx < b[0] + b[2]; tx++) setSolid(m, tx, tz, 1);
+  TOWN_LOTS.forEach(function (b) {
+    rect(m, b.tx, b.tz, b.w, b.d, TI.WOOD);
+    for (let tz = b.tz; tz < b.tz + b.d; tz++)
+      for (let tx = b.tx; tx < b.tx + b.w; tx++) setSolid(m, tx, tz, 1);
+  });
+
+  // ---- 摊位：台面占格，不能穿过去 ----
+  TOWN_STALLS.forEach(function (s) {
+    rect(m, s.tx, s.tz, s.w, s.d, TI.WOOD);
+    for (let tz = s.tz; tz < s.tz + s.d; tz++)
+      for (let tx = s.tx; tx < s.tx + s.w; tx++) setSolid(m, tx, tz, 1);
   });
 
   // ---- 戏台（西侧空地北沿，只做台面和一排立柱的落位）----
   rect(m, 18, 25, 6, 2, TI.WOOD);
-  for (let tx = 18; tx < 24; tx++) setSolid(m, tx, 25, 1);
+  for (let tx = 18; tx < 24; tx++) { setSolid(m, tx, 25, 1); setSolid(m, tx, 26, 1); }
 
   // ---- 牌坊 / 镇口：回村 ----
-  mark(m, 5, 30, { kind: "gate", to: "village", label: "回奶家村" });
-  mark(m, 5, 31, { kind: "gate", to: "village", label: "回奶家村" });
+  mark(m, 5, 30, { kind: "gate", to: "village", spawn: { tx: 83, tz: 35, heading: -Math.PI / 2 }, label: "回奶家村" });
+  mark(m, 5, 31, { kind: "gate", to: "village", spawn: { tx: 83, tz: 35, heading: -Math.PI / 2 }, label: "回奶家村" });
 
   // ---- 传送锚点（广场正中）----
   mark(m, 38, 30, { kind: "anchor", id: "town", label: "传送锚点" });

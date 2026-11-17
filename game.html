@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
   <title>奶家村 · 大冒险</title>
-  <link rel="stylesheet" href="css/game.css?v=15">
+  <link rel="stylesheet" href="css/game.css?v=16">
 </head>
 <body>
   <canvas id="gl"></canvas>
@@ -23,6 +23,7 @@
       </div>
       <div class="tools">
         <a class="btn" href="index.html">← 回村</a>
+        <button class="btn" id="btnMap" title="世界地图（M）">🗺 地图</button>
         <button class="btn" id="btnDex">图鉴 <span id="dexCount">0</span>/4</button>
         <button class="btn" id="btnStyle" title="切换画面风格">🎨 风格</button>
         <button class="btn" id="btnSound">🔊</button>
@@ -171,6 +172,26 @@
     </div>
   </div>
 
+  <!-- ========== 世界地图 / 传送 ========== -->
+  <div class="overlay" id="worldmap">
+    <div class="veil"></div>
+    <div class="sheet">
+      <div class="sheet-inner map-inner">
+        <div class="shop-head">
+          <div>
+            <div class="shop-kicker">大世界 · 传送</div>
+            <h2>已点亮的锚点</h2>
+          </div>
+          <div class="shop-gold" id="mapGold">💰 0</div>
+        </div>
+        <div id="mapList"></div>
+        <p class="shop-tip">锚点要走到跟前按 E、花金币点亮；没点亮的地方只能靠腿走过去。
+          从村东口出村，土路一直通到奶家镇牌坊。</p>
+        <div class="closebar"><button class="btn dark" id="btnMapClose">收起来</button></div>
+      </div>
+    </div>
+  </div>
+
   <!-- ========== 图鉴 ========== -->
   <div class="overlay" id="dex">
     <div class="veil"></div>
@@ -251,6 +272,6 @@
   <script src="js/rain.js?v=1"></script>
   <script src="js/3d-models.js"></script>
   <script src="js/site-pet.js?v=fast-pet-2"></script>
-  <script type="module" src="js/game2d.js?v=71"></script>
+  <script type="module" src="js/game2d.js?v=72"></script>
 </body>
 </html>
