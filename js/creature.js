@@ -125,6 +125,33 @@ export function makeAnimator(root) {
     }
   }
 
+  /* ---- 跳跃：收腿、抬手、身体前倾一点。k=0 起跳上升，k=1 接近落地 ---- */
+  function jumpPose(k = 0) {
+    const tuck = 1 - k;   // 上升时收得紧，落地时放开
+    if (kind === "biped") {
+      bones.hipLeft.rotation.x = -.55 * tuck;
+      bones.hipRight.rotation.x = -.42 * tuck;
+      bones.kneeLeft.rotation.x = .95 * tuck;
+      bones.kneeRight.rotation.x = .8 * tuck;
+      bones.armLeft.rotation.x = .9 * tuck;
+      bones.armRight.rotation.x = .9 * tuck;
+      bones.armLeft.rotation.z = -.28 * tuck;
+      bones.armRight.rotation.z = .28 * tuck;
+      bones.body.rotation.x = .14 * tuck;
+      bones.head.rotation.x = -.08 * tuck;
+    } else if (bones.footLeft) {
+      bones.footLeft.rotation.x = -.5 * tuck;
+      bones.footRight.rotation.x = -.5 * tuck;
+      bones.armLeft.rotation.x = bones.armRight.rotation.x = .7 * tuck;
+    } else if (bones.pawLeft) {
+      bones.pawLeft.rotation.x = -.6 * tuck;
+      bones.pawRight.rotation.x = -.6 * tuck;
+      bones.head.rotation.x = -.12 * tuck;
+    } else if (bones.head) {
+      bones.head.rotation.x = -.1 * tuck;
+    }
+  }
+
   return {
     kind, bones,
     update(motion, opt = {}) {
@@ -137,6 +164,7 @@ export function makeAnimator(root) {
           case "fightIdle": fightIdle(t, opt.guard !== false); break;
           case "hurt": hurt(opt.k ?? 0); break;
           case "sleep": sleepPose(); break;
+          case "jump": jumpPose(opt.k ?? 0); break;
           default: idle(t);
         }
       } catch (e) { /* 某个关节缺失就少动一下，不能把游戏循环带崩 */ }

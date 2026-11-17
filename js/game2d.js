@@ -412,9 +412,11 @@ function visZ() { return player.z + regionOff(roomState.name).z; }
 /* 交界口：视觉坐标里的三条拼缝。玩家踩着门洞跨过去时，只换「所在图」并把局部
    坐标按位移差重基，视觉位置完全不变 —— 于是走过去是连续的，不是传送。 */
 const PORTALS = [
-  { a: "village", b: "town",  axis: "x", line: 44,  dir: 1,  lo: -4,  hi: 5 },   // 村东 ↔ 镇西（镇在 +x）
-  { a: "village", b: "grove", axis: "x", line: -44, dir: -1, lo: -25, hi: -15 }, // 村西 ↔ 竹林（竹林在 -x）
-  { a: "village", b: "hill",  axis: "z", line: 34,  dir: 1,  lo: -4,  hi: 5 }    // 村南 ↔ 坡北（坡在 +z）
+  // lo/hi 是整条可通行的拼缝范围（不是窄门洞）。两图在这条边上重叠多少就放行多少，
+  // 玩家沿边界任意位置都能直接走过去，不再被「只有一个通道」的墙挡住。
+  { a: "village", b: "town",  axis: "x", line: 44,  dir: 1,  lo: -29, hi: 29 },  // 村东 ↔ 镇西（z 重叠 -30..30）
+  { a: "village", b: "grove", axis: "x", line: -44, dir: -1, lo: -33, hi: 10 },  // 村西 ↔ 竹林（z 重叠 -34..11）
+  { a: "village", b: "hill",  axis: "z", line: 34,  dir: 1,  lo: -31, hi: 31 }   // 村南 ↔ 坡北（x 重叠 -32..32）
 ];
 // 视觉点是否落在某条拼缝的门洞带里（用于越界格不当墙）
 function inPortalBand(vx, vz) {
@@ -733,12 +735,15 @@ function buildFar() {
   scene.add(skyDome);
 
   // ---- 地图外的大草地：把地图边界之外填满同色，别露出黑 ----
+  // 关键：这张板必须低于所有地形最低点（野外 amp 1.85，最低约 -2.1）。
+  // 原来放 -0.08，结果角色站进负高度洼地时，被这张平板从腰部「截断」，
+  // 看着就像脚插进地里。降到 -2.8 后，板永远在真实地形之下，只填地图外虚空。
   const land = new T.Mesh(
     new T.PlaneGeometry(900, 900),
     new T.MeshStandardMaterial({ color: 0x8fac6e, roughness: 1 })
   );
   land.rotation.x = -Math.PI / 2;
-  land.position.y = -.08;
+  land.position.y = -2.8;
   farGroup.add(land);
 
   const r = mulberry(20261117);
