@@ -983,6 +983,76 @@ export const VILLAGE = (() => {
 })();
 
 /* =========================================================
+   奶家镇：村子往东的镇子，主街一条、南北街一条，市集广场居中。
+   镇口立牌坊（回奶家村），广场中央一根传送锚点。
+   ========================================================= */
+export const TOWN = (() => {
+  const m = makeMap(76, 60, "奶家镇", -38, -30);
+  m.tiles.fill(TI.GRASS);
+
+  // ---- 镇外的水（西南角，和村子的水塘不是一片）----
+  fillEll(m, 11, 49, 6.4, 4.2, TI.WATER);
+
+  // ---- 两条主街 ----
+  road(m, 4, 30, 72, 30, 2.2);       // 东西主街，西头接村道
+  road(m, 38, 4, 38, 56, 1.8);       // 南北街
+
+  // ---- 三块铺装 ----
+  fillEll(m, 38, 30, 9.5, 6.5, TI.STONE);   // 市集广场
+  fillEll(m, 21, 30, 5.5, 4.6, TI.STONE);   // 戏台前
+  fillEll(m, 57, 30, 5.5, 4.6, TI.STONE);   // 驿站院子
+
+  // ---- 房子：沿街两排 ----
+  const lots = [
+    [14, 36, 6, 5], [24, 36, 6, 5], [46, 36, 6, 5], [56, 36, 6, 5],
+    [16, 18, 6, 5], [28, 18, 6, 5], [48, 18, 6, 5], [60, 18, 6, 5]
+  ];
+  lots.forEach(function (b) {
+    rect(m, b[0], b[1], b[2], b[3], TI.WOOD);
+    for (let tz = b[1]; tz < b[1] + b[3]; tz++)
+      for (let tx = b[0]; tx < b[0] + b[2]; tx++) setSolid(m, tx, tz, 1);
+  });
+
+  // ---- 戏台（西侧空地北沿，只做台面和一排立柱的落位）----
+  rect(m, 18, 25, 6, 2, TI.WOOD);
+  for (let tx = 18; tx < 24; tx++) setSolid(m, tx, 25, 1);
+
+  // ---- 牌坊 / 镇口：回村 ----
+  mark(m, 5, 30, { kind: "gate", to: "village", label: "回奶家村" });
+  mark(m, 5, 31, { kind: "gate", to: "village", label: "回奶家村" });
+
+  // ---- 传送锚点（广场正中）----
+  mark(m, 38, 30, { kind: "anchor", id: "town", label: "传送锚点" });
+
+  // ---- 招牌 ----
+  mark(m, 38, 37, { kind: "sign", text: "奶家镇　·　东市集，西戏台，南边是驿站" });
+  mark(m, 21, 28, { kind: "sign", text: "戏台　·　初一十五有班子来唱" });
+
+  // ---- 广场边上点几处花，别是光板子水泥地 ----
+  {
+    const pr = rng(6120);
+    for (let tz = 24; tz <= 36; tz++) {
+      for (let tx = 29; tx <= 47; tx++) {
+        if (tileAt(m, tx, tz) !== TI.STONE) continue;
+        const d = Math.hypot((tx + .5 - 38) / 9.5, (tz + .5 - 30) / 6.5);
+        if (d < .68 || pr() > .14) continue;
+        setTile(m, tx, tz, TI.FLOWER);
+      }
+    }
+  }
+
+  // ---- 水面不能走 ----
+  for (let i = 0; i < m.tiles.length; i++) if (m.tiles[i] === TI.WATER) m.solid[i] = 1;
+
+  // ---- 边界 ----
+  for (let tz = 0; tz < m.h; tz++)
+    for (let tx = 0; tx < m.w; tx++)
+      if (tx < 1 || tz < 1 || tx > m.w - 2 || tz > m.h - 2) setSolid(m, tx, tz, 1);
+
+  return m;
+})();
+
+/* =========================================================
    室内地图
    ========================================================= */
 // 室内：房间本体 vw×vh，外面裹一圈厚厚的墙。
@@ -1162,7 +1232,7 @@ export const ARCHIVE = (() => {
   return m;
 })();
 
-export const MAPS = { village: VILLAGE, house: HOUSE, shop: SHOP, station: STATION, archive: ARCHIVE };
+export const MAPS = { village: VILLAGE, town: TOWN, house: HOUSE, shop: SHOP, station: STATION, archive: ARCHIVE };
 
 /* =========================================================
    把地图画成 three 的贴图
