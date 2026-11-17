@@ -10,7 +10,7 @@ import { Fight } from "./kof.js?v=57";
 import {
   TS, TI, VILLAGE, TOWN, TOWN_LOTS, TOWN_STALLS, HOUSE, SHOP, STATION, ARCHIVE, MAPS,
   tileAt, setSolid, solidAt, markAt, mapTexture, toTile, toWorld
-} from "./tiles.js";
+} from "./tiles.js?v=2";
 import { Farm, CROPS, PLOT } from "./farm.js";
 import { portrait, moodFilter, speakerKey, PLAYER_KEY } from "./portraits.js?v=57";
 import { NPCS, DESK_OFFICER, bountyOf } from "./villagers.js";
@@ -241,6 +241,8 @@ function applyStyle() {
   } else {
     scene.background = new T.Color(SKY);
   }
+  // 水墨背景自带远山，天穹要让开；其它风格用天穹做渐变
+  if (skyDome) skyDome.visible = !guo;
   if (lastLightO) setLight(lastLightO); // 让曝光 / 主题色调立即生效
   try { localStorage.setItem(STYLE_KEY, s.id); } catch (e) {}
 }
@@ -312,7 +314,21 @@ function makeGuofengBackground() {
   return tex;
 }
 
+/* 屋里用正交俯视：整间屋子像一间布景，看得全、不会有人被墙挡住。
+   户外用透视第三人称：镜头跟在背后，低机位看得到地平线。
+   两套相机同时存在，按当前地图切着用（currentCam()）。 */
 const camera = new T.OrthographicCamera(-10, 10, 10, -10, .1, 200);
+
+/* ---- 第三人称镜头参数 ----
+   yaw   = 镜头朝着哪边看，和 player.heading 同一套（0 → +Z）
+   pitch = 俯角，越大机位越高越像俯视
+   dist  = 镜头到角色的距离（滚轮可调） */
+const TP = {
+  fov: 55, dist: 6.2, minDist: 2.8, maxDist: 13,
+  yaw: Math.PI, pitch: .34, lookY: 1.05
+};
+const camTP = new T.PerspectiveCamera(TP.fov, 16 / 9, .08, 600);
+camTP.position.set(0, 8, 14);
 
 // 半球光：天空暖白、地面反射偏暖褐；柔和不刺眼
 const hemi = new T.HemisphereLight(0xfff6e8, 0xb9a481, 2.1);
@@ -409,6 +425,73 @@ function buildGroundFor(map, group) {
 function buildGround() {
   groundMat = buildGroundFor(VILLAGE, world);
   outdoorMats.set("village", groundMat);
+}
+
+/* =========================================================
+   远景：天空、远山、地图外的大地
+   换成低机位以后看得见地平线了——只铺一张地图，边上一圈直接是虚空。
+   这里补三样：天穹渐变、远处山影、地图外的大片草地 + 一圈树墙。
+   ========================================================= */
+let skyDome = null, farGroup = null;
+
+function buildFar() {
+  if (farGroup) return;
+  farGroup = new T.Group();
+  scene.add(farGroup);
+
+  // ---- 天空穹顶：竖直渐变（天顶略深、地平线发白），整体乘上昼夜天空色 ----
+  const sc = document.createElement("canvas");
+  sc.width = 8; sc.height = 256;
+  const sg = sc.getContext("2d");
+  const grd = sg.createLinearGradient(0, 0, 0, 256);
+  grd.addColorStop(0, "#d2d2d2");
+  grd.addColorStop(.55, "#ececec");
+  grd.addColorStop(1, "#ffffff");
+  sg.fillStyle = grd; sg.fillRect(0, 0, 8, 256);
+  const stex = new T.CanvasTexture(sc);
+  stex.colorSpace = T.SRGBColorSpace;
+  skyDome = new T.Mesh(
+    new T.SphereGeometry(300, 24, 16),
+    new T.MeshBasicMaterial({ map: stex, side: T.BackSide, fog: false, depthWrite: false })
+  );
+  skyDome.renderOrder = -2;
+  skyDome.frustumCulled = false;
+  scene.add(skyDome);
+
+  // ---- 地图外的大草地：把地图边界之外填满同色，别露出黑 ----
+  const land = new T.Mesh(
+    new T.PlaneGeometry(900, 900),
+    new T.MeshStandardMaterial({ color: 0x8fac6e, roughness: 1 })
+  );
+  land.rotation.x = -Math.PI / 2;
+  land.position.y = -.08;
+  farGroup.add(land);
+
+  const r = mulberry(20261117);
+
+  // ---- 树墙：贴着地图外沿围一圈，把「地图边」这条直线挡住 ----
+  const treeMat = new T.MeshStandardMaterial({ color: 0x466a43, roughness: 1, flatShading: true });
+  for (let i = 0; i < 240; i++) {
+    const a = r() * 6.283, rad = 46 + r() * 24;
+    const h = 3.2 + r() * 3.6;
+    const cone = new T.Mesh(new T.ConeGeometry(1.1 + r() * .9, h, 6), treeMat);
+    cone.position.set(Math.cos(a) * rad, h / 2 - .2, Math.sin(a) * rad);
+    cone.rotation.y = r() * 3;
+    farGroup.add(cone);
+  }
+
+  // ---- 远山：低多边形锥体，靠雾化淡出去，天际线才不是一条平线 ----
+  const hillMat = new T.MeshStandardMaterial({ color: 0x8ba49a, roughness: 1, flatShading: true });
+  for (let i = 0; i < 44; i++) {
+    const a = i / 44 * 6.283 + (r() - .5) * .1;
+    const rad = 86 + r() * 70;
+    const h = 12 + r() * 26;
+    const base = 26 + r() * 46;
+    const m = new T.Mesh(new T.ConeGeometry(base * .5, h, 5 + Math.floor(r() * 3), 1), hillMat);
+    m.position.set(Math.cos(a) * rad, h / 2 - 3, Math.sin(a) * rad);
+    m.rotation.y = r() * 3;
+    farGroup.add(m);
+  }
 }
 
 function ensureRoom(name, map) {
@@ -1367,8 +1450,8 @@ function addAnchorStone(map, tx, tz, parent, key) {
   // 三根小柱围一圈
   for (let i = 0; i < 3; i++) {
     const a = i / 3 * Math.PI * 2;
-    const p = new T.Mesh(new T.BoxGeometry(.14, .6, .14), stoneMat);
-    p.position.set(Math.cos(a) * .92, .5, Math.sin(a) * .92);
+    const p = new T.Mesh(new T.BoxGeometry(.16, .95, .16), stoneMat);
+    p.position.set(Math.cos(a) * .92, .68, Math.sin(a) * .92);
     p.castShadow = true;
     g.add(p);
   }
@@ -1376,8 +1459,8 @@ function addAnchorStone(map, tx, tz, parent, key) {
   const mat = new T.MeshStandardMaterial({
     color: 0x8e9a9c, emissive: 0x000000, roughness: .35, metalness: .25, flatShading: true
   });
-  const cry = new T.Mesh(new T.OctahedronGeometry(.34, 0), mat);
-  cry.position.y = 1.28; cry.castShadow = true;
+  const cry = new T.Mesh(new T.OctahedronGeometry(.42, 0), mat);
+  cry.position.y = 1.42; cry.castShadow = true;
   g.add(cry);
 
   const stone = { key, group: g, crystal: cry, mat, glow: 0 };
@@ -1783,6 +1866,8 @@ function resize() {
   camera.left = -vw / 2; camera.right = vw / 2;
   camera.top = vh / 2; camera.bottom = -vh / 2;
   camera.updateProjectionMatrix();
+  camTP.aspect = aspect;
+  camTP.updateProjectionMatrix();
   Fight.resize();
 }
 
@@ -1796,7 +1881,27 @@ function shake(power = .5, dur = .35) {
 // 相机平滑跟随：镜头不再每帧瞬移到玩家脚下，而是缓缓追上去。
 // 这是斜俯角游戏防晕的关键——画面平移有了缓冲，不再随每一步硬跳。
 const camSmooth = { x: null, z: null };
+
+// 当前该用哪台相机：屋里走正交俯视，户外走第三人称透视
+function currentCam() {
+  return MAP && MAP.indoor ? camera : camTP;
+}
+
 function updateCamera(snap) {
+  const indoor = !!(MAP && MAP.indoor);
+  // 雾跟着相机走：正交俯视的镜头离人 60，第三条的镜头只离 8.6
+  if (scene.fog) {
+    scene.fog.near = indoor ? 72 : 34;
+    scene.fog.far = indoor ? 105 : 145;
+  }
+  if (indoor) updateCamOrtho(snap);
+  else updateCamThird(snap);
+  sun.position.set(player.x + 12, 20, player.z + 8);
+  sun.target.position.set(player.x, 0, player.z);
+}
+
+/* ---- 室内：正交俯视，原样保留 ---- */
+function updateCamOrtho(snap) {
   let px = player.x, pz = player.z;
   // 屋里放得下整间，就把镜头钉在屋子中间：屋子像一间布景，人在里面走
   if (MAP && MAP.indoor && MAP.room) {
@@ -1829,8 +1934,43 @@ function updateCamera(snap) {
     camera.position.z += (Math.random() - .5) * k * .5;
   }
   camera.lookAt(cx, lookY, aheadZ);
-  sun.position.set(player.x + 12, 20, player.z + 8);
-  sun.target.position.set(player.x, 0, player.z);
+}
+
+/* ---- 户外：第三人称跟拍 ----
+   镜头挂在角色背后，沿 yaw 反方向退 dist、抬 dist*sin(pitch)。
+   退的路上撞到墙就自动缩短距离，免得镜头钻进房子里看天花板。 */
+function camBackDist(px, pz, want) {
+  const sx = -Math.sin(TP.yaw), sz = -Math.cos(TP.yaw);
+  for (let d = 1.0; d <= want; d += .45) {
+    const x = px + sx * d, z = pz + sz * d;
+    if (solidAt(MAP, cellX(x), cellZ(z))) return Math.max(TP.minDist * .55, d - .6);
+  }
+  return want;
+}
+
+function updateCamThird(snap) {
+  const px = player.x, pz = player.z;
+  if (snap || camSmooth.x === null) {
+    camSmooth.x = px; camSmooth.z = pz;
+    if (snap) TP.yaw = player.heading;   // 传送/换场景后镜头跟着人到背后
+  } else {
+    const follow = .18;
+    camSmooth.x += (px - camSmooth.x) * follow;
+    camSmooth.z += (pz - camSmooth.z) * follow;
+  }
+  const cx = camSmooth.x, cz = camSmooth.z;
+  const hd = TP.dist * Math.cos(TP.pitch);     // 水平退距
+  const dy = TP.dist * Math.sin(TP.pitch);     // 抬多高
+  const back = camBackDist(cx, cz, hd);
+  const k = hd > .01 ? back / hd : 1;          // 被挡时按比例缩水平距离
+  const y = Math.max(1.2, TP.lookY + dy * (.45 + .55 * k));
+  camTP.position.set(cx - Math.sin(TP.yaw) * back, y, cz - Math.cos(TP.yaw) * back);
+  if (camShake > 0) {
+    const s = camShake * .4;
+    camTP.position.x += (Math.random() - .5) * s;
+    camTP.position.y += (Math.random() - .5) * s;
+  }
+  camTP.lookAt(cx, TP.lookY + .25, cz);
 }
 
 /* =========================================================
@@ -1858,6 +1998,8 @@ window.addEventListener("keydown", e => {
   if (k === "a" || k === "A" || k === "ArrowLeft") { keys.left = true; e.preventDefault(); }
   if (k === "d" || k === "D" || k === "ArrowRight") { keys.right = true; e.preventDefault(); }
   if (k === "Shift") player.run = true;
+  if (k === "z" || k === "Z") keys.camL = true;
+  if (k === "c" || k === "C") keys.camR = true;
   if (k === "e" || k === "E" || k === "Enter" || k === " ") {
     if (dlg.open) { advanceDialog(); e.preventDefault(); return; }
     if (Fight.on || overlayOpen()) return;
@@ -1879,9 +2021,12 @@ window.addEventListener("keyup", e => {
   if (k === "a" || k === "A" || k === "ArrowLeft") keys.left = false;
   if (k === "d" || k === "D" || k === "ArrowRight") keys.right = false;
   if (k === "Shift") player.run = false;
+  if (k === "z" || k === "Z") keys.camL = false;
+  if (k === "c" || k === "C") keys.camR = false;
 });
 window.addEventListener("blur", () => {
   keys.up = keys.down = keys.left = keys.right = false;
+  keys.camL = keys.camR = false;
   player.run = false;
 });
 
@@ -1909,6 +2054,33 @@ function syncPad() {
 }
 syncPad();
 
+/* ---- 镜头操作 ----
+   鼠标（或手指）在画面上拖动 = 转视角；滚轮 = 拉近拉远；Z / C = 左右转。
+   只有真进了游戏、没开面板的时候才接管，免得在标题页上乱转。 */
+const dom = renderer.domElement;
+let camDrag = null;
+dom.addEventListener("pointerdown", e => {
+  if (!state.started || dlg.open || Fight.on || overlayOpen()) return;
+  camDrag = { id: e.pointerId, x: e.clientX, y: e.clientY };
+  try { dom.setPointerCapture(e.pointerId); } catch (err) {}
+});
+dom.addEventListener("pointermove", e => {
+  if (!camDrag || e.pointerId !== camDrag.id) return;
+  const dx = e.clientX - camDrag.x, dy = e.clientY - camDrag.y;
+  camDrag.x = e.clientX; camDrag.y = e.clientY;
+  if (MAP.indoor) return;      // 屋里是固定俯视，拖了也没意义
+  TP.yaw -= dx * .0048;
+  TP.pitch = clamp(TP.pitch - dy * .0035, .10, 1.15);
+});
+const camDragEnd = e => { if (camDrag && e.pointerId === camDrag.id) camDrag = null; };
+dom.addEventListener("pointerup", camDragEnd);
+dom.addEventListener("pointercancel", camDragEnd);
+dom.addEventListener("wheel", e => {
+  if (!state.started || MAP.indoor) return;
+  TP.dist = clamp(TP.dist + e.deltaY * .012, TP.minDist, TP.maxDist);
+  e.preventDefault();
+}, { passive: false });
+
 /* =========================================================
    更新
    ========================================================= */
@@ -1932,16 +2104,21 @@ function update(dt) {
   }
 
   let ix = 0, iz = 0;
+  if (keys.camL) TP.yaw += dt * 1.9;     // Z / C 转镜头，鼠标也能转
+  if (keys.camR) TP.yaw -= dt * 1.9;
   if (keys.left) ix -= 1;
   if (keys.right) ix += 1;
   if (keys.up) iz -= 1;
   if (keys.down) iz += 1;
 
   if (ix || iz) {
-    const len = Math.hypot(ix, iz);
-    ix /= len; iz /= len;
-    // 固定俯视相机：屏幕方向 = 世界方向，W 就是往画面上方走
-    const dx = ix, dz = iz;
+    // 镜头相对移动：W 是「镜头正对着的方向」，A/D 是屏幕左右。
+    // 屋里镜头固定朝北，所以这条式子退化成原来的世界方向，手感不变。
+    const f = -iz, r = ix;
+    const len = Math.hypot(f, r);
+    const yaw = MAP.indoor ? Math.PI : TP.yaw;
+    const dx = (Math.sin(yaw) * f - Math.cos(yaw) * r) / len;
+    const dz = (Math.cos(yaw) * f + Math.sin(yaw) * r) / len;
     player.heading = Math.atan2(dx, dz);
 
     const sp = (player.run ? 7.6 : 4.6) * dt;
@@ -3013,7 +3190,7 @@ function animateAnchors(dt) {
   for (const st of ANCHOR_STONES) {
     const on = !!state.anchors[st.key];
     st.crystal.rotation.y += dt * (on ? 1.1 : .18);
-    st.crystal.position.y = 1.28 + Math.sin(anchorT * (on ? 2.2 : .8)) * (on ? .09 : .025);
+    st.crystal.position.y = 1.42 + Math.sin(anchorT * (on ? 2.2 : .8)) * (on ? .09 : .03);
     if (on) {
       const p = .55 + Math.sin(anchorT * 2.4) * .25;
       st.mat.emissive.setRGB(.10 * p, .42 * p, .38 * p);
@@ -3023,6 +3200,9 @@ function animateAnchors(dt) {
 
 function setOutdoorVisible(key) {
   for (const k in OUTDOOR) if (OUTDOOR[k]) OUTDOOR[k].visible = (k === key);
+  // 远景只在户外露出来：屋里的正交镜头会被天穹挡满
+  if (farGroup) farGroup.visible = !!key;
+  if (skyDome) skyDome.visible = !!key && !isGuofeng();
 }
 
 function placePlayer(x, z, heading) {
@@ -3614,7 +3794,7 @@ function loop() {
   update(dt);
   animateAnchors(dt);
   if (state.started) drawRadar();
-  renderer.render(scene, camera);
+  renderer.render(scene, currentCam());
 }
 
 /* =========================================================
@@ -3631,6 +3811,8 @@ function setLight(o) {
   if (o.groundColor) for (const m of groundMats) m.color.copy(o.groundColor);
   // 国风背景是纹理，别用纯色覆盖它；其它风格照旧跟天空色走
   if (!isGuofeng() && scene.background && scene.background.isColor) scene.background.copy(o.sky);
+  // 天穹整体乘上当前天空色，昼夜才有交界
+  if (skyDome && skyDome.visible) skyDome.material.color.copy(o.sky);
   const dark = 1 - Math.min(1, o.sunI / 1.2);   // 0=白天, 1=夜
   // 国风：水墨远山背景跟着夜色一起暗下去，不再出现「天亮着地却黑了」
   if ("backgroundIntensity" in scene) scene.backgroundIntensity = isGuofeng() ? 1 - dark * .82 : 1;
@@ -3654,6 +3836,7 @@ async function boot() {
     buildGround();
     buildProps();
     buildTown();
+    buildFar();
     applyStyle();   // 场景搭好后统一套用主题（国风染色 / 飞檐 / 背景）
   } catch (e) { console.error("[game] 场景搭建出错", e); }
 
@@ -3762,6 +3945,7 @@ if (location.search.indexOf("debug") >= 0) {
     travelTo, openWorldMap, closeWorldMap, useAnchor, roomState, TOWN, VILLAGE,
     ANCHORS, ANCHOR_STONES, startPouchQuest, pouchQuest, spawnTownNpcs, tryPouch,
     OUTDOOR, outdoorMats, position: () => ({ x: player.x, z: player.z, map: roomState.name }),
+    tpYaw: () => TP.yaw, tpDist: () => TP.dist, camPos: () => camTP.position, camOrtho: () => camera, camTP: () => camTP,
     qiyetTalk, qiyetWin, qiyetLose, Gomoku, lieDown, getUp, sleepPose,
     modelDbg: () => ({
       loadedNailong: srcScenes.has("nailong") ? "3d" : (loaded.get("nailong") === null ? "billboard" : "unset"),

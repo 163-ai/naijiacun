@@ -5,7 +5,7 @@
 import * as T from "three";
 
 export const TS = 1;        // 一格多大（世界单位）
-export const PX = 32;       // 一格画多少像素
+export const PX = 48;       // 一格画多少像素（第三人称低机位下 32 会糊，48 才经得起凑近看）
 
 export const TI = {
   GRASS: 0, PATH: 1, STONE: 2, WATER: 3, SAND: 4,
