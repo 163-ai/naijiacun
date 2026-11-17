@@ -2,6 +2,7 @@
 // 地面是一张 canvas 画出来的贴图（草地/土路/水塘/花田都在上面），
 // 树木房屋是简单几何按坐标摆放，人物仍然是仓库里的 GLB 完整模型。
 import * as T from "three";
+import { mergeGeometries } from "../vendor/three/BufferGeometryUtils.js";
 import { GLTFLoader } from "../vendor/three/GLTFLoader.js";
 import { MeshoptDecoder } from "../vendor/meshopt/meshopt_decoder.module.js";
 import { createPetMotion } from "./pet-motion.js?v=2";
@@ -111,7 +112,9 @@ const state = {
 const expNeed = lv => 18 + lv * 12;
 
 const SPAWN = { x: .5, z: 27 };
-let player = { x: SPAWN.x, z: SPAWN.z, heading: Math.PI, moving: false, run: false, phase: 0, ready: false };
+// jumpY：脚离地高度；vy：竖直速度。落地由重力积分 + 地形面判定，不用定时器。
+let player = { x: SPAWN.x, z: SPAWN.z, heading: Math.PI, moving: false, run: false, phase: 0, ready: false,
+  jumpY: 0, vy: 0, jumping: false };
 
 function save() {
   try {
@@ -219,12 +222,12 @@ function sfx(kind) {
    ========================================================= */
 const canvas = $("#gl");
 const renderer = new T.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));   // 高 DPI 下 2x 填充开销大，1.5x 肉眼几乎无差
 renderer.outputColorSpace = T.SRGBColorSpace;
 renderer.toneMapping = T.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.04;
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = T.PCFSoftShadowMap;
+renderer.shadowMap.type = T.PCFShadowMap;   // PCFSoft 每像素多采样，1024 图上差距很小但快不少
 
 Fight.init(renderer);
 
@@ -361,10 +364,10 @@ scene.add(hemi);
 const sun = new T.DirectionalLight(0xffe9c8, 2.3);
 sun.position.set(12, 20, 8);
 sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.mapSize.set(1024, 1024);   // 2048² 阴影图显存/填充翻倍，1024 足够这个项目
 const sc = sun.shadow.camera;
 // 斜俯角下地面可见纵深更长，阴影范围跟着放大，边缘才不会出现阴影断层
-sc.left = -20; sc.right = 20; sc.top = 20; sc.bottom = -20; sc.near = 1; sc.far = 70;
+sc.left = -18; sc.right = 18; sc.top = 18; sc.bottom = -18; sc.near = 1; sc.far = 60;
 sun.shadow.bias = -.0014;
 sun.shadow.normalBias = .02;
 scene.add(sun);
@@ -386,6 +389,56 @@ let roomName = "";          // 室内时显示的名字
    之所以不共用 world，是因为各图原点、尺寸都不一样，混在一个组里没法整体隐藏。 */
 const OUTDOOR = { village: world };
 const outdoorMats = new Map();   // mapKey → 地面材质（雷达缩略图要用）
+
+/* =========================================================
+   连续大世界：四张图仍在各自的局部坐标里，但渲染时整体平移到同一片大地上，
+   门的位置一一对齐。角色过门只换「所在图」并把局部坐标重基，屏幕位置纹丝不动，
+   所以看起来就是一整块能走通的世界，而不是四个孤岛。
+   offset = 目标门视觉位置 - 该图门的局部位置
+   ========================================================= */
+// 位移按「地块边缘对齐」算，四张图严丝合缝拼在一起，中间没有缝也没有重叠：
+//   村 x∈[-44,44] z∈[-34,34]；镇接在东边 x=44；竹林接西边 x=-44；草坡接南边 z=34。
+const REGION_OFF = {
+  village: { x: 0,   z: 0 },
+  town:    { x: 82,  z: 0 },    // 镇本地 x[-38,38] → 视觉 [44,120]
+  grove:   { x: -76, z: -21 },  // 竹林本地 x[-32,32] → 视觉 [-108,-44]
+  hill:    { x: 0,   z: 66 }    // 坡本地 z[-32,32] → 视觉 [34,98]
+};
+const REGION_KEYS = ["village", "town", "grove", "hill"];
+function regionOff(key) { return REGION_OFF[key] || { x: 0, z: 0 }; }
+function visX() { return player.x + regionOff(roomState.name).x; }
+function visZ() { return player.z + regionOff(roomState.name).z; }
+
+/* 交界口：视觉坐标里的三条拼缝。玩家踩着门洞跨过去时，只换「所在图」并把局部
+   坐标按位移差重基，视觉位置完全不变 —— 于是走过去是连续的，不是传送。 */
+const PORTALS = [
+  { a: "village", b: "town",  axis: "x", line: 44,  dir: 1,  lo: -4,  hi: 5 },   // 村东 ↔ 镇西（镇在 +x）
+  { a: "village", b: "grove", axis: "x", line: -44, dir: -1, lo: -25, hi: -15 }, // 村西 ↔ 竹林（竹林在 -x）
+  { a: "village", b: "hill",  axis: "z", line: 34,  dir: 1,  lo: -4,  hi: 5 }    // 村南 ↔ 坡北（坡在 +z）
+];
+// 视觉点是否落在某条拼缝的门洞带里（用于越界格不当墙）
+function inPortalBand(vx, vz) {
+  for (const p of PORTALS) {
+    const along = p.axis === "x" ? vz : vx;
+    if (along < p.lo || along > p.hi) continue;
+    const across = p.axis === "x" ? vx : vz;
+    if (Math.abs(across - p.line) < 2.2) return true;
+  }
+  return false;
+}
+// 从 cur 图出发、视觉点 (vx,vz) 是否已跨到邻图一侧，返回目标图 key
+function portalTarget(cur, vx, vz) {
+  for (const p of PORTALS) {
+    if (cur !== p.a && cur !== p.b) continue;
+    const along = p.axis === "x" ? vz : vx;
+    if (along < p.lo || along > p.hi) continue;
+    const across = p.axis === "x" ? vx : vz;
+    const side = (across - p.line) * (p.dir || 1);   // 统一成「朝 b 图为正」
+    if (cur === p.a && side > .3) return p.b;
+    if (cur === p.b && side < -.3) return p.a;
+  }
+  return null;
+}
 
 const patches = [];         // 高草区 {x,z,r,zone}
 const obstacles = [];       // 圆形阻挡 {x,z,r}
@@ -435,18 +488,40 @@ const rooms = new Map();    // 室内房间：name → { group, mat }
 const MAP_SEED = { village: 11, town: 29, grove: 47, hill: 63 };
 let activeTerrain = null;   // 当前显示地图的高度函数（室内为 null）
 let buildHeight = null;     // 正在搭建的地图的高度函数（静态物件贴地用）
+let activeMap = null;       // 当前显示的户外地图（室内为 null）
+let buildMap = null;        // 正在搭建的地图
+
+/* 地面是一张按整数格点采样、再按三角面线性插值的网格。角色/NPC/物件必须踩在
+   「渲染出来的那张面」上，而不是连续函数上 —— 否则水面/道路压平处两者能差近 1 米，
+   脚就陷进地里。这里用和 PlaneGeometry 一样的三角剖分（对角线 (x0,z1)-(x1,z0)）做插值。 */
+function surfaceY(map, x, z) {
+  if (!map) return 0;
+  const grid = map.__hgrid;
+  if (!grid) return map.__height ? map.__height(x, z) : 0;
+  const stride = map.w + 1;
+  const fx = x - map.ox, fz = z - map.oz;
+  const i = clamp(Math.floor(fx), 0, map.w - 1);
+  const j = clamp(Math.floor(fz), 0, map.h - 1);
+  const u = clamp(fx - i, 0, 1), v = clamp(fz - j, 0, 1);
+  const h00 = grid[j * stride + i],       h10 = grid[j * stride + i + 1];
+  const h01 = grid[(j + 1) * stride + i], h11 = grid[(j + 1) * stride + i + 1];
+  return (u + v <= 1)
+    ? h00 * (1 - u - v) + h10 * u + h01 * v
+    : h11 * (u + v - 1) + h10 * (1 - v) + h01 * (1 - u);
+}
 function terrainY(x, z) {
-  return activeTerrain ? activeTerrain(x, z) : 0;
+  return activeMap ? surfaceY(activeMap, x, z) : 0;
 }
 function groundAtBuild(x, z) {
-  return buildHeight ? buildHeight(x, z) : 0;
+  return buildMap ? surfaceY(buildMap, x, z) : (buildHeight ? buildHeight(x, z) : 0);
 }
 function makeHeightFn(map, seed) {
   const s = seed || 0;
   // 野外（草坡/竹林）起伏大，才不像一张纸；村镇房子多，压小免得穿模
   const wild = map.name === "南高草坡" || map.name === "竹林水塘";
   const amp = wild ? 1.85 : (map.name === "奶家镇" ? .5 : .72);
-  return function (x, z) {
+  // 原始起伏（不含拼缝混合）。先给每张户外图都算好，邻图才拿得到。
+  const raw = function (x, z) {
     const tx = x - map.ox, tz = z - map.oz;
     // 三种低频叠加：大缓坡 + 中丘 + 细波纹，波长都在 4~18 格
     let h = Math.sin(tx * .085 + s) * Math.cos(tz * .105 + s * 1.3) * .62
@@ -464,6 +539,31 @@ function makeHeightFn(map, seed) {
     if (wild && t === TI.PATH) h *= .35;
     return h * amp;
   };
+  map.__heightRaw = raw;
+  const key = Object.keys(MAP_SEED).find(k => MAPS[k] === map) || "";
+  const off = regionOff(key);
+  // 连续世界的关键：拼缝两侧共用同一条边。各自原来的噪声在边界上肯定对不上，
+  // 于是越靠近拼缝越把邻图的高度混进来；正线上两边都是 50/50，严丝合缝。
+  return function (x, z) {
+    let h = raw(x, z);
+    const vx = x + off.x, vz = z + off.z;
+    for (const p of PORTALS) {
+      if (p.a !== key && p.b !== key) continue;
+      const along = p.axis === "x" ? vz : vx;
+      if (along < p.lo - 2 || along > p.hi + 2) continue;
+      const across = p.axis === "x" ? vx : vz;
+      const d = Math.abs(across - p.line);
+      if (d >= 4) continue;
+      const other = MAPS[p.a === key ? p.b : p.a];
+      const oraw = other && other.__heightRaw;
+      if (!oraw) continue;
+      const ooff = regionOff(p.a === key ? p.b : p.a);
+      const t = clamp((4 - d) / 4, 0, 1);
+      const w = t * t * (3 - 2 * t) * .5;   // 中线上正好各占一半
+      h = lerp(h, oraw(vx - ooff.x, vz - ooff.z), w);
+    }
+    return h;
+  };
 }
 
 function buildGroundFor(map, group) {
@@ -479,8 +579,13 @@ function buildGroundFor(map, group) {
     const heightFn = makeHeightFn(map, MAP_SEED[key] || 7);
     map.__height = heightFn;
     buildHeight = heightFn;   // 后续同批物件按这张图的高度贴地
+    buildMap = map;
     const pos = geo.attributes.position;
     const colors = new Float32Array(pos.count * 3);
+    // 记录每个网格顶点的真实高度。PlaneGeometry 顶点行优先：i = iy*(segX+1)+ix，
+    // 旋转后 wx=map.ox+ix、wz=map.oz+iy。角色贴地就查这张表，保证踩在渲染面上。
+    const stride = segX + 1;
+    const grid = new Float32Array(stride * (segZ + 1));
     for (let i = 0; i < pos.count; i++) {
       const lx = pos.getX(i), ly = pos.getY(i);
       // PlaneGeometry 绕 X 轴 -90°：局部 X→世界 X，局部 Y→世界 -Z
@@ -488,9 +593,12 @@ function buildGroundFor(map, group) {
       const wz = map.oz + h / 2 - ly;
       const hh = heightFn(wx, wz);
       pos.setZ(i, hh);                       // 局部 +Z = 世界 +Y
+      const ix = Math.round(wx - map.ox), iy = Math.round(wz - map.oz);
+      if (ix >= 0 && ix <= map.w && iy >= 0 && iy <= map.h) grid[iy * stride + ix] = hh;
       const sh = clamp(1 + hh * .17, .70, 1.28);   // 高处亮、低处暗（加强丘陵明暗）
       colors[i * 3] = colors[i * 3 + 1] = colors[i * 3 + 2] = sh;
     }
+    map.__hgrid = grid;
     pos.needsUpdate = true;
     geo.setAttribute("color", new T.BufferAttribute(colors, 3));
     geo.computeVertexNormals();
@@ -527,8 +635,70 @@ function buildGroundFor(map, group) {
 }
 
 function buildGround() {
+  // 先把四张图的原始高度都备好，拼缝混合才能拿到邻图；
+  // 否则先建的村 / 镇会各算各的，交界处仍是一道坎。
+  for (const k of REGION_KEYS) {
+    const m = MAPS[k];
+    if (m && !m.__heightRaw) makeHeightFn(m, MAP_SEED[k] || 7);
+  }
   groundMat = buildGroundFor(VILLAGE, world);
   outdoorMats.set("village", groundMat);
+}
+
+/* 静态小物件合批：一棵树 7 个 mesh、一丛竹 12 个 mesh，几百棵就是几千次
+   draw call。外观完全不变，只是把同材质、同属性布局的几何焊成一张大网格。
+   只对树 / 竹这类永不移动、永不单独变色的容器调用，NPC、锚点、竹笋不动。 */
+function batchStatic(container) {
+  if (!container || container.userData.batched) return 0;
+  container.updateWorldMatrix(true, true);
+  const inv = new T.Matrix4().copy(container.matrixWorld).invert();
+  const buckets = new Map();
+  container.traverse(o => {
+    if (!o.isMesh || o.isInstancedMesh || o.isSkinnedMesh) return;
+    if (!o.geometry || !o.material || Array.isArray(o.material)) return;
+    const attrs = Object.keys(o.geometry.attributes).sort().join(",");
+    const key = o.material.uuid + "|" + attrs + "|" + (o.geometry.index ? "i" : "n");
+    let b = buckets.get(key);
+    if (!b) { b = { mat: o.material, geos: [], objs: [] }; buckets.set(key, b); }
+    const g = o.geometry.clone();
+    g.applyMatrix4(new T.Matrix4().multiplyMatrices(inv, o.matrixWorld));
+    b.geos.push(g);
+    b.objs.push(o);
+  });
+  let saved = 0;
+  for (const b of buckets.values()) {
+    if (b.geos.length < 2) { b.geos.forEach(g => g.dispose()); continue; }
+    const merged = mergeGeometries(b.geos, false);
+    if (!merged) { b.geos.forEach(g => g.dispose()); continue; }
+    const m = new T.Mesh(merged, b.mat);
+    m.castShadow = b.objs.some(o => o.castShadow);
+    m.receiveShadow = b.objs.some(o => o.receiveShadow);
+    container.add(m);
+    for (const o of b.objs) o.parent.remove(o);
+    b.geos.forEach(g => g.dispose());
+    saved += b.objs.length - 1;
+  }
+  container.userData.batched = true;
+  return saved;
+}
+
+// 四张图搭完、但 NPC 还没生成之前，把剩下的静态摆件再合一轮。
+// 锚点晶体、竹笋、戏班道具会单独变色/显隐，先摘出去不参与合批。
+function batchOutdoors() {
+  const skip = new Set();
+  ANCHOR_STONES.forEach(s => skip.add(s.group));
+  (shootQuest.objs || []).forEach(o => skip.add(o.group));
+  (troupeProps.objs || []).forEach(o => skip.add(o.group));
+  for (const key of REGION_KEYS) {
+    const grp = OUTDOOR[key];
+    if (!grp) continue;
+    const detached = [];
+    for (const o of skip) {
+      if (o.parent === grp) { detached.push(o); grp.remove(o); }
+    }
+    batchStatic(grp);
+    detached.forEach(o => grp.add(o));
+  }
 }
 
 /* =========================================================
@@ -573,48 +743,69 @@ function buildFar() {
 
   const r = mulberry(20261117);
 
-  // ---- 树墙：贴着地图外沿围一圈，把「地图边」这条直线挡住 ----
-  // 不再是清一色单圆锥：3~4 层错落的锥形叠成针叶树，深浅两色交错，远看有林海的层次
+  // ---- 树墙 / 远山：全部 InstancedMesh ----
+  // 原来 220 棵树每棵 4~5 个独立 mesh = 上千个 draw call，这是「内容越多越卡」的主因。
+  // 现在按材质合并成 4 批实例，draw call 从 ~1100 降到个位数，外观完全不变。
+  const dummy = new T.Object3D();
   const coniferDark = new T.MeshStandardMaterial({ color: 0x35563b, roughness: 1, flatShading: true });
   const coniferLite = new T.MeshStandardMaterial({ color: 0x4f7a4c, roughness: 1, flatShading: true });
   const trunkFar = new T.MeshStandardMaterial({ color: 0x4a3a29, roughness: 1 });
-  const coneGeo = new T.ConeGeometry(1, 1, 6);
-  for (let i = 0; i < 220; i++) {
+
+  const TREES = 220, MAX_TIERS = 4;
+  const trunkInst = new T.InstancedMesh(new T.CylinderGeometry(.14, .2, 1, 5), trunkFar, TREES);
+  const coneDarkInst = new T.InstancedMesh(new T.ConeGeometry(1, 1, 6), coniferDark, TREES * MAX_TIERS);
+  const coneLiteInst = new T.InstancedMesh(new T.ConeGeometry(1, 1, 6), coniferLite, TREES * MAX_TIERS);
+  let nDark = 0, nLite = 0;
+  coneDarkInst.count = TREES * MAX_TIERS;
+  coneLiteInst.count = TREES * MAX_TIERS;
+  // 先把所有实例缩到 0，用不到的锥体不显示
+  for (let i = 0; i < TREES * MAX_TIERS; i++) {
+    dummy.position.set(0, -9999, 0); dummy.scale.setScalar(0); dummy.rotation.set(0, 0, 0);
+    dummy.updateMatrix();
+    coneDarkInst.setMatrixAt(i, dummy.matrix);
+    coneLiteInst.setMatrixAt(i, dummy.matrix);
+  }
+  for (let i = 0; i < TREES; i++) {
     const a = r() * 6.283, rad = 46 + r() * 26;
     const h = 3.6 + r() * 4.2;
-    const g = new T.Group();
     const base = Math.cos(a) * rad, baseZ = Math.sin(a) * rad;
     const trunkH = h * .22;
-    const tr = new T.Mesh(new T.CylinderGeometry(.14, .2, trunkH, 5), trunkFar);
-    tr.position.y = trunkH / 2; g.add(tr);
+    dummy.position.set(base, -.2 + trunkH / 2, baseZ);
+    dummy.scale.set(1, trunkH, 1); dummy.rotation.set(0, 0, 0);
+    dummy.updateMatrix();
+    trunkInst.setMatrixAt(i, dummy.matrix);
     const tiers = 3 + Math.floor(r() * 2);
     for (let t = 0; t < tiers; t++) {
       const tw = (1 - t / (tiers + .6)) * (1.15 + r() * .35);
       const th = h * (.34 - t * .035);
-      const cone = new T.Mesh(coneGeo, (i + t) % 2 ? coniferDark : coniferLite);
-      cone.scale.set(tw, th, tw);
-      cone.position.y = trunkH + th * (.35 + t * .62);
-      cone.rotation.y = r() * 3;
-      cone.castShadow = false;
-      g.add(cone);
+      dummy.position.set(base, -.2 + trunkH + th * (.35 + t * .62), baseZ);
+      dummy.scale.set(tw, th, tw); dummy.rotation.set(0, r() * 3, 0);
+      dummy.updateMatrix();
+      const dark = (i + t) % 2 > 0;
+      if (dark) coneDarkInst.setMatrixAt(nDark++, dummy.matrix);
+      else coneLiteInst.setMatrixAt(nLite++, dummy.matrix);
     }
-    g.position.set(base, -.2, baseZ);
-    g.rotation.y = r() * 3;
-    farGroup.add(g);
   }
+  coneDarkInst.count = nDark; coneLiteInst.count = nLite;
+  [trunkInst, coneDarkInst, coneLiteInst].forEach(inst => {
+    inst.frustumCulled = false; inst.instanceMatrix.needsUpdate = true; farGroup.add(inst);
+  });
 
-  // ---- 远山：低多边形锥体，靠雾化淡出去，天际线才不是一条平线 ----
+  // ---- 远山：低多边形锥体合并成一个实例批（统一 6 边锥，靠 scale 变化） ----
   const hillMat = new T.MeshStandardMaterial({ color: 0x8ba49a, roughness: 1, flatShading: true });
-  for (let i = 0; i < 44; i++) {
-    const a = i / 44 * 6.283 + (r() - .5) * .1;
+  const HILLS = 44;
+  const hillInst = new T.InstancedMesh(new T.ConeGeometry(.5, 1, 6, 1), hillMat, HILLS);
+  for (let i = 0; i < HILLS; i++) {
+    const a = i / HILLS * 6.283 + (r() - .5) * .1;
     const rad = 86 + r() * 70;
     const h = 12 + r() * 26;
     const base = 26 + r() * 46;
-    const m = new T.Mesh(new T.ConeGeometry(base * .5, h, 5 + Math.floor(r() * 3), 1), hillMat);
-    m.position.set(Math.cos(a) * rad, h / 2 - 3, Math.sin(a) * rad);
-    m.rotation.y = r() * 3;
-    farGroup.add(m);
+    dummy.position.set(Math.cos(a) * rad, h / 2 - 3, Math.sin(a) * rad);
+    dummy.scale.set(base, h, base); dummy.rotation.set(0, r() * 3, 0);
+    dummy.updateMatrix();
+    hillInst.setMatrixAt(i, dummy.matrix);
   }
+  hillInst.frustumCulled = false; hillInst.instanceMatrix.needsUpdate = true; farGroup.add(hillInst);
 }
 
 function ensureRoom(name, map) {
@@ -749,7 +940,7 @@ function addFence(x, z, len, horiz) {
   const rail = new T.Mesh(new T.BoxGeometry(horiz ? len * TILE : .09, .1, horiz ? .09 : len * TILE), mat);
   rail.position.set(horiz ? (len - 1) * TILE / 2 : 0, .55, horiz ? 0 : (len - 1) * TILE / 2);
   g.add(rail);
-  g.position.set(x, 0, z);
+  g.position.set(x, groundAtBuild(x, z), z);
   world.add(g);
 }
 
@@ -925,7 +1116,7 @@ function addHouse(x, z, w, d, bodyColor, roofColor, rot = 0, parent = world) {
   // 门前台阶：一格宽
   box(new T.BoxGeometry(1.1, .12, .7), M.step, 0, .06, d / 2 + .42, true);
 
-  g.position.set(x, 0, z);
+  g.position.set(x, groundAtBuild(x, z), z);
   g.rotation.y = rot;
   parent.add(g);
   // 房子按格子方正地占住，不用圆去糊
@@ -971,7 +1162,7 @@ function addWell(x, z, parent = world) {
   const rope = new T.Mesh(new T.CylinderGeometry(.015, .015, .5, 4), darkWood);
   rope.position.y = 1.1;
   g.add(rope);
-  g.position.set(x, 0, z);
+  g.position.set(x, groundAtBuild(x, z), z);
   parent.add(g);
   markRect(x, z, 2, 2, 1);
   obstacles.push({ x, z, r: 1 });
@@ -991,7 +1182,7 @@ function addBench(x, z, rot = 0, parent = world) {
     leg.castShadow = true;
     g.add(leg);
   });
-  g.position.set(x, 0, z);
+  g.position.set(x, groundAtBuild(x, z), z);
   g.rotation.y = rot;
   parent.add(g);
   markRect(x, z, 2, 1, 1);
@@ -1020,7 +1211,7 @@ function addLamp(x, z, parent = world) {
   cap.rotation.y = Math.PI / 4;
   cap.position.set(.34, 2.31, 0);
   g.add(cap);
-  g.position.set(x, 0, z);
+  g.position.set(x, groundAtBuild(x, z), z);
   parent.add(g);
   markRect(x, z, 1, 1, 1);
 }
@@ -1059,7 +1250,7 @@ function addBamboo(x, z, r) {
       g.add(leaf);
     }
   }
-  g.position.set(x, 0, z);
+  g.position.set(x, surfaceY(VILLAGE, x, z), z);
   guofengGroup.add(g);
 }
 
@@ -1083,7 +1274,7 @@ function addRedLantern(x, z, hangY = 2.5) {
   const tassel = new T.Mesh(new T.CylinderGeometry(.02, .05, .26, 6), lanternPaperMat);
   tassel.position.y = hangY - .48;
   g.add(tassel);
-  g.position.set(x, 0, z);
+  g.position.set(x, surfaceY(VILLAGE, x, z), z);
   guofengGroup.add(g);
 }
 
@@ -1118,7 +1309,7 @@ function addFlowerBed(x, z, w = 2, d = 1) {
     f.castShadow = true;
     g.add(f);
   }
-  g.position.set(x, 0, z);
+  g.position.set(x, groundAtBuild(x, z), z);
   world.add(g);
   markRect(x, z, w, d, 1);
 }
@@ -1254,7 +1445,7 @@ function addStoneTable(x, z) {
     st.castShadow = true; st.receiveShadow = true;
     g.add(st);
   });
-  g.position.set(x, 0, z);
+  g.position.set(x, groundAtBuild(x, z), z);
   world.add(g);
   markRect(x, z, 1, 1, 1);        // 桌子占一格，人可以坐到两边
   return g;
@@ -1351,7 +1542,7 @@ function addScarecrow(x, z) {
     new T.MeshStandardMaterial({ color: 0xb98a4e, roughness: 1, flatShading: true }));
   hat.position.y = 1.86;
   g.add(hat);
-  g.position.set(x, 0, z);
+  g.position.set(x, groundAtBuild(x, z), z);
   world.add(g);
   markRect(x, z, 1, 1, 1);
 }
@@ -1444,7 +1635,7 @@ function addSign(x, z, text, parent = world) {
     new T.MeshStandardMaterial({ color: 0xe8d9b4, roughness: .9 }));
   board.position.y = 1.15; board.castShadow = true;
   g.add(board);
-  g.position.set(x, 0, z);
+  g.position.set(x, groundAtBuild(x, z), z);
   parent.add(g);
   return g;
 }
@@ -1600,6 +1791,9 @@ function buildProps() {
 
   // ---- 国风装饰（竹林 / 红灯笼），最后加，不影响上面的占地判断 ----
   buildGuofengDecor();
+  // 树和国风竹丛从此刻起不再单独绘制：几千个小 mesh 合成几十张网格
+  batchStatic(treeGroup);
+  batchStatic(guofengGroup);
 }
 
 /* =========================================================
@@ -1623,7 +1817,9 @@ const twz = tz => TOWN.oz + tz + .5;
 const ANCHOR_STONES = [];
 function addAnchorStone(map, tx, tz, parent, key) {
   const g = new T.Group();
-  g.position.set(map.ox + tx + .5, 0, map.oz + tz + .5);
+  const ax = map.ox + tx + .5, az = map.oz + tz + .5;
+  // 村里的锚点是在建镇子时补的，不能用全局 buildMap，必须按自己这张图采样
+  g.position.set(ax, surfaceY(map, ax, az), az);
   parent.add(g);
 
   const base = new T.Mesh(new T.CylinderGeometry(1.02, 1.14, .22, 8), stoneMat);
@@ -1682,6 +1878,7 @@ function addGateArch(map, tx, tz, text, parent, alongX = true) {
 function buildTown() {
   const g = new T.Group();
   g.visible = false;
+  g.position.set(REGION_OFF.town.x, 0, REGION_OFF.town.z);   // 连续世界：平移到村东边
   scene.add(g);
   OUTDOOR.town = g;
   outdoorMats.set("town", buildGroundFor(TOWN, g));
@@ -1702,7 +1899,8 @@ function buildTown() {
   // ---- 市集摊位 ----
   for (const s of TOWN_STALLS) {
     const sg = new T.Group();
-    sg.position.set(twx(s.tx + s.w / 2 - .5), 0, twz(s.tz + s.d / 2 - .5));
+    const sx = twx(s.tx + s.w / 2 - .5), sz = twz(s.tz + s.d / 2 - .5);
+    sg.position.set(sx, groundAtBuild(sx, sz), sz);
     // 北边那排朝南（+z），南边那排朝北
     sg.rotation.y = s.tz < 30 ? 0 : Math.PI;
     g.add(sg);
@@ -1731,7 +1929,8 @@ function buildTown() {
   // ---- 戏台（西边）：台基 + 四根红柱 + 一个顶 ----
   {
     const st = new T.Group();
-    st.position.set(twx(21), 0, twz(25.5));
+    const stx = twx(21), stz = twz(25.5);
+    st.position.set(stx, groundAtBuild(stx, stz), stz);
     g.add(st);
     townBox(st, 6.5, .52, 2.4, stoneMat, 0, .26, 0);              // 台基
     townBox(st, 6.1, .09, 2.05, woodMat, 0, .56, 0);              // 台面
@@ -1761,7 +1960,8 @@ function buildTown() {
   // ---- 镇口牌坊：两根柱子 + 横梁 + 匾 ----
   {
     const pa = new T.Group();
-    pa.position.set(twx(5), 0, twz(30.5));
+    const pax = twx(5), paz = twz(30.5);
+    pa.position.set(pax, groundAtBuild(pax, paz), paz);
     g.add(pa);
     const red = new T.MeshStandardMaterial({ color: 0x9e3f36, roughness: .88 });
     [-1.9, 1.9].forEach(pz => {
@@ -1814,6 +2014,7 @@ function buildTown() {
 
   g.add(townTrees);
   townTrees.visible = true;
+  batchStatic(townTrees);
 
   // ---- 传送锚点（两张图各一根）----
   addAnchorStone(TOWN, 38, 30, g, "town");
@@ -1865,6 +2066,7 @@ function freeSpotOn(map, x, z, m = .7) {
 function buildGrove() {
   const g = new T.Group();
   g.visible = false;
+  g.position.set(REGION_OFF.grove.x, 0, REGION_OFF.grove.z);   // 平移到村西北
   scene.add(g);
   OUTDOOR.grove = g;
   outdoorMats.set("grove", buildGroundFor(GROVE, g));
@@ -1878,6 +2080,8 @@ function buildGrove() {
   const r = mulberry(20261118);
 
   // ---- 竹丛：北半边密、贴水塘密，路上和水里不长 ----
+  const bambooGroup = new T.Group();
+  g.add(bambooGroup);
   for (let i = 0; i < 220; i++) {
     const tx = Math.floor(r() * GROVE.w), tz = Math.floor(r() * GROVE.h);
     if (solidAt(GROVE, tx, tz)) continue;
@@ -1885,8 +2089,9 @@ function buildGrove() {
     if (k !== TI.GRASS && k !== TI.WEED && k !== TI.SAND) continue;
     const x = gw(tx), z = gz(tz);
     if (treeTooClose(x, z, 1.9)) continue;
-    addBambooClump(x, z, g, .9 + r() * .4);
+    addBambooClump(x, z, bambooGroup, .9 + r() * .4);
   }
+  batchStatic(bambooGroup);   // 两百多丛竹子上千个 mesh，合成几张网格
   // ---- 几棵正经大树当背景 ----
   [[44, 44], [52, 16], [24, 22], [10, 16], [56, 52], [36, 56]].forEach(([tx, tz]) => {
     const x = gw(tx), z = gz(tz);
@@ -1931,6 +2136,7 @@ function buildGrove() {
 function buildHill() {
   const g = new T.Group();
   g.visible = false;
+  g.position.set(REGION_OFF.hill.x, 0, REGION_OFF.hill.z);   // 平移到村南边
   scene.add(g);
   OUTDOOR.hill = g;
   outdoorMats.set("hill", buildGroundFor(HILL, g));
@@ -1989,7 +2195,8 @@ function buildShoots() {
   if (!g) return;
   SHOOT_SPOTS.forEach(sp => {
     const grp = new T.Group();
-    grp.position.set(GROVE.ox + sp.tx + .5, 0, GROVE.oz + sp.tz + .5);
+    const sx = GROVE.ox + sp.tx + .5, sz = GROVE.oz + sp.tz + .5;
+    grp.position.set(sx, surfaceY(GROVE, sx, sz), sz);
     // 一根笋：土黄锥身 + 青尖
     const body = new T.Mesh(new T.ConeGeometry(.16, .5, 7),
       new T.MeshStandardMaterial({ color: 0xc9a86a, roughness: .95 }));
@@ -2333,8 +2540,12 @@ function updateCamera(snap) {
   }
   if (td) updateCamOrtho(snap);
   else updateCamThird(snap);
-  sun.position.set(player.x + 12, 20, player.z + 8);
-  sun.target.position.set(player.x, 0, player.z);
+  // 光照跟着「视觉位置」走：角色在镇上时，太阳要照镇子那片地
+  sun.position.set(visX() + 12, 20, visZ() + 8);
+  sun.target.position.set(visX(), 0, visZ());
+  // 远景永远围着角色转：地图铺开后，树墙/天穹得跟着人，不然会落在世界角落
+  if (farGroup) farGroup.position.set(visX(), 0, visZ());
+  if (skyDome) skyDome.position.set(visX(), 0, visZ());
 }
 
 /* ---- 室内：正交俯视，原样保留 ---- */
@@ -2363,14 +2574,15 @@ function updateCamOrtho(snap) {
   // 让地平线落在画面上方而不是正中，角色周围留出更多可走的地面。
   const lookY = .9;
   const aheadZ = cz - 1.2;
-  camera.position.set(cx, y + lookY, cz + z);
+  const off = regionOff(roomState.name);
+  camera.position.set(cx + off.x, y + lookY, cz + z + off.z);
   if (camShake > 0) {
     const k = camShake * .55;
     camera.position.x += (Math.random() - .5) * k;
     camera.position.y += (Math.random() - .5) * k;
     camera.position.z += (Math.random() - .5) * k * .5;
   }
-  camera.lookAt(cx, lookY, aheadZ);
+  camera.lookAt(cx + off.x, lookY, aheadZ + off.z);
 }
 
 /* ---- 户外：第三人称跟拍 ----
@@ -2401,13 +2613,14 @@ function updateCamThird(snap) {
   const back = camBackDist(cx, cz, hd);
   const k = hd > .01 ? back / hd : 1;          // 被挡时按比例缩水平距离
   const y = Math.max(1.2, TP.lookY + dy * (.45 + .55 * k));
-  camTP.position.set(cx - Math.sin(TP.yaw) * back, y, cz - Math.cos(TP.yaw) * back);
+  const off = regionOff(roomState.name);
+  camTP.position.set(cx - Math.sin(TP.yaw) * back + off.x, y, cz - Math.cos(TP.yaw) * back + off.z);
   if (camShake > 0) {
     const s = camShake * .4;
     camTP.position.x += (Math.random() - .5) * s;
     camTP.position.y += (Math.random() - .5) * s;
   }
-  camTP.lookAt(cx, TP.lookY + .25, cz);
+  camTP.lookAt(cx + off.x, TP.lookY + .25, cz + off.z);
 }
 
 /* =========================================================
@@ -2417,7 +2630,17 @@ const keys = {};
 // 跟随模式下的"移动基准角"：每次方向键组合变化时锁定一次镜头角，锁定后镜头
 // 可以绕到角色背后而不改变行走方向 —— 这样自动跟随不会 inducing 无限打转。
 let moveBasisYaw = Math.PI, moveSig = -1;
-function isSolid(cx, cz) { return solidAt(MAP, cx, cz); }
+function isSolid(cx, cz) {
+  // 拼缝门洞带里，边界墙和"图外"的格子都不是墙 —— 那本来就是通往邻村的路。
+  // 不带这个判断，玩家走到村口就会被 solidAt 的越界判定硬挡住。
+  if (!MAP.indoor && REGION_KEYS.includes(roomState.name)) {
+    const off = regionOff(roomState.name);
+    const vx = MAP.ox + cx + .5 + off.x;
+    const vz = MAP.oz + cz + .5 + off.z;
+    if (inPortalBand(vx, vz)) return false;
+  }
+  return solidAt(MAP, cx, cz);
+}
 
 // 一格一格地挡：玩家是个半径 .34 格的小圆，一格宽的门刚好能过
 function blocked(x, z, r = .34) {
@@ -2450,7 +2673,14 @@ window.addEventListener("keydown", e => {
   if (k === "Shift") player.run = true;
   if (k === "z" || k === "Z") keys.camL = true;
   if (k === "c" || k === "C") keys.camR = true;
-  if (k === "e" || k === "E" || k === "Enter" || k === " ") {
+  if (k === " " || k === "Spacebar") {
+    // 空格 = 跳；对话里仍是「继续」，钓鱼/唱戏已在上面单独接管
+    if (dlg.open) { advanceDialog(); e.preventDefault(); return; }
+    if (!Fight.on && !overlayOpen()) jump();
+    e.preventDefault();
+    return;
+  }
+  if (k === "e" || k === "E" || k === "Enter") {
     if (dlg.open) { advanceDialog(); e.preventDefault(); return; }
     if (Fight.on || overlayOpen()) return;
     interact();
@@ -2496,6 +2726,7 @@ $("#btnA").addEventListener("click", () => {
   if (Fight.on || overlayOpen()) return;
   interact();
 });
+if ($("#btnJump")) $("#btnJump").addEventListener("click", () => { if (!Fight.on) jump(); });
 const isTouch = () => matchMedia("(hover:none)").matches || window.innerWidth < 820;
 // 摇杆只在真正开始游戏后出现；不然标题页上就摆着一副方向键
 function syncPad() {
@@ -2503,6 +2734,7 @@ function syncPad() {
     && !document.body.classList.contains("infight");
   $("#pad").classList.toggle("on", on);
   $("#btnA").classList.toggle("on", on);
+  if ($("#btnJump")) $("#btnJump").classList.toggle("on", on);
 }
 syncPad();
 
@@ -2629,7 +2861,26 @@ function update(dt) {
   }
   if (battleGrace > 0) battleGrace -= dt;
 
-  playerObj.position.set(player.x, sleepPose.on ? playerObj.position.y : terrainY(player.x, player.z), player.z);
+  // 走过拼缝：只换「当前是哪张图」并把局部坐标按位移重基，屏幕位置一帧不跳。
+  // 这一步必须放在移动之后、贴地之前，穿着地形走进邻图也不会卡在边界。
+  if (!MAP.indoor && REGION_KEYS.includes(roomState.name)) {
+    const target = portalTarget(roomState.name, visX(), visZ());
+    if (target) {
+      const from = regionOff(roomState.name), to = regionOff(target);
+      travelTo(target, {
+        x: player.x + from.x - to.x,
+        z: player.z + from.z - to.z,
+        heading: player.heading,
+        seamless: true
+      });
+    }
+  }
+
+  // 跳跃物理：重力积分，落地时 jumpY 归零。空中照样能水平移动（上面已算）。
+  if (!sleepPose.on) updateJump(dt);
+  const groundY = terrainY(player.x, player.z);
+  const footY = groundY + player.jumpY;
+  playerObj.position.set(visX(), sleepPose.on ? playerObj.position.y : footY, visZ());
   // 躺下时不做朝向平滑：rot.y 一动，-90° 的躺倒旋转就会被拧歪，头转不到枕头上
   if (!sleepPose.on) {
     const cur = playerObj.rotation.y;
@@ -2643,6 +2894,15 @@ function update(dt) {
     const pActor = playerObj.children[0];
     const anim = pActor && pActor.userData.anim;
     if (anim) anim.update("sleep", {});   // 把迈步冻结的腿放平，不然脚底朝天
+  } else if (player.jumping) {
+    // 空中统一收腿姿势：按上升/下降把 tuck 从 1 插到 0，模型和物理一致
+    const t = performance.now() / 1000;
+    const pActor = playerObj.children[0];
+    const anim = pActor && pActor.userData.anim;
+    const k = clamp(1 - player.vy / JUMP_V0, 0, 1);
+    if (anim) anim.update("jump", { k, t });
+    playerObj.position.y = footY;
+    playerObj.rotation.z = 0;
   } else if (!playerObj.userData.isBillboard) {
     const t = performance.now() / 1000;
     const pActor = playerObj.children[0];
@@ -2651,12 +2911,12 @@ function update(dt) {
       // 有骨骼：腿摆臂摆，脚步颠簸只留一点点衬托
       anim.update(player.moving ? "walk" : "idle", { t, phase: player.phase });
       const bob = player.moving ? Math.abs(Math.sin(player.phase)) * .04 : Math.sin(t * 1.6) * .008;
-      playerObj.position.y = terrainY(player.x, player.z) + bob;
+      playerObj.position.y = footY + bob;
       playerObj.rotation.z = player.moving ? Math.sin(player.phase) * .018 : 0;
     } else {
       // 没骨骼：整体上下颠
       const bob = player.moving ? Math.abs(Math.sin(player.phase)) * .075 : Math.sin(t * 1.6) * .014;
-      playerObj.position.y = terrainY(player.x, player.z) + bob;
+      playerObj.position.y = footY + bob;
       playerObj.rotation.z = player.moving ? Math.sin(player.phase) * .04 : 0;
     }
   }
@@ -2676,7 +2936,8 @@ function updateCursor() {
   if (!state.started || Fight.on) { cursor.visible = false; return; }
   const a = aimCell();
   if (!a) { cursor.visible = false; return; }
-  cursor.position.set(a.x, 0, a.z);
+  const off = regionOff(roomState.name);
+  cursor.position.set(a.x + off.x, terrainY(a.x, a.z) + .03, a.z + off.z);
   cursor.visible = true;
   const live = !!(a.mark || a.type === TI.WATER || a.plot || a.type === TI.WEED);
   const { fillMat, edgeMat } = cursor.userData;
@@ -3090,7 +3351,7 @@ async function spawnVillageNpcs() {
       const g = new T.Group();
       g.add(obj);
       if (def.cop) addCopCap(g, (CAST[def.char] || {}).h || 1.5);
-      g.position.set(def.home.x, 0, def.home.z);
+      g.position.set(def.home.x, surfaceY(VILLAGE, def.home.x, def.home.z), def.home.z);
       g.rotation.y = def.face || 0;
       world.add(g);
       const n = npcDefObj(def, "village", def.home.x, def.home.z);
@@ -3252,7 +3513,8 @@ function buildTroupeProps() {
   if (!town) return;
   TROUPE_PROPS.forEach((def, i) => {
     const g = new T.Group();
-    g.position.set(TOWN.ox + def.tx + .5, 0, TOWN.oz + def.tz + .5);
+    const px = TOWN.ox + def.tx + .5, pz = TOWN.oz + def.tz + .5;
+    g.position.set(px, surfaceY(TOWN, px, pz), pz);
     const mat = new T.MeshStandardMaterial({ color: def.color, roughness: .65, metalness: .18 });
     let mesh;
     if (i === 0) {           // 铜锣：扁圆盘
@@ -3423,7 +3685,8 @@ function buildPouches() {
   if (!town) return;
   POUCH_SPOTS.forEach((sp, i) => {
     const g = new T.Group();
-    g.position.set(TOWN.ox + sp.tx, 0, TOWN.oz + sp.tz);
+    const bx = TOWN.ox + sp.tx, bz = TOWN.oz + sp.tz;
+    g.position.set(bx, surfaceY(TOWN, bx, bz), bz);
     const sack = new T.Mesh(new T.SphereGeometry(.26, 10, 8),
       new T.MeshStandardMaterial({ color: 0xc9a877, roughness: .95 }));
     sack.scale.set(1, 1.15, 1);
@@ -3477,7 +3740,7 @@ async function spawnMapNpcs(key, defs, group) {
       if (!obj) continue;
       const g = new T.Group();
       g.add(obj);
-      g.position.set(def.home.x, 0, def.home.z);
+      g.position.set(def.home.x, surfaceY(MAPS[key], def.home.x, def.home.z), def.home.z);
       g.rotation.y = def.face || 0;
       group.add(g);
       const n = npcDefObj(def, key, def.home.x, def.home.z);
@@ -4047,20 +4310,50 @@ function animateAnchors(dt) {
 }
 
 function setOutdoorVisible(key) {
-  for (const k in OUTDOOR) if (OUTDOOR[k]) OUTDOOR[k].visible = (k === key);
-  // 地形跟着当前户外图切；进屋时清空（屋里全平）
+  // 连续大世界：四张图同时存在，站在村口就能望见镇子的方向。
+  // 进屋（key 为空）时全部收起，免得正交镜头被户外景物挡住。
+  const outdoor = REGION_KEYS.includes(key);
+  for (const k of REGION_KEYS) if (OUTDOOR[k]) OUTDOOR[k].visible = outdoor;
+  // 地形跟着当前所在图切；进屋时清空（屋里全平）
   const m = key && MAPS[key];
   activeTerrain = (m && m.__height) ? m.__height : null;
+  activeMap = (m && !m.indoor) ? m : null;
   // 远景只在户外露出来：屋里的正交镜头会被天穹挡满
-  if (farGroup) farGroup.visible = !!key;
-  if (skyDome) skyDome.visible = !!key && !isGuofeng();
+  if (farGroup) farGroup.visible = outdoor;
+  if (skyDome) skyDome.visible = outdoor && !isGuofeng();
 }
 
-function placePlayer(x, z, heading) {
+/* ---- 跳跃：空格起跳，重力积分，落到起伏地形上 ---- */
+const JUMP_V0 = 6.4, GRAVITY = 17.5;
+function jump() {
+  if (!state.started || dlg.open || Fight.on || overlayOpen() || sleepPose.on) return false;
+  if (player.jumping || fishing.on || stageGame.on) return false;
+  player.jumping = true;
+  player.vy = JUMP_V0;
+  player.jumpY = 0;
+  sfx("jump");
+  return true;
+}
+function updateJump(dt) {
+  if (!player.jumping) { player.jumpY = 0; player.vy = 0; return; }
+  player.vy -= GRAVITY * dt;
+  player.jumpY += player.vy * dt;
+  const ground = terrainY(player.x, player.z);
+  if (player.jumpY <= 0) {
+    player.jumpY = 0; player.vy = 0; player.jumping = false;
+    // 落地扬尘 / 轻响；别在每次走路都响，只有真的从空中落下才触发
+    try { sfx("land"); } catch (e) {}
+  }
+  return ground;
+}
+
+function placePlayer(x, z, heading, keepJump = false) {
   player.x = x; player.z = z;
   if (heading != null) player.heading = heading;
   player.moving = false;
-  playerObj.position.set(x, terrainY(x, z), z);
+  if (!keepJump) { player.jumping = false; player.jumpY = 0; player.vy = 0; }
+  // 换场景别在空中落地穿模；跨拼缝则保留高度，跳着过去也不会突然掉下来
+  playerObj.position.set(visX(), terrainY(x, z) + (keepJump ? player.jumpY : 0), visZ());
   playerObj.rotation.y = player.heading;
   cursor.visible = false;
   resize();
@@ -4110,9 +4403,12 @@ function travelTo(key, spawn) {
       x = spawn.x; z = spawn.z;
     }
     if (spawn && spawn.heading != null) h = spawn.heading;
-    // 落点万一压在实体上，往南挪一格再试，别把人塞进房子里
-    for (let i = 0; i < 8 && blocked(x, z); i++) z += 1;
-    placePlayer(x, z, h);
+    // 落点万一压在实体上，往南挪一格再试，别把人塞进房子里。
+    // 走过拼缝时不做这一步：视觉坐标必须一帧不变，挪一格就会「闪一下」。
+    if (!spawn || !spawn.seamless) {
+      for (let i = 0; i < 8 && blocked(x, z); i++) z += 1;
+    }
+    placePlayer(x, z, h, !!(spawn && spawn.seamless));
     if (key === "town") {
       spawnTownNpcs().catch(e => console.warn("[game] 镇上的没来", e));
       // 口袋任务进行中时，没捡的那些要重新露出来
@@ -4128,8 +4424,11 @@ function travelTo(key, spawn) {
       spawnHillNpcs().catch(e => console.warn("[game] 坡上的没来", e));
     }
     courierProgress("arrive", key);
-    blip(key === "town" ? 640 : 520, .1, "sine", .035);
-    toast(key === "village" ? "回到奶家村" : "来到" + map.name);
+    if (!spawn || !spawn.seamless) {
+      // 跨拼缝不算「传送」：不响、不弹字，人才会觉得是自己走过去的
+      blip(key === "town" ? 640 : 520, .1, "sine", .035);
+      toast(key === "village" ? "回到奶家村" : "来到" + map.name);
+    }
   }
   hudTick();
   save();
@@ -5218,6 +5517,7 @@ $("#kResultBtn").onclick = () => Fight.finish();
    主循环
    ========================================================= */
 const clock = new T.Clock();
+let radarAcc = 0;      // 小地图重绘节流：24fps 足够，省下每帧一次大 canvas drawImage
 function loop() {
   requestAnimationFrame(loop);
   const dt = Math.min(.05, clock.getDelta());
@@ -5228,7 +5528,8 @@ function loop() {
   }
   update(dt);
   animateAnchors(dt);
-  if (state.started) drawRadar();
+  radarAcc += dt;
+  if (state.started && radarAcc >= 1 / 24) { radarAcc = 0; drawRadar(); }
   renderer.render(scene, currentCam());
 }
 
@@ -5277,11 +5578,14 @@ async function boot() {
     buildGrove();
     buildHill();
     buildFar();
+    // 四张户外图搭完就一起亮出来：一进游戏就是一整片连着的大地
+    setOutdoorVisible("village");
     // 村庄 / 镇也撒少量立体草丛，近景不再是纯平贴图
     buildGrassTufts(VILLAGE, world, 520, 5011);
     if (OUTDOOR.town) buildGrassTufts(TOWN, OUTDOOR.town, 360, 6011);
     buildTroupeProps();
     troupeResetIfNewDay();
+    batchOutdoors();   // 静态摆件统一合批：四图同时可见也不涨 draw call
     applyStyle();   // 场景搭好后统一套用主题（国风染色 / 飞檐 / 背景）
   } catch (e) { console.error("[game] 场景搭建出错", e); }
 
@@ -5312,7 +5616,7 @@ async function boot() {
 
   // 标题镜头：站到广场边上，镜头照着主角
   player.x = 0; player.z = 9;
-  playerObj.position.set(player.x, 0, player.z);
+  playerObj.position.set(player.x, terrainY(player.x, player.z), player.z);
   playerObj.rotation.y = 0;
   updateCamera();
   {
@@ -5354,6 +5658,7 @@ function startGame(fresh) {
       dayFlags: {}, gifts: {}, met: {}, beatQiyet: false
     });
     player.x = SPAWN.x; player.z = SPAWN.z;
+    player.jumping = false; player.jumpY = 0; player.vy = 0;
     Farm.reset();
     try { localStorage.removeItem(SAVE_KEY); } catch (e) {}
   }
@@ -5373,7 +5678,7 @@ function startGame(fresh) {
   state.started = true;
   $("#hud").classList.remove("hidden");
   syncPad();
-  playerObj.position.set(player.x, 0, player.z);
+  playerObj.position.set(visX(), terrainY(player.x, player.z), visZ());
   hudTick();
   Farm.paint();
   blip(660, .1, "sine", .04);
@@ -5420,8 +5725,12 @@ if (location.search.indexOf("debug") >= 0) {
     get MAP() { return MAP; }, get roomName() { return roomName; },
     markAt() { const g = tileAhead(); return g ? { tx: g.tx, tz: g.tz, type: g.type, mark: g.mark, plot: g.plot } : null; },
     tileAt: (x, z) => { const t = toTile(MAP, x, z); return tileAt(MAP, t.tx, t.tz); },
-    teleport(x, z) { player.x = x; player.z = z; playerObj.position.set(x, 0, z); updateCamera(true); },
-    face(h) { player.heading = h; }
+    teleport(x, z) { player.x = x; player.z = z; player.jumping = false; player.jumpY = 0; player.vy = 0; playerObj.position.set(visX(), terrainY(x, z), visZ()); updateCamera(true); },
+    face(h) { player.heading = h; },
+    jump, jumpState: () => ({ jumping: player.jumping, jumpY: player.jumpY, vy: player.vy }),
+    surfaceY, groundAt: (x, z) => terrainY(x, z),
+    visPosition: () => ({ x: visX(), z: visZ() }),
+    regionOff, portalTarget, inPortalBand
   };
 }
 

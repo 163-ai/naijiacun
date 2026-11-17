@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
   <title>奶家村 · 大冒险</title>
-  <link rel="stylesheet" href="css/game.css?v=19">
+  <link rel="stylesheet" href="css/game.css?v=20">
 </head>
 <body>
   <canvas id="gl"></canvas>
@@ -60,6 +60,7 @@
     <button class="r" data-k="right">▶</button>
     <button class="d" data-k="down">▼</button>
   </div>
+  <button id="btnJump">跳</button>
   <button id="btnA">互动</button>
 
   <!-- ========== 标题 ========== -->
@@ -280,7 +281,8 @@
         <h2>怎么玩</h2>
         <p class="sub">像种田游戏一样过日子：白天干活，晚上睡觉，一天一天往下过。</p>
         <div style="font-size:13px;line-height:2;color:var(--ink-2)">
-          <b style="color:var(--ink)">走路</b>：WASD / 方向键，按住 Shift 跑；手机上用左下方向键。<br>
+          <b style="color:var(--ink)">走路</b>：WASD / 方向键，按住 Shift 跑；手机上用左下方向键。<b>空格</b>跳（手机点「跳」），
+          人会真的离地再落回起伏的地面，跳过沟坎时身体也会收腿。<br>
           <b style="color:var(--ink)">镜头</b>：默认会自动跟在你身后转 —— 你往哪走，镜头慢慢绕到背后，不用手动转。
           想自己控就按 <b>R</b> 关掉跟随，再按住鼠标（或手指）拖动转视角、滚轮拉近拉远、Z / C 左右转；
           W 是「镜头朝着的那边」。屋里镜头固定俯视，不用转。<br>
@@ -358,6 +360,6 @@
   <script src="js/rain.js?v=1"></script>
   <script src="js/3d-models.js"></script>
   <script src="js/site-pet.js?v=fast-pet-2"></script>
-  <script type="module" src="js/game2d.js?v=80"></script>
+  <script type="module" src="js/game2d.js?v=81"></script>
 </body>
 </html>

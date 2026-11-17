@@ -82,9 +82,15 @@ body{
   line-height:1.25;padding:0 8px;
   box-shadow:0 10px 24px rgba(15,110,86,.35);
 }
-#btnA.on{display:block}
+#btnA.on,#btnJump.on{display:block}
+#btnJump{
+  position:fixed;right:100px;bottom:130px;width:62px;height:62px;border-radius:99px;z-index:12;display:none;
+  border:none;background:var(--ink);color:#fff;font:inherit;font-size:13px;font-weight:600;line-height:1;
+  box-shadow:0 10px 24px rgba(20,30,28,.3);
+}
+#btnJump:active{transform:scale(.94)}
 /* 战斗时把探索用的摇杆和互动键收起来 */
-body.infight #pad,body.infight #btnA{display:none !important}
+body.infight #pad,body.infight #btnA,body.infight #btnJump{display:none !important}
 #btnA:active{transform:scale(.94)}
 
 /* ---------- 遮罩 ---------- */
