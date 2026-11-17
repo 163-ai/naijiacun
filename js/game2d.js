@@ -102,7 +102,9 @@ const state = {
   // 驿站远行委托：{ day, kind, map, need, got, done, title, desc, reward }
   courier: null,
   // 图鉴：见过谁（按角色 char 记）、领过哪几档奖励、当前称号
-  metChar: {}, dexRewards: [], dexTitle: ""
+  metChar: {}, dexRewards: [], dexTitle: "",
+  // 镇内任务：戏班子的三件戏家伙 { day, stage:0未接/1收集中/2待交/3今日完成, gotList:已拾取序号, invited:已送帖对象id }
+  troupe: { day: 0, stage: 0, gotList: [], invited: [] }
 };
 const expNeed = lv => 18 + lv * 12;
 
@@ -123,6 +125,7 @@ function save() {
       fishDay: state.fishDay, fishRods: state.fishRods, stageDay: state.stageDay,
       courier: state.courier,
       metChar: state.metChar, dexRewards: state.dexRewards, dexTitle: state.dexTitle,
+      troupe: state.troupe,
       // 存档点永远记在村里：镇上/屋里的位置不入档，下次开局从村的落点开始
       px: roomState.name === "village" ? player.x : roomState.back.x,
       pz: roomState.name === "village" ? player.z : roomState.back.z,
@@ -147,7 +150,8 @@ function load() {
       pouches: d.pouches || 0, arenaWins: d.arenaWins || 0,
       fishDay: d.fishDay || 0, fishRods: d.fishRods || 0, stageDay: d.stageDay || 0,
       courier: d.courier || null,
-      metChar: d.metChar || {}, dexRewards: d.dexRewards || [], dexTitle: d.dexTitle || ""
+      metChar: d.metChar || {}, dexRewards: d.dexRewards || [], dexTitle: d.dexTitle || "",
+      troupe: d.troupe || { day: 0, stage: 0, gotList: [], invited: [] }
     });
     player.x = d.px ?? SPAWN.x;
     player.z = d.pz ?? SPAWN.z;
@@ -2890,6 +2894,21 @@ async function spawnRoomNpcs(map, mapKey) {
    ========================================================= */
 const TOWN_NPCS = [
   {
+    id: "troupe_master",
+    name: "戏班主",
+    char: "naileditor",           // 用几何体现拼，见 makeTroupeMaster
+    rig: "troupemaster",
+    home: { x: -16.5, z: -3.5 },  // 戏台边上
+    face: .6,
+    tag: "张罗今晚的戏",
+    greet: [
+      "（他站在戏台边，手里攥着一张写满名字的红纸，直搓手。）",
+      "今儿是个大日子 —— 班子凑齐了，就差跑腿的。"
+    ],
+    act: "troupe",
+    actLabel: "问问今晚的戏"
+  },
+  {
     id: "baobaolong",
     name: "暴暴龙",
     char: "baobaolong",
@@ -2938,6 +2957,205 @@ const GROVE_NPCS = [
 ];
 
 // 南高草坡的牛来：坡顶开阔，正好陪人练手
+/* =========================================================
+   镇内任务线：戏班子的三件戏家伙
+   ---------------------------------------------------------
+   戏班主托你三件事：把三封请帖送给镇上/竹林的三位街坊，
+   再把散在镇上的三样戏家伙（锣、戏服、头面）找回来。
+   两样都齐了回去交差，拿赏钱，班主包场请你上台唱一段。
+   ========================================================= */
+const TROUPE_INVITEES = [
+  { id: "baobaolong", name: "暴暴龙", hint: "镇上擂台边" },
+  { id: "feidudu", name: "肥嘟嘟", hint: "镇上市集旁" },
+  { id: "capy_angler", name: "卡皮巴拉", hint: "竹林水塘东岸" }
+];
+const TROUPE_PROPS = [
+  { name: "铜锣", color: 0xd9a12b, tx: 34, tz: 30 },     // 市集广场
+  { name: "戏服", color: 0xa8443a, tx: 45, tz: 41 },     // 南街
+  { name: "头面", color: 0xc8b7e0, tx: 13, tz: 26 }      // 镇西戏台后巷
+];
+const troupeProps = { objs: [], built: false };
+
+function activeTroupe() {
+  const t = state.troupe;
+  return t && t.day === Farm.day ? t : null;
+}
+
+function troupeResetIfNewDay() {
+  if (state.troupe && state.troupe.day !== Farm.day) {
+    state.troupe = { day: Farm.day, stage: 0, gotList: [], invited: [] };
+    troupeProps.objs.forEach(o => { o.group.visible = false; });
+    save();
+  }
+}
+
+// 戏班主：拿几何体现拼一个，别占 CAST 里的角色（他不是图鉴收集对象）
+function makeTroupeMaster() {
+  const g = new T.Group();
+  const coat = new T.MeshStandardMaterial({ color: 0x7c4a52, roughness: .9 });
+  const skin = new T.MeshStandardMaterial({ color: 0xe8c9a0, roughness: .9 });
+  const hat = new T.MeshStandardMaterial({ color: 0x2f2a35, roughness: .85 });
+  const body = new T.Mesh(new T.CylinderGeometry(.28, .38, .82, 10), coat);
+  body.position.y = .51; body.castShadow = true; g.add(body);
+  const head = new T.Mesh(new T.SphereGeometry(.26, 12, 10), skin);
+  head.position.y = 1.12; head.castShadow = true; g.add(head);
+  const cap = new T.Mesh(new T.CylinderGeometry(.3, .32, .16, 12), hat);
+  cap.position.y = 1.32; g.add(cap);
+  const brim = new T.Mesh(new T.CylinderGeometry(.42, .42, .04, 12), hat);
+  brim.position.y = 1.25; g.add(brim);
+  // 手里那张红纸
+  const paper = new T.Mesh(new T.BoxGeometry(.22, .3, .02),
+    new T.MeshStandardMaterial({ color: 0xc8443a, roughness: .85 }));
+  paper.position.set(.34, .72, .12); paper.rotation.z = -.3; g.add(paper);
+  g.scale.setScalar(1.08);
+  return g;
+}
+
+function buildTroupeProps() {
+  if (troupeProps.built) return;
+  const town = OUTDOOR.town;
+  if (!town) return;
+  TROUPE_PROPS.forEach((def, i) => {
+    const g = new T.Group();
+    g.position.set(TOWN.ox + def.tx + .5, 0, TOWN.oz + def.tz + .5);
+    const mat = new T.MeshStandardMaterial({ color: def.color, roughness: .65, metalness: .18 });
+    let mesh;
+    if (i === 0) {           // 铜锣：扁圆盘
+      mesh = new T.Mesh(new T.CylinderGeometry(.3, .3, .07, 16), mat);
+      mesh.rotation.x = Math.PI / 2; mesh.position.y = .34;
+    } else if (i === 1) {    // 戏服：折叠的一小摞
+      mesh = new T.Mesh(new T.BoxGeometry(.5, .32, .36), mat);
+      mesh.position.y = .2;
+    } else {                 // 头面：珠冠
+      mesh = new T.Mesh(new T.ConeGeometry(.28, .42, 8), mat);
+      mesh.position.y = .28;
+    }
+    mesh.castShadow = true;
+    g.add(mesh);
+    g.visible = false;
+    town.add(g);
+    troupeProps.objs.push({ group: g, got: false, i });
+  });
+  troupeProps.built = true;
+}
+
+function refreshTroupeProps() {
+  const t = activeTroupe();
+  const on = !!t && t.stage === 1;
+  troupeProps.objs.forEach(o => { o.group.visible = on && !o.got; });
+  if (on) {
+    troupeProps.objs.forEach(o => { o.got = t.gotList.indexOf(o.i) >= 0; });
+    troupeProps.objs.forEach(o => { o.group.visible = !o.got; });
+  }
+}
+
+function troupeProgressText() {
+  const t = activeTroupe();
+  if (!t) return "戏班子今晚有演出 · 去镇上戏台边问问班主";
+  if (t.stage >= 3) return "今晚的戏唱完了 ✅ 明早班主还来";
+  const inviteN = t.invited.length, propN = t.gotList.length;
+  return "今晚的戏：「三封信 + 三件戏家伙」· 请帖 " + inviteN + "/3 · 家伙 " + propN + "/3" +
+    (inviteN >= 3 && propN >= 3 ? " · 回去找班主交差" : "");
+}
+
+// 跟三位街坊说话时顺手把请帖递了 —— 在 talk() 里调
+function troupeInvite(npcId) {
+  const t = activeTroupe();
+  if (!t || t.stage !== 1) return;
+  if (!TROUPE_INVITEES.some(x => x.id === npcId)) return;
+  if (t.invited.indexOf(npcId) >= 0) return;
+  t.invited.push(npcId);
+  save();
+  refreshTroupeProps();
+  toast("请帖送到了（" + t.invited.length + "/3）");
+  if (t.invited.length >= 3 && t.gotList.length >= 3) {
+    setTimeout(() => toast("请帖和家伙都齐了 · 回戏台找班主"), 1000);
+  }
+}
+
+// 戏家伙散在镇上，站边上按 E 捡
+function tryTroupeProp() {
+  const t = activeTroupe();
+  if (!t || t.stage !== 1 || roomState.name !== "town") return false;
+  for (const o of troupeProps.objs) {
+    if (o.got) continue;
+    if (Math.hypot(player.x - o.group.position.x, player.z - o.group.position.z) > 1.6) continue;
+    o.got = true;
+    o.group.visible = false;
+    if (t.gotList.indexOf(o.i) < 0) t.gotList.push(o.i);
+    sfx("coin");
+    blip(820, .12, "sine", .04);
+    toast("找到了" + TROUPE_PROPS[o.i].name + "（" + t.gotList.length + "/3）");
+    save();
+    if (t.gotList.length >= 3 && t.invited.length >= 3) {
+      setTimeout(() => toast("三样都齐了 · 回戏台找班主"), 900);
+    }
+    return true;
+  }
+  return false;
+}
+
+function troupeBoard() {
+  troupeResetIfNewDay();
+  const t = activeTroupe();
+  if (!t || t.stage === 0) {
+    say("戏班主", [
+      "（他把红纸往你手里一塞）你来得正好！",
+      "今晚要唱《奶龙娶亲》，可三封请帖没送出去，行头也少了三样。",
+      "劳你跑一趟：请帖送给暴暴龙、肥嘟嘟、竹林东岸那只卡皮巴拉；" +
+        "再把铜锣、戏服、头面找回来 —— 都散在镇上。"
+    ], null, [
+      { label: "包在我身上", onPick: () => {
+        state.troupe = { day: Farm.day, stage: 1, gotList: [], invited: [] };
+        buildTroupeProps();
+        refreshTroupeProps();
+        save();
+        toast("接下戏班的活 · 先送三封请帖");
+      } },
+      { label: "今晚没空", onPick: null }
+    ], "happy");
+    return;
+  }
+  if (t.stage >= 3) {
+    say("戏班主", ["今晚这场圆满！", "明儿我还在这儿，班子天天有活儿。"], null, null, "happy");
+    return;
+  }
+  const needInv = 3 - t.invited.length, needProp = 3 - t.gotList.length;
+  if (needInv > 0 || needProp > 0) {
+    const who = TROUPE_INVITEES.filter(x => t.invited.indexOf(x.id) < 0).map(x => x.name + "（" + x.hint + "）").join("、");
+    const lines = ["（他探头看你手里的红纸）"];
+    if (needInv > 0) lines.push("请帖还差 " + needInv + " 封：" + who + "。见着人递过去就行。");
+    if (needProp > 0) {
+      const names = TROUPE_PROPS.filter((_, i) => t.gotList.indexOf(i) < 0).map(x => x.name).join("、");
+      lines.push("行头还缺 " + needProp + " 样：" + names + "，散在镇上，走近了按 E 捡。");
+    }
+    say("戏班主", lines, null, [{ label: "这就去", onPick: null }], "worry");
+    return;
+  }
+  // 全都办妥 —— 交差
+  say("戏班主", [
+    "（他数了数红纸，又摸了摸找回的行头，眼睛亮了）",
+    "齐了！齐了！今晚这场，有你一半功劳。"
+  ], null, [
+    { label: "交差领赏", onPick: claimTroupe },
+    { label: "再等等", onPick: null }
+  ], "happy");
+}
+
+function claimTroupe() {
+  const t = activeTroupe();
+  if (!t || t.stage >= 3 || t.invited.length < 3 || t.gotList.length < 3) return;
+  t.stage = 3;
+  Farm.gold += 150;
+  state.balls += 2;
+  grantExp(24);
+  Farm.paint(); hudTick(); save();
+  sfx("coin");
+  toast("戏班的赏 · +150 金 · 捕捉球 +2 · 阅历 +24");
+  // 班主包场：即使今天唱过了也再开一场
+  setTimeout(() => startStage(true), 900);
+}
+
 const HILL_NPCS = [
   {
     id: "hill_niulai",
@@ -3017,7 +3235,10 @@ async function spawnMapNpcs(key, defs, group) {
   for (const def of defs) {
     if (npcs.some(n => n.map === key && n.def.id === def.id)) continue;
     try {
-      const obj = await getActor(def.char);
+      // 没有现成模型的角色用几何体现拼
+      const obj = def.rig === "oldman" ? makeOldMan()
+        : def.rig === "troupemaster" ? makeTroupeMaster()
+        : await getActor(def.char);
       if (!obj) continue;
       const g = new T.Group();
       g.add(obj);
@@ -3657,6 +3878,8 @@ function travelTo(key, spawn) {
       spawnTownNpcs().catch(e => console.warn("[game] 镇上的没来", e));
       // 口袋任务进行中时，没捡的那些要重新露出来
       pouchQuest.objs.forEach(o => { o.group.visible = pouchQuest.active && !o.got; });
+      buildTroupeProps();
+      refreshTroupeProps();
     }
     if (key === "grove") {
       refreshShoots();
@@ -3741,6 +3964,8 @@ function openWorldMap() {
     else cl.textContent = "今日驿务：「" + c.title + "」· " + c.got + "/" + c.need +
       (c.got >= c.need ? " · 回驿站交差领钱" : " · " + (c.map && MAPS[c.map] ? MAPS[c.map].name : "野外"));
   }
+  const tl = $("#troupeLine");
+  if (tl) tl.textContent = troupeProgressText();
   $("#worldmap").classList.add("show");
 }
 function closeWorldMap() {
@@ -3757,6 +3982,9 @@ function interact() {
 
   // ⓪½ 竹林里的竹笋：每天长几根，站边上按 E 掰走换钱
   if (tryShoot()) return;
+
+  // ⓪¾ 镇内任务：散在镇上的戏家伙，站边上按 E 捡
+  if (tryTroupeProp()) return;
 
   // ① 格子上的标记：门、床、柜台、公告板、灶台……
   if (a && a.mark) {
@@ -3808,6 +4036,8 @@ function talk(n) {
     state.visitOn[def.id] = Farm.day;
     questProgress("visit");
   }
+  // 镇内任务：请帖顺手就递了（班主自己不算收信人）
+  troupeInvite(def.id);
   save();
 
   // 棋爷有自己的流程：先被你叫板，再骗你下一盘
@@ -4014,9 +4244,9 @@ function stageUI(judge, tone) {
   $("#stageGold").textContent = "💰 " + Farm.gold;
 }
 
-function startStage() {
+function startStage(encore = false) {
   if (stageGame.on) return;
-  if (state.stageDay === Farm.day) {
+  if (!encore && state.stageDay === Farm.day) {
     say("戏台", ["今天这一段唱完了，台下的人也散了。", "明天这个时辰，班子还来。"], null, null, "normal", "xiaoqi");
     return;
   }
@@ -4092,6 +4322,11 @@ function closeStage() {
 /* ---- 村民能给你的东西 ---- */
 function runAct(def, n) {
   switch (def.act) {
+    case "troupe":
+      closeDialog();
+      troupeBoard();
+      break;
+
     case "shop":
       Farm.openShop();
       break;
@@ -4527,6 +4762,8 @@ async function boot() {
     buildGrove();
     buildHill();
     buildFar();
+    buildTroupeProps();
+    troupeResetIfNewDay();
     applyStyle();   // 场景搭好后统一套用主题（国风染色 / 飞檐 / 背景）
   } catch (e) { console.error("[game] 场景搭建出错", e); }
 
@@ -4595,6 +4832,7 @@ function startGame(fresh) {
       anchors: {}, pouchDay: 0, pouches: 0, arenaWins: 0,
       fishDay: 0, fishRods: 0, stageDay: 0, courier: null,
       metChar: {}, dexRewards: [], dexTitle: "",
+      troupe: { day: 0, stage: 0, gotList: [], invited: [] },
       dayFlags: {}, gifts: {}, met: {}, beatQiyet: false
     });
     player.x = SPAWN.x; player.z = SPAWN.z;
@@ -4643,6 +4881,8 @@ if (location.search.indexOf("debug") >= 0) {
     refreshShoots, tryShoot, shootQuest, patches, onBattleEnd,
     courierToday, activeCourier, courierProgress, courierBoard, claimCourier, COURIER_JOBS,
     DEX_ORDER, DEX_TIERS, dexCount, dexGot, unlockDexChar, claimDexTier, buildDex,
+    troupeBoard, claimTroupe, tryTroupeProp, troupeInvite, activeTroupe, troupeResetIfNewDay,
+    refreshTroupeProps, troupeProps, TROUPE_PROPS, TROUPE_INVITEES, troupeProgressText,
     spawnGroveNpcs, spawnHillNpcs, GROVE_NPCS, HILL_NPCS,
     fishing, stageGame, startFishing, reelFish, closeFishing,
     startStage, hitStage, endStage, closeStage,
