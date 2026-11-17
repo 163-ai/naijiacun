@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
   <title>奶家村 · 大冒险</title>
-  <link rel="stylesheet" href="css/game.css?v=17">
+  <link rel="stylesheet" href="css/game.css?v=18">
 </head>
 <body>
   <canvas id="gl"></canvas>
@@ -24,7 +24,7 @@
       <div class="tools">
         <a class="btn" href="index.html">← 回村</a>
         <button class="btn" id="btnMap" title="世界地图（M）">🗺 地图</button>
-        <button class="btn" id="btnDex">图鉴 <span id="dexCount">0</span>/4</button>
+        <button class="btn" id="btnDex">图鉴 <span id="dexCount">0</span>/8</button>
         <button class="btn" id="btnStyle" title="切换画面风格">🎨 风格</button>
         <button class="btn" id="btnSound">🔊</button>
         <button class="btn" id="btnHelp">?</button>
@@ -250,10 +250,11 @@
     <div class="veil"></div>
     <div class="sheet">
       <div class="sheet-inner">
-        <h2>村民图鉴</h2>
-        <p class="sub">草丛里遇到并用捕捉球收服的会亮起来。奶龙是你本人；小七在村口等你，不算收集品。
-          标着「3D」的能用完整模型上场，其余的用站内立绘当立牌。</p>
+        <h2>村民图鉴 <span id="dexTitle" class="dex-title"></span></h2>
+        <p class="sub">跟村民说过话、或者在草丛里收服的都会亮起来。奶龙是你本人；小七在村口等你。
+          标着「3D」的能用完整模型上场，站着的立绘也能点开看。集齐几位有奖励，往下翻就能领。</p>
         <div class="dexgrid" id="dexGrid"></div>
+        <div class="dex-rewards" id="dexRewards"></div>
         <div class="closebar"><button class="btn dark" id="btnDexClose">收起图鉴</button></div>
       </div>
     </div>
@@ -296,6 +297,8 @@
           一天八竿，钓到的鱼当场折钱；凑够三条再送一个捕捉球。<br>
           <b style="color:var(--ink)">唱戏</b>：奶家镇戏台前按 E 上台，锣鼓响后拍子走到亮点时按 E / 空格，
           唱满五拍有赏钱和阅历，一天只唱一场。<br>
+          <b style="color:var(--ink)">图鉴</b>：跟村民说过话、或把野的收服，卡片就亮。集到 3 / 5 / 8 位各有一档奖励，
+          在图鉴面板底部领取，全收齐还能拿称号「奶家村之友」。<br>
           <b style="color:var(--ink)">远行委托</b>：奶家镇驿站院子北边贴着委托榜，按 E 接当天的一单，
           去指定的地方跑一趟（送封信、掰竹笋、钓鱼、打赢一场都可能有），回来按 E 交差领钱和球。
           M 键世界地图上也能看到进度。<br>
@@ -336,6 +339,6 @@
   <script src="js/rain.js?v=1"></script>
   <script src="js/3d-models.js"></script>
   <script src="js/site-pet.js?v=fast-pet-2"></script>
-  <script type="module" src="js/game2d.js?v=77"></script>
+  <script type="module" src="js/game2d.js?v=78"></script>
 </body>
 </html>

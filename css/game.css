@@ -545,3 +545,14 @@ body:has(#help.show) #toast{top:auto;bottom:22px}
   .stage-beats{gap:5px}
   .stage-beats i{width:38px;height:38px;font-size:17px}
 }
+
+/* ---------- 图鉴：收集奖励区 ---------- */
+.dex-title{font-size:13px;color:var(--amber);font-weight:600;margin-left:8px}
+.dex-rewards{margin-top:16px;padding:12px 16px;background:#f8f5ee;border:1px solid var(--line);border-radius:12px}
+.dex-rewards h3{margin:0 0 6px;font-size:14px;color:var(--ink)}
+.dex-rewards h3 span{font-size:11px;color:var(--ink-3);font-weight:400}
+.dex-tier{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 0;
+  border-top:1px dashed var(--line);font-size:12px;color:var(--ink-2);line-height:1.7}
+.dex-tier:first-of-type{border-top:0}
+.dex-tier b{color:var(--ink);font-size:13px}
+.dex-tier button{flex:0 0 auto;min-width:78px;font-size:11px;padding:6px 10px}

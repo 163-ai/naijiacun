@@ -100,7 +100,9 @@ const state = {
   // 小游戏：钓鱼当天抛了几竿、唱戏当天唱没唱
   fishDay: 0, fishRods: 0, stageDay: 0,
   // 驿站远行委托：{ day, kind, map, need, got, done, title, desc, reward }
-  courier: null
+  courier: null,
+  // 图鉴：见过谁（按角色 char 记）、领过哪几档奖励、当前称号
+  metChar: {}, dexRewards: [], dexTitle: ""
 };
 const expNeed = lv => 18 + lv * 12;
 
@@ -120,6 +122,7 @@ function save() {
       arenaWins: state.arenaWins,
       fishDay: state.fishDay, fishRods: state.fishRods, stageDay: state.stageDay,
       courier: state.courier,
+      metChar: state.metChar, dexRewards: state.dexRewards, dexTitle: state.dexTitle,
       // 存档点永远记在村里：镇上/屋里的位置不入档，下次开局从村的落点开始
       px: roomState.name === "village" ? player.x : roomState.back.x,
       pz: roomState.name === "village" ? player.z : roomState.back.z,
@@ -143,7 +146,8 @@ function load() {
       anchors: d.anchors || {}, pouchDay: d.pouchDay || 0,
       pouches: d.pouches || 0, arenaWins: d.arenaWins || 0,
       fishDay: d.fishDay || 0, fishRods: d.fishRods || 0, stageDay: d.stageDay || 0,
-      courier: d.courier || null
+      courier: d.courier || null,
+      metChar: d.metChar || {}, dexRewards: d.dexRewards || [], dexTitle: d.dexTitle || ""
     });
     player.x = d.px ?? SPAWN.x;
     player.z = d.pz ?? SPAWN.z;
@@ -2455,7 +2459,7 @@ function hudTick() {
   $("#ballCount").textContent = state.balls;
   $("#stepCount").textContent = Math.round(state.steps);
   $("#areaChip").innerHTML = '<span class="dot"></span> ' + areaName();
-  $("#dexCount").textContent = Object.keys(state.captured).filter(k => state.captured[k]).length;
+  $("#dexCount").textContent = dexCount();
 
   // 站到谁旁边了：提一句，不然没人知道 NPC 能聊
   const near = (state.started && !dlg.open && !Fight.on) ? npcNear(2.4) : null;
@@ -3796,6 +3800,8 @@ function talk(n) {
   const def = n.def;
   state.met[def.id] = true;
   state.metNpc = true;
+  // 图鉴：第一次跟这位角色说话就亮卡
+  if (def.char && !state.metChar[def.char]) unlockDexChar(def.char);
   // 每天第一次跟某个人说话，算一次「走访」
   state.visitOn = state.visitOn || {};
   if (state.visitOn[def.id] !== Farm.day) {
@@ -4346,22 +4352,83 @@ function grantExp(n) {
 }
 
 /* =========================================================
-   图鉴
+   村民图鉴：见过面或用球收服就亮卡，集齐有奖
    ========================================================= */
-const DEX_ORDER = ["nailong", "naiwa", "niulai", "baobaolong", "capybara", "xiaoqi"];
+const DEX_ORDER = ["nailong", "naiwa", "niulai", "baobaolong", "capybara", "xiaoqi", "naidan", "feidudu"];
+const DEX_TIERS = [
+  { need: 3, gold: 60, balls: 0, title: "", label: "认识三位伙伴" },
+  { need: 5, gold: 0, balls: 3, title: "", label: "半个村子都熟" },
+  { need: 8, gold: 180, balls: 5, title: "奶家村之友", label: "全员到齐" }
+];
+
+function dexGot(k) {
+  return k === "nailong" || k === "xiaoqi" || !!state.metChar[k] || !!state.captured[k];
+}
+function dexCount() {
+  return DEX_ORDER.reduce((n, k) => n + (dexGot(k) ? 1 : 0), 0);
+}
+
+function unlockDexChar(k) {
+  if (!k || !CAST[k] || state.metChar[k]) return;
+  state.metChar[k] = true;
+  const n = dexCount();
+  save();
+  toast("图鉴解锁 · " + CAST[k].name + "（" + n + "/" + DEX_ORDER.length + "）");
+  const next = DEX_TIERS.findIndex((t, i) => n >= t.need && !state.dexRewards.includes(i));
+  if (next >= 0) setTimeout(() => toast("图鉴奖励可领了 · 打开图鉴领取"), 950);
+}
+
+function claimDexTier(i) {
+  const t = DEX_TIERS[i], n = dexCount();
+  if (!t || n < t.need || state.dexRewards.includes(i)) return;
+  state.dexRewards.push(i);
+  if (t.gold) Farm.gold += t.gold;
+  if (t.balls) state.balls += t.balls;
+  if (t.title) state.dexTitle = t.title;
+  grantExp(20 + i * 15);
+  Farm.paint(); hudTick(); save();
+  sfx("coin");
+  buildDex();
+  toast("图鉴奖励到手 · " + t.label);
+}
+
 function buildDex() {
   const grid = $("#dexGrid");
   grid.innerHTML = DEX_ORDER.map(k => {
     const c = CAST[k];
-    const got = k === "nailong" || (k === "xiaoqi") || state.captured[k];
+    const got = dexGot(k);
+    const how = k === "nailong" ? "你本人" : k === "xiaoqi" ? "村口等你" :
+      (state.captured[k] ? "已收服" : state.metChar[k] ? "已认识" : "还没遇到过。");
     return `<div class="dexcard ${got ? "" : "locked"}">
       ${c.model ? '<span class="tag model">3D</span>' : ""}
       <div class="ph"><img src="${c.img}" alt="${c.name}" loading="lazy"></div>
       <div class="dn">${got ? c.name : "？？？"}</div>
-      <div class="de">${c.model ? "完整模型可上场" : "立牌"}</div>
-      <div class="dd">${got ? c.desc : "还没遇到过。"}</div>
+      <div class="de">${got ? how : "未解锁"}</div>
+      <div class="dd">${got ? c.desc : "走近跟它说句话，或者在草丛里收服它。"}</div>
     </div>`;
   }).join("");
+
+  const n = dexCount();
+  const label = $("#dexTitle");
+  if (label) label.textContent = state.dexTitle ? "🏅 " + state.dexTitle : "";
+  const box = $("#dexRewards");
+  if (box) {
+    box.innerHTML = "<h3>收集奖励 <span>· 已认识 " + n + "/" + DEX_ORDER.length + "</span></h3>" +
+      DEX_TIERS.map((t, i) => {
+        const claimed = state.dexRewards.includes(i);
+        const ready = n >= t.need;
+        const prize = [t.gold ? t.gold + " 金" : "", t.balls ? t.balls + " 球" : "",
+          t.title ? "称号「" + t.title + "」" : ""].filter(Boolean).join(" · ");
+        return `<div class="dex-tier">
+          <div><b>${t.label}</b><br><span>${t.need} 位 · ${prize}</span></div>
+          <button class="btn ${ready && !claimed ? "" : "dark"}" data-tier="${i}"
+            ${ready && !claimed ? "" : "disabled"}>${claimed ? "已领" : ready ? "领取" : "还差 " + (t.need - n)}</button>
+        </div>`;
+      }).join("");
+    box.querySelectorAll("button[data-tier]").forEach(b => {
+      b.onclick = () => claimDexTier(Number(b.dataset.tier));
+    });
+  }
 }
 
 /* =========================================================
@@ -4527,6 +4594,7 @@ function startGame(fresh) {
       // 不然同一个浏览器里「重新开始」会带着上一档的进度进新档
       anchors: {}, pouchDay: 0, pouches: 0, arenaWins: 0,
       fishDay: 0, fishRods: 0, stageDay: 0, courier: null,
+      metChar: {}, dexRewards: [], dexTitle: "",
       dayFlags: {}, gifts: {}, met: {}, beatQiyet: false
     });
     player.x = SPAWN.x; player.z = SPAWN.z;
@@ -4574,6 +4642,7 @@ if (location.search.indexOf("debug") >= 0) {
     ANCHORS, ANCHOR_STONES, startPouchQuest, pouchQuest, spawnTownNpcs, tryPouch,
     refreshShoots, tryShoot, shootQuest, patches, onBattleEnd,
     courierToday, activeCourier, courierProgress, courierBoard, claimCourier, COURIER_JOBS,
+    DEX_ORDER, DEX_TIERS, dexCount, dexGot, unlockDexChar, claimDexTier, buildDex,
     spawnGroveNpcs, spawnHillNpcs, GROVE_NPCS, HILL_NPCS,
     fishing, stageGame, startFishing, reelFish, closeFishing,
     startStage, hitStage, endStage, closeStage,
