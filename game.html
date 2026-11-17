@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
   <title>奶家村 · 大冒险</title>
-  <link rel="stylesheet" href="css/game.css?v=18">
+  <link rel="stylesheet" href="css/game.css?v=19">
 </head>
 <body>
   <canvas id="gl"></canvas>
@@ -24,6 +24,8 @@
       <div class="tools">
         <a class="btn" href="index.html">← 回村</a>
         <button class="btn" id="btnMap" title="世界地图（M）">🗺 地图</button>
+        <button class="btn" id="btnView" title="切换 2D / 3D 视角（V）">🌐 3D</button>
+        <button class="btn" id="btnFollow" title="镜头跟随开关（R）">🎥 跟随</button>
         <button class="btn" id="btnDex">图鉴 <span id="dexCount">0</span>/8</button>
         <button class="btn" id="btnStyle" title="切换画面风格">🎨 风格</button>
         <button class="btn" id="btnSound">🔊</button>
@@ -179,16 +181,25 @@
       <div class="sheet-inner map-inner">
         <div class="shop-head">
           <div>
-            <div class="shop-kicker">大世界 · 传送</div>
-            <h2>已点亮的锚点</h2>
+            <div class="shop-kicker">奶家村大世界 · 全图</div>
+            <h2>这张地图有多大</h2>
           </div>
           <div class="shop-gold" id="mapGold">💰 0</div>
         </div>
+        <div id="mapCanvasWrap">
+          <canvas id="worldCanvas"></canvas>
+          <div class="map-zoom">
+            <button class="btn" id="mapZoomIn" title="放大">＋</button>
+            <button class="btn" id="mapZoomOut" title="缩小">－</button>
+            <button class="btn" id="mapZoomReset" title="复位">⤢</button>
+          </div>
+          <div class="map-legend" id="mapLegend"></div>
+        </div>
+        <p class="shop-tip">滚轮缩放 · 拖动平移 · 点亮过的锚点可点选传送。四个片区之间都有土路相连，走路也能到。</p>
+        <div class="shop-kicker" style="margin-top:16px">已点亮的锚点</div>
         <div id="mapList"></div>
         <p class="shop-tip" id="courierLine"></p>
         <p class="shop-tip" id="troupeLine"></p>
-        <p class="shop-tip">锚点要走到跟前按 E、花金币点亮；没点亮的地方只能靠腿走过去。
-          从村东口出村，土路一直通到奶家镇牌坊。</p>
         <div class="closebar"><button class="btn dark" id="btnMapClose">收起来</button></div>
       </div>
     </div>
@@ -270,8 +281,11 @@
         <p class="sub">像种田游戏一样过日子：白天干活，晚上睡觉，一天一天往下过。</p>
         <div style="font-size:13px;line-height:2;color:var(--ink-2)">
           <b style="color:var(--ink)">走路</b>：WASD / 方向键，按住 Shift 跑；手机上用左下方向键。<br>
-          <b style="color:var(--ink)">镜头</b>：按住鼠标（或手指）拖动转视角，滚轮拉近拉远，Z / C 左右转；
+          <b style="color:var(--ink)">镜头</b>：默认会自动跟在你身后转 —— 你往哪走，镜头慢慢绕到背后，不用手动转。
+          想自己控就按 <b>R</b> 关掉跟随，再按住鼠标（或手指）拖动转视角、滚轮拉近拉远、Z / C 左右转；
           W 是「镜头朝着的那边」。屋里镜头固定俯视，不用转。<br>
+          <b style="color:var(--ink)">2D / 3D</b>：按 <b>V</b>（或顶上 🌐 按钮）一键切换 —— 3D 是第三人称开放世界，
+          2D 是俯视平面视角，人站在原地不动、进度照旧，纯粹换个看法。<br>
           <b style="color:var(--ink)">格子</b>：地上那圈方框永远指着你面前那一格。橙色 = 这格能动手，绿色 = 只是地面。<br>
           <b style="color:var(--ink)">工具</b>：底部物品栏 1–5 切换，手机直接点那几格；<b>E</b>（手机右下的「互动」钮）对着那格用一次。<br>
           <b style="color:var(--ink)">种地</b>：西边围栏里是一片荒地，一格一格地用锄头翻开，撒种子，再浇水。
@@ -292,8 +306,9 @@
           灯一关就是第二天，体力全满；
           撑到凌晨 2:00 会累倒在路边，只能恢复一半体力。<br>
           <b style="color:var(--ink)">买卖</b>：村口的杂货铺里，小七在柜台后头，对着柜台按 E 买种子、卖收成。<br>
-          <b style="color:var(--ink)">大世界</b>：村西北门出去是竹林水塘，南门出去是高草坡，东门出去是奶家镇；
-          每张图都有传送锚点，走到跟前按 E 花金币点亮，之后按 M 就能在点亮的地方之间跳。<br>
+          <b style="color:var(--ink)">大世界</b>：村西北门出去是竹林水塘，南门出去是高草坡，东门出去是奶家镇 —— 各路口都立着牌坊，
+          顺着土路走就能到，不必传送。每张图还有传送锚点，走到跟前按 E 花金币点亮，之后按 M 一键跳过去。
+          按 M 打开的全图上能缩放（滚轮）、拖动平移，四个片区、土路和你站的位置一目了然，点已点亮的锚点也能直接传送。<br>
           <b style="color:var(--ink)">钓鱼</b>：竹林水塘东岸的沙地上有钓位，按 E 抛竿。鱼影游进绿区时按 E / 空格收竿，
           一天八竿，钓到的鱼当场折钱；凑够三条再送一个捕捉球。<br>
           <b style="color:var(--ink)">唱戏</b>：奶家镇戏台前按 E 上台，锣鼓响后拍子走到亮点时按 E / 空格，
@@ -343,6 +358,6 @@
   <script src="js/rain.js?v=1"></script>
   <script src="js/3d-models.js"></script>
   <script src="js/site-pet.js?v=fast-pet-2"></script>
-  <script type="module" src="js/game2d.js?v=79"></script>
+  <script type="module" src="js/game2d.js?v=80"></script>
 </body>
 </html>

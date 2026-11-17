@@ -84,6 +84,8 @@ const ZONES = {
    ========================================================= */
 const state = {
   started: false, muted: false, balls: 8,
+  // 视角：3d=户外第三人称透视 / 2d=同世界降维的正交俯视；camFollow=镜头自动跟人转向
+  viewMode: "3d", camFollow: true,
   captured: {}, metNpc: false, steps: 0,
   lv: 3, exp: 0, maxHp: 62, hp: 62, atk: 28,
   // 探索：见过谁、聊过谁、领了什么活
@@ -117,6 +119,7 @@ function save() {
       lv: state.lv, exp: state.exp, maxHp: state.maxHp, hp: state.hp, atk: state.atk,
       balls: state.balls, captured: state.captured, metNpc: state.metNpc,
       steps: state.steps, muted: state.muted,
+      viewMode: state.viewMode, camFollow: state.camFollow,
       met: state.met, dayFlags: state.dayFlags, gifts: state.gifts,
       bounty: state.bounty, bountyDay: state.bountyDay,
       beatQiyet: !!state.beatQiyet, seenRoom: state.seenRoom,
@@ -143,6 +146,7 @@ function load() {
       lv: d.lv ?? 3, exp: d.exp ?? 0, maxHp: d.maxHp ?? 62, hp: d.hp ?? 62,
       atk: d.atk ?? 28, balls: d.balls ?? 8, captured: d.captured || {},
       metNpc: !!d.metNpc, steps: d.steps || 0, muted: !!d.muted,
+      viewMode: d.viewMode === "2d" ? "2d" : "3d", camFollow: d.camFollow !== false,
       met: d.met || {}, dayFlags: d.dayFlags || {}, gifts: d.gifts || {},
       bounty: d.bounty || null, bountyDay: d.bountyDay || 0,
       beatQiyet: !!d.beatQiyet, seenRoom: d.seenRoom || {},
@@ -345,6 +349,8 @@ const TP = {
   fov: 55, dist: 6.2, minDist: 2.8, maxDist: 13,
   yaw: Math.PI, pitch: .34, lookY: 1.05
 };
+// 手动转镜头后暂停自动跟随几秒，免得刚转过去就被镜头拽回来
+let camFollowPause = 0;
 const camTP = new T.PerspectiveCamera(TP.fov, 16 / 9, .08, 600);
 camTP.position.set(0, 8, 14);
 
@@ -420,19 +426,99 @@ const groundMats = [];      // 所有地面材质（夜里要一起乘色）
 let groundMat = null;       // 村庄地面（雷达要拿它的贴图当缩略图）
 const rooms = new Map();    // 室内房间：name → { group, mat }
 
+/* =========================================================
+   地形起伏：让户外地面不再是「一张纸」
+   用一个连续的低频高度函数抬高地面顶点，并按高度给顶点染色（高处亮、
+   低处暗）造出丘陵明暗；水面和村中心广场压平，避免穿帮。
+   角色 / NPC / 光标实时贴到同一高度函数上。室内一律平坦。
+   ========================================================= */
+const MAP_SEED = { village: 11, town: 29, grove: 47, hill: 63 };
+let activeTerrain = null;   // 当前显示地图的高度函数（室内为 null）
+let buildHeight = null;     // 正在搭建的地图的高度函数（静态物件贴地用）
+function terrainY(x, z) {
+  return activeTerrain ? activeTerrain(x, z) : 0;
+}
+function groundAtBuild(x, z) {
+  return buildHeight ? buildHeight(x, z) : 0;
+}
+function makeHeightFn(map, seed) {
+  const s = seed || 0;
+  // 野外（草坡/竹林）起伏大，才不像一张纸；村镇房子多，压小免得穿模
+  const wild = map.name === "南高草坡" || map.name === "竹林水塘";
+  const amp = wild ? 1.85 : (map.name === "奶家镇" ? .5 : .72);
+  return function (x, z) {
+    const tx = x - map.ox, tz = z - map.oz;
+    // 三种低频叠加：大缓坡 + 中丘 + 细波纹，波长都在 4~18 格
+    let h = Math.sin(tx * .085 + s) * Math.cos(tz * .105 + s * 1.3) * .62
+      + Math.sin(tx * .19 - tz * .16 + s * 2) * .30
+      + Math.sin((tx + tz) * .048 + s * .7) * .46
+      + Math.sin(tx * .33 + tz * .27 + s) * .10;
+    // 压平水面：水塘必须是平的，不然岸线穿帮
+    const t = tileAt(map, Math.floor(tx), Math.floor(tz));
+    if (t === TI.WATER) return 0;
+    // 村中心广场（锚点一带）压成平台，房子/摊位落脚也稳
+    const cx = map.w / 2, cz = map.h / 2;
+    const dc = Math.hypot((tx - cx) * 1, (tz - cz) * 1.2);
+    if (map.name === "奶家村" && dc < 10) h *= clamp((dc - 6) / 4, 0, 1);
+    // 野外也把"路"压平一点，走路不至于像坐过山车
+    if (wild && t === TI.PATH) h *= .35;
+    return h * amp;
+  };
+}
+
 function buildGroundFor(map, group) {
   const tex = mapTexture(map, renderer);
   const mat = new T.MeshBasicMaterial({ map: tex });
   const w = map.w * TILE, h = map.h * TILE;
-  const mesh = new T.Mesh(new T.PlaneGeometry(w, h), mat);
+  const indoor = !!map.indoor;
+  // 户外地面细分，逐顶点抬高；室内保持一整块平面
+  const segX = indoor ? 1 : map.w, segZ = indoor ? 1 : map.h;
+  const geo = new T.PlaneGeometry(w, h, segX, segZ);
+  if (!indoor) {
+    const key = Object.keys(MAP_SEED).find(k => MAPS[k] === map);
+    const heightFn = makeHeightFn(map, MAP_SEED[key] || 7);
+    map.__height = heightFn;
+    buildHeight = heightFn;   // 后续同批物件按这张图的高度贴地
+    const pos = geo.attributes.position;
+    const colors = new Float32Array(pos.count * 3);
+    for (let i = 0; i < pos.count; i++) {
+      const lx = pos.getX(i), ly = pos.getY(i);
+      // PlaneGeometry 绕 X 轴 -90°：局部 X→世界 X，局部 Y→世界 -Z
+      const wx = map.ox + w / 2 + lx;
+      const wz = map.oz + h / 2 - ly;
+      const hh = heightFn(wx, wz);
+      pos.setZ(i, hh);                       // 局部 +Z = 世界 +Y
+      const sh = clamp(1 + hh * .17, .70, 1.28);   // 高处亮、低处暗（加强丘陵明暗）
+      colors[i * 3] = colors[i * 3 + 1] = colors[i * 3 + 2] = sh;
+    }
+    pos.needsUpdate = true;
+    geo.setAttribute("color", new T.BufferAttribute(colors, 3));
+    geo.computeVertexNormals();
+    mat.vertexColors = true;
+  }
+  const mesh = new T.Mesh(geo, mat);
   mesh.rotation.x = -Math.PI / 2;
   mesh.position.set(map.ox + w / 2, 0, map.oz + h / 2);
+  mesh.receiveShadow = !indoor;
   group.add(mesh);
 
-  const sh = new T.Mesh(new T.PlaneGeometry(w, h),
-    new T.ShadowMaterial({ opacity: map.indoor ? .1 : .17, depthWrite: false }));
+  // 阴影承接面也要跟着地形起伏，否则会埋进隆起的地面里
+  const shGeo = new T.PlaneGeometry(w, h, segX, segZ);
+  if (!indoor) {
+    const heightFn = map.__height;
+    const p2 = shGeo.attributes.position;
+    for (let i = 0; i < p2.count; i++) {
+      const wx = map.ox + w / 2 + p2.getX(i);
+      const wz = map.oz + h / 2 - p2.getY(i);
+      p2.setZ(i, heightFn(wx, wz) + .018);
+    }
+    p2.needsUpdate = true;
+    shGeo.computeVertexNormals();
+  }
+  const sh = new T.Mesh(shGeo,
+    new T.ShadowMaterial({ opacity: indoor ? .1 : .2, depthWrite: false }));
   sh.rotation.x = -Math.PI / 2;
-  sh.position.set(mesh.position.x, .012, mesh.position.z);
+  sh.position.set(mesh.position.x, 0, mesh.position.z);
   sh.receiveShadow = true;
   group.add(sh);
 
@@ -488,14 +574,33 @@ function buildFar() {
   const r = mulberry(20261117);
 
   // ---- 树墙：贴着地图外沿围一圈，把「地图边」这条直线挡住 ----
-  const treeMat = new T.MeshStandardMaterial({ color: 0x466a43, roughness: 1, flatShading: true });
-  for (let i = 0; i < 240; i++) {
-    const a = r() * 6.283, rad = 46 + r() * 24;
-    const h = 3.2 + r() * 3.6;
-    const cone = new T.Mesh(new T.ConeGeometry(1.1 + r() * .9, h, 6), treeMat);
-    cone.position.set(Math.cos(a) * rad, h / 2 - .2, Math.sin(a) * rad);
-    cone.rotation.y = r() * 3;
-    farGroup.add(cone);
+  // 不再是清一色单圆锥：3~4 层错落的锥形叠成针叶树，深浅两色交错，远看有林海的层次
+  const coniferDark = new T.MeshStandardMaterial({ color: 0x35563b, roughness: 1, flatShading: true });
+  const coniferLite = new T.MeshStandardMaterial({ color: 0x4f7a4c, roughness: 1, flatShading: true });
+  const trunkFar = new T.MeshStandardMaterial({ color: 0x4a3a29, roughness: 1 });
+  const coneGeo = new T.ConeGeometry(1, 1, 6);
+  for (let i = 0; i < 220; i++) {
+    const a = r() * 6.283, rad = 46 + r() * 26;
+    const h = 3.6 + r() * 4.2;
+    const g = new T.Group();
+    const base = Math.cos(a) * rad, baseZ = Math.sin(a) * rad;
+    const trunkH = h * .22;
+    const tr = new T.Mesh(new T.CylinderGeometry(.14, .2, trunkH, 5), trunkFar);
+    tr.position.y = trunkH / 2; g.add(tr);
+    const tiers = 3 + Math.floor(r() * 2);
+    for (let t = 0; t < tiers; t++) {
+      const tw = (1 - t / (tiers + .6)) * (1.15 + r() * .35);
+      const th = h * (.34 - t * .035);
+      const cone = new T.Mesh(coneGeo, (i + t) % 2 ? coniferDark : coniferLite);
+      cone.scale.set(tw, th, tw);
+      cone.position.y = trunkH + th * (.35 + t * .62);
+      cone.rotation.y = r() * 3;
+      cone.castShadow = false;
+      g.add(cone);
+    }
+    g.position.set(base, -.2, baseZ);
+    g.rotation.y = r() * 3;
+    farGroup.add(g);
   }
 
   // ---- 远山：低多边形锥体，靠雾化淡出去，天际线才不是一条平线 ----
@@ -611,7 +716,7 @@ function addTree(x, z, scale = 1, parent = treeGroup) {
     m.castShadow = true;
     g.add(m);
   });
-  g.position.set(x, 0, z);
+  g.position.set(x, groundAtBuild(x, z), z);
   g.scale.setScalar(scale * (.72 + r() * .26));
   g.rotation.y = r() * 6.283;
   parent.add(g);
@@ -624,7 +729,7 @@ function addRock(x, z, parent = world) {
   const r = mulberry(Math.round(x * 13 + z * 7) + 3);
   const m = new T.Mesh(new T.DodecahedronGeometry(.42 + r() * .22, 0),
     new T.MeshStandardMaterial({ color: 0xa9a89c, roughness: 1, flatShading: true }));
-  m.position.set(x, .28, z);
+  m.position.set(x, groundAtBuild(x, z) + .28, z);
   m.rotation.set(r() * 3, r() * 3, r() * 3);
   m.castShadow = true; m.receiveShadow = true;
   parent.add(m);
@@ -1025,6 +1130,63 @@ const wildStemMat = new T.MeshStandardMaterial({ color: 0x5f9a55, roughness: 1 }
 const wildCols = [0xffd7e6, 0xfff1b8, 0xe4d4ff, 0xffc7a8, 0xffffff, 0xbfe4ff].map(
   c => new T.MeshStandardMaterial({ color: c, roughness: .85, emissive: new T.Color(c).multiplyScalar(.08) })
 );
+/* ---- 立体草丛：几片交叉草叶做一簇，用 InstancedMesh 批量撒满野外地面 ----
+   画面里地面不再是一张平贴图，近处能看到一根根草，配合地形起伏有层次。 */
+let grassTuftGeo = null;
+function makeGrassTuftGeo() {
+  if (grassTuftGeo) return grassTuftGeo;
+  const g = new T.BufferGeometry();
+  const pos = [], nor = [];
+  const blade = (cx, cz, ang, h, w) => {
+    const dx = Math.cos(ang) * w / 2, dz = Math.sin(ang) * w / 2;
+    // 一片三角草叶：底两点 + 尖（略向侧面倾）
+    const bx = cx + Math.cos(ang + Math.PI / 2) * h * .18;
+    const bz = cz + Math.sin(ang + Math.PI / 2) * h * .18;
+    pos.push(cx - dx, 0, cz - dz, cx + dx, 0, cz + dz, bx, h, bz);
+    for (let k = 0; k < 3; k++) nor.push(0, 1, 0);
+  };
+  blade(0, 0, .0, .5, .16);
+  blade(0, 0, 1.05, .42, .15);
+  blade(0, 0, 2.1, .46, .14);
+  blade(.08, -.05, 2.8, .34, .12);
+  g.setAttribute("position", new T.Float32BufferAttribute(pos, 3));
+  g.setAttribute("normal", new T.Float32BufferAttribute(nor, 3));
+  grassTuftGeo = g;
+  return g;
+}
+function buildGrassTufts(map, group, count, seed) {
+  const hfn = map.__height;
+  if (!hfn) return;
+  const r = mulberry(seed || 991);
+  const mat = new T.MeshStandardMaterial({
+    color: map.name === "南高草坡" ? 0x9dbd5f : 0x7fae5c, roughness: 1, side: T.DoubleSide
+  });
+  const inst = new T.InstancedMesh(makeGrassTuftGeo(), mat, count);
+  const dummy = new T.Object3D();
+  let placed = 0;
+  for (let tries = 0; tries < count * 12 && placed < count; tries++) {
+    const tx = Math.floor(r() * map.w), tz = Math.floor(r() * map.h);
+    const k = tileAt(map, tx, tz);
+    if (k !== TI.GRASS && k !== TI.FLOWER && k !== TI.WEED && k !== TI.WEED_EDGE) continue;
+    if (solidAt(map, tx, tz)) continue;
+    // 路上不长草，保持土路清爽
+    if (k === TI.PATH) continue;
+    const x = map.ox + tx + .5, z = map.oz + tz + .5;
+    dummy.position.set(x, hfn(x, z), z);
+    dummy.rotation.y = r() * 6.283;
+    const sc = .7 + r() * .8;
+    dummy.scale.set(sc, sc * (.8 + r() * .6), sc);
+    dummy.updateMatrix();
+    inst.setMatrixAt(placed, dummy.matrix);
+    placed++;
+  }
+  inst.count = placed;
+  inst.instanceMatrix.needsUpdate = true;
+  inst.castShadow = false;
+  inst.receiveShadow = true;
+  group.add(inst);
+}
+
 function addWildFlowers(x, z, r, parent = world) {
   const g = new T.Group();
   for (let i = 0; i < 5; i++) {
@@ -1037,7 +1199,7 @@ function addWildFlowers(x, z, r, parent = world) {
     f.scale.setScalar(.8 + r() * .7);
     g.add(f);
   }
-  g.position.set(x, 0, z);
+  g.position.set(x, groundAtBuild(x, z), z);
   parent.add(g);
 }
 
@@ -1367,6 +1529,11 @@ function buildProps() {
   addSign(17.6, -11.2, "奶察局");
   addSign(-23.2, -11.2, "村史馆");
 
+  // ---- 三座出村门楼：东去奶家镇、西北去竹林水塘、南去高草坡 ----
+  addGateArch(VILLAGE, 85, 35, "", world, false);
+  addGateArch(VILLAGE, 2, 14, "", world, false);
+  addGateArch(VILLAGE, 44, 65, "", world, true);
+
   // ---- 棋爷的小公园（广场东边，石板院子 + 一张石桌）----
   addStoneTable(14.5, 7.5);
   addBench(11.3, 10.4, Math.PI * .26);
@@ -1484,6 +1651,32 @@ function addAnchorStone(map, tx, tz, parent, key) {
   const stone = { key, group: g, crystal: cry, mat, glow: 0 };
   ANCHOR_STONES.push(stone);
   return stone;
+}
+
+/* 通用"区域门楼"：立在两片地图的交界门口，让"这里能走过去"一眼可见。
+   alongX=true 表示门洞沿 X 展开（人从南北穿过），false 则沿 Z。 */
+function addGateArch(map, tx, tz, text, parent, alongX = true) {
+  const g = new T.Group();
+  g.position.set(map.ox + tx + .5, groundAtBuild(map.ox + tx + .5, map.oz + tz + .5), map.oz + tz + .5);
+  if (!alongX) g.rotation.y = Math.PI / 2;
+  parent.add(g);
+  const red = new T.MeshStandardMaterial({ color: 0xa8483c, roughness: .86 });
+  const beamMat = new T.MeshStandardMaterial({ color: 0x7a4a30, roughness: .9 });
+  [-1.55, 1.55].forEach(s => {
+    const col = new T.Mesh(new T.CylinderGeometry(.16, .2, 3.2, 8), red);
+    col.position.set(s, 1.6, 0); col.castShadow = true; g.add(col);
+    const foot = new T.Mesh(new T.BoxGeometry(.62, .24, .62), stoneMat);
+    foot.position.set(s, .12, 0); g.add(foot);
+  });
+  const beam = new T.Mesh(new T.BoxGeometry(3.9, .34, .42), beamMat);
+  beam.position.y = 3.28; beam.castShadow = true; g.add(beam);
+  const roof = new T.Mesh(new T.BoxGeometry(4.4, .16, .7), new T.MeshStandardMaterial({ color: 0x4c6058, roughness: .9 }));
+  roof.position.y = 3.54; g.add(roof);
+  // 匾（用 addSign 的木牌样式太重，这里放个亮色小匾，不写字的方向也看得清）
+  const plaque = new T.Mesh(new T.BoxGeometry(1.5, .48, .08),
+    new T.MeshStandardMaterial({ color: 0xe8d6a8, roughness: .85 }));
+  plaque.position.set(0, 2.85, .22); g.add(plaque);
+  return g;
 }
 
 function buildTown() {
@@ -1652,7 +1845,7 @@ function addBambooClump(x, z, parent, scale = 1) {
       g.add(leaf);
     }
   }
-  g.position.set(x, 0, z);
+  g.position.set(x, groundAtBuild(x, z), z);
   g.scale.setScalar(scale);
   parent.add(g);
   markWorld(x, z, .45, 1);
@@ -1722,6 +1915,7 @@ function buildGrove() {
   treeSpots.push(...savedSpots);
   MAP = restore;
 
+  addGateArch(GROVE, 61, 33, "", g, false);   // 东口回村门楼
   addAnchorStone(GROVE, 40, 30, g, "grove");
   buildShoots();
 
@@ -1731,6 +1925,7 @@ function buildGrove() {
     { x: 14.5, z: 16.5, r: 5.0, zone: "bamboo", map: "grove" },
     { x: -19.5, z: 20.5, r: 4.0, zone: "bamboo", map: "grove" }
   ].forEach(p => patches.push(p));
+  buildGrassTufts(GROVE, g, 900, 3011);
 }
 
 function buildHill() {
@@ -1770,6 +1965,7 @@ function buildHill() {
   treeSpots.push(...savedSpots);
   MAP = restore;
 
+  addGateArch(HILL, 32, 2, "", g, true);      // 北口回村门楼
   addAnchorStone(HILL, 32, 12, g, "hill");
 
   // ---- 深草区（走进去会遇怪）----
@@ -1778,6 +1974,7 @@ function buildHill() {
     { x: -17.5, z: -5.5, r: 5.5, zone: "hill", map: "hill" },
     { x: 16.5, z: -9.5, r: 4.5, zone: "hill", map: "hill" }
   ].forEach(p => patches.push(p));
+  buildGrassTufts(HILL, g, 1100, 4022);
 }
 
 /* ---- 竹笋：竹林水塘的每日采集。每天换一批位置，站边上按 E 掰 ---- */
@@ -2092,7 +2289,9 @@ function resize() {
     vw = vh * aspect;
     if (vw > 24) { vw = 24; vh = vw / aspect; }
   } else {
-    vh = VIEW.h; vw = vh * aspect;
+    // 2D 俯视户外：视野放宽些，方便看清整片区域；3D 第三人称保持原视野
+    const baseH = state.viewMode === "2d" ? 22 : VIEW.h;
+    vh = baseH; vw = vh * aspect;
     // 竖屏别窄成一条：至少给 8 格宽
     if (vw < 8) { vw = 8; vh = vw / aspect; }
   }
@@ -2116,19 +2315,23 @@ function shake(power = .5, dur = .35) {
 // 这是斜俯角游戏防晕的关键——画面平移有了缓冲，不再随每一步硬跳。
 const camSmooth = { x: null, z: null };
 
-// 当前该用哪台相机：屋里走正交俯视，户外走第三人称透视
+// 当前该用哪台相机：
+//   屋里 → 正交俯视（原样）
+//   户外 3D → 第三人称透视 camTP
+//   户外 2D → 正交俯视 camera（同世界降维：地图一模一样，只是把镜头压成俯视看）
+function topDown() { return (MAP && MAP.indoor) || state.viewMode === "2d"; }
 function currentCam() {
-  return MAP && MAP.indoor ? camera : camTP;
+  return topDown() ? camera : camTP;
 }
 
 function updateCamera(snap) {
-  const indoor = !!(MAP && MAP.indoor);
+  const td = topDown();
   // 雾跟着相机走：正交俯视的镜头离人 60，第三条的镜头只离 8.6
   if (scene.fog) {
-    scene.fog.near = indoor ? 72 : 34;
-    scene.fog.far = indoor ? 105 : 145;
+    scene.fog.near = td ? 72 : 34;
+    scene.fog.far = td ? 105 : 145;
   }
-  if (indoor) updateCamOrtho(snap);
+  if (td) updateCamOrtho(snap);
   else updateCamThird(snap);
   sun.position.set(player.x + 12, 20, player.z + 8);
   sun.target.position.set(player.x, 0, player.z);
@@ -2211,6 +2414,9 @@ function updateCamThird(snap) {
    输入
    ========================================================= */
 const keys = {};
+// 跟随模式下的"移动基准角"：每次方向键组合变化时锁定一次镜头角，锁定后镜头
+// 可以绕到角色背后而不改变行走方向 —— 这样自动跟随不会 inducing 无限打转。
+let moveBasisYaw = Math.PI, moveSig = -1;
 function isSolid(cx, cz) { return solidAt(MAP, cx, cz); }
 
 // 一格一格地挡：玩家是个半径 .34 格的小圆，一格宽的门刚好能过
@@ -2256,6 +2462,8 @@ window.addEventListener("keydown", e => {
     else openWorldMap();
     e.preventDefault();
   }
+  if (k === "v" || k === "V") { setViewMode(state.viewMode === "3d" ? "2d" : "3d"); e.preventDefault(); }
+  if (k === "r" || k === "R") { toggleFollow(); e.preventDefault(); }
   if (k === "Escape") closeOverlays();
 });
 window.addEventListener("keyup", e => {
@@ -2312,15 +2520,16 @@ dom.addEventListener("pointermove", e => {
   if (!camDrag || e.pointerId !== camDrag.id) return;
   const dx = e.clientX - camDrag.x, dy = e.clientY - camDrag.y;
   camDrag.x = e.clientX; camDrag.y = e.clientY;
-  if (MAP.indoor) return;      // 屋里是固定俯视，拖了也没意义
+  if (topDown()) return;       // 俯视（屋里 / 2D）是固定视角，拖了也没意义
   TP.yaw -= dx * .0048;
   TP.pitch = clamp(TP.pitch - dy * .0035, .10, 1.15);
+  moveSig = -1; camFollowPause = 2.2;   // 手动拖镜头后暂停自动跟随
 });
 const camDragEnd = e => { if (camDrag && e.pointerId === camDrag.id) camDrag = null; };
 dom.addEventListener("pointerup", camDragEnd);
 dom.addEventListener("pointercancel", camDragEnd);
 dom.addEventListener("wheel", e => {
-  if (!state.started || MAP.indoor) return;
+  if (!state.started || topDown()) return;
   TP.dist = clamp(TP.dist + e.deltaY * .012, TP.minDist, TP.maxDist);
   e.preventDefault();
 }, { passive: false });
@@ -2339,6 +2548,7 @@ function update(dt) {
     camShakeT -= dt;
     if (camShakeT <= 0) { camShakeT = 0; camShake = 0; }
   }
+  if (camFollowPause > 0) camFollowPause = Math.max(0, camFollowPause - dt);
   // 时间只在能自由走动的时候流；翻菜单、对话、打架都暂停
   Farm.update(dt, locked);
   if (locked) {
@@ -2348,8 +2558,12 @@ function update(dt) {
   }
 
   let ix = 0, iz = 0;
-  if (keys.camL) TP.yaw += dt * 1.9;     // Z / C 转镜头，鼠标也能转
-  if (keys.camR) TP.yaw -= dt * 1.9;
+  if (keys.camL) {
+    TP.yaw += dt * 1.9; moveSig = -1; camFollowPause = 2.2;  // 手动转镜头：暂停自动跟随
+  }
+  if (keys.camR) {
+    TP.yaw -= dt * 1.9; moveSig = -1; camFollowPause = 2.2;
+  }
   if (keys.left) ix -= 1;
   if (keys.right) ix += 1;
   if (keys.up) iz -= 1;
@@ -2357,13 +2571,32 @@ function update(dt) {
 
   if (ix || iz) {
     // 镜头相对移动：W 是「镜头正对着的方向」，A/D 是屏幕左右。
-    // 屋里镜头固定朝北，所以这条式子退化成原来的世界方向，手感不变。
+    // 屋里镜头固定朝北，退化成原来的世界方向，手感不变。
     const f = -iz, r = ix;
     const len = Math.hypot(f, r);
-    const yaw = MAP.indoor ? Math.PI : TP.yaw;
+    let yaw;
+    if (MAP.indoor || topDown()) {
+      yaw = Math.PI;                       // 俯视（屋内 / 2D 模式）：世界方向，屏幕上=北
+    } else if (!state.camFollow) {
+      yaw = TP.yaw;                        // 手动镜头：每帧按当前镜头角走（原逻辑）
+    } else {
+      // 跟随镜头：只在方向键"组合变化"的那一刻锁定一次镜头角。
+      // 之后镜头绕到角色背后也不会带着移动方向一起转，不会原地打转。
+      const sig = (keys.up ? 1 : 0) | (keys.down ? 2 : 0) |
+        (keys.left ? 4 : 0) | (keys.right ? 8 : 0);
+      if (sig !== moveSig) { moveSig = sig; moveBasisYaw = TP.yaw; }
+      yaw = moveBasisYaw;
+    }
     const dx = (Math.sin(yaw) * f - Math.cos(yaw) * r) / len;
     const dz = (Math.cos(yaw) * f + Math.sin(yaw) * r) / len;
     player.heading = Math.atan2(dx, dz);
+
+    // 镜头自动转到角色背后：3D 户外、跟随开、且没在手动转镜头时。
+    // 缓慢插值，玩家几乎感觉不到「被拽」，只觉得镜头自己跟上了。
+    if (state.camFollow && !topDown() && camFollowPause <= 0) {
+      let diff = ((player.heading - TP.yaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+      TP.yaw += diff * Math.min(1, dt * 2.4);
+    }
 
     const sp = (player.run ? 7.6 : 4.6) * dt;
     let moved = 0;
@@ -2392,10 +2625,11 @@ function update(dt) {
     if (grace > 0) grace -= moved;
   } else {
     player.moving = false;
+    moveSig = -1;   // 松开方向键后，下次起步重新锁定跟随基准
   }
   if (battleGrace > 0) battleGrace -= dt;
 
-  playerObj.position.set(player.x, sleepPose.on ? playerObj.position.y : 0, player.z);
+  playerObj.position.set(player.x, sleepPose.on ? playerObj.position.y : terrainY(player.x, player.z), player.z);
   // 躺下时不做朝向平滑：rot.y 一动，-90° 的躺倒旋转就会被拧歪，头转不到枕头上
   if (!sleepPose.on) {
     const cur = playerObj.rotation.y;
@@ -2416,12 +2650,13 @@ function update(dt) {
     if (anim) {
       // 有骨骼：腿摆臂摆，脚步颠簸只留一点点衬托
       anim.update(player.moving ? "walk" : "idle", { t, phase: player.phase });
-      playerObj.position.y = player.moving ? Math.abs(Math.sin(player.phase)) * .04 : Math.sin(t * 1.6) * .008;
+      const bob = player.moving ? Math.abs(Math.sin(player.phase)) * .04 : Math.sin(t * 1.6) * .008;
+      playerObj.position.y = terrainY(player.x, player.z) + bob;
       playerObj.rotation.z = player.moving ? Math.sin(player.phase) * .018 : 0;
     } else {
       // 没骨骼：整体上下颠
       const bob = player.moving ? Math.abs(Math.sin(player.phase)) * .075 : Math.sin(t * 1.6) * .014;
-      playerObj.position.y = bob;
+      playerObj.position.y = terrainY(player.x, player.z) + bob;
       playerObj.rotation.z = player.moving ? Math.sin(player.phase) * .04 : 0;
     }
   }
@@ -3318,7 +3553,8 @@ function npcUpdate(dt) {
     }
     const anim = n.obj.children[0] && n.obj.children[0].userData.anim;
     if (anim) anim.update(n.walking ? "walk" : "idle", { t: now + n.bob, phase: now * 9 + n.bob });
-    n.obj.position.set(n.x, n.walking ? Math.abs(Math.sin(now * 9 + n.bob)) * (anim ? .035 : .05) : 0, n.z);
+    const nBob = n.walking ? Math.abs(Math.sin(now * 9 + n.bob)) * (anim ? .035 : .05) : 0;
+    n.obj.position.set(n.x, terrainY(n.x, n.z) + nBob, n.z);
   }
 }
 
@@ -3812,6 +4048,9 @@ function animateAnchors(dt) {
 
 function setOutdoorVisible(key) {
   for (const k in OUTDOOR) if (OUTDOOR[k]) OUTDOOR[k].visible = (k === key);
+  // 地形跟着当前户外图切；进屋时清空（屋里全平）
+  const m = key && MAPS[key];
+  activeTerrain = (m && m.__height) ? m.__height : null;
   // 远景只在户外露出来：屋里的正交镜头会被天穹挡满
   if (farGroup) farGroup.visible = !!key;
   if (skyDome) skyDome.visible = !!key && !isGuofeng();
@@ -3821,7 +4060,7 @@ function placePlayer(x, z, heading) {
   player.x = x; player.z = z;
   if (heading != null) player.heading = heading;
   player.moving = false;
-  playerObj.position.set(x, 0, z);
+  playerObj.position.set(x, terrainY(x, z), z);
   playerObj.rotation.y = player.heading;
   cursor.visible = false;
   resize();
@@ -3932,6 +4171,243 @@ function useAnchor(id) {
   ]);
 }
 
+/* =========================================================
+   宏观世界地图：一张能缩放 / 平移的全图
+   四张户外地图原本各自独立（坐标都差不多是 -44..44），这里给它们一个
+   "大世界里的相对位置"：村在中间，镇在东，竹林在西北，草坡在南，
+   中间用土路连起来，玩家位置按它在自己地图里的比例落到对应区块上。
+   ========================================================= */
+const MACRO = {
+  village: { key: "village", name: "奶家村", center: [0, 0], map: VILLAGE, color: "#7fa663" },
+  town:    { key: "town",    name: "奶家镇", center: [128, 4], map: TOWN, color: "#c79a6b" },
+  grove:   { key: "grove",   name: "竹林水塘", center: [-126, -78], map: GROVE, color: "#5f9e6a" },
+  hill:    { key: "hill",    name: "南高草坡", center: [10, 128], map: HILL, color: "#a9bd6a" }
+};
+// 区块之间的土路（宏观坐标，逐点连线）
+const MACRO_ROADS = [
+  [[44, 6], [72, 2], [96, 4], [112, 4]],                    // 村东 → 镇
+  [[-44, -10], [-70, -28], [-96, -54], [-104, -70]],        // 村西北 → 竹林
+  [[4, 34], [6, 62], [8, 92], [10, 100]]                    // 村南 → 草坡
+];
+const worldCanvas = $("#worldCanvas");
+const wctx = worldCanvas ? worldCanvas.getContext("2d") : null;
+const mapView = { scale: 1, ox: 0, oy: 0, ready: false, drag: null };
+const MACRO_BASE = 1.15;   // 初始缩放到能看全图
+
+function macroRect(r) {
+  const hw = r.map.w / 2, hh = r.map.h / 2;
+  return { x: r.center[0] - hw, y: r.center[1] - hh, w: r.map.w, h: r.map.h };
+}
+function macroFit() {
+  if (!worldCanvas) return;
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const cw = worldCanvas.clientWidth, ch = worldCanvas.clientHeight;
+  worldCanvas.width = Math.round(cw * dpr);
+  worldCanvas.height = Math.round(ch * dpr);
+  wctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  // 让所有区块 + 留白刚好落进画布
+  let minX = 1e9, maxX = -1e9, minY = 1e9, maxY = -1e9;
+  for (const k in MACRO) {
+    const q = macroRect(MACRO[k]);
+    minX = Math.min(minX, q.x); maxX = Math.max(maxX, q.x + q.w);
+    minY = Math.min(minY, q.y); maxY = Math.max(maxY, q.y + q.h);
+  }
+  const pad = 26;
+  const sx = (cw - pad * 2) / (maxX - minX), sy = (ch - pad * 2) / (maxY - minY);
+  mapView.fitScale = Math.min(sx, sy);
+  mapView.fitOx = cw / 2 - (minX + maxX) / 2 * mapView.fitScale;
+  mapView.fitOy = ch / 2 - (minY + maxY) / 2 * mapView.fitScale;
+  if (!mapView.ready) {
+    mapView.scale = mapView.fitScale * MACRO_BASE;
+    mapView.ox = cw / 2 - (minX + maxX) / 2 * mapView.scale;
+    mapView.oy = ch / 2 - (minY + maxY) / 2 * mapView.scale;
+    mapView.ready = true;
+  }
+  drawWorldMap();
+}
+// 宏观坐标 → 画布像素
+function m2s(x, y) {
+  const cw = worldCanvas.clientWidth, ch = worldCanvas.clientHeight;
+  return [x * mapView.scale + mapView.ox, y * mapView.scale + mapView.oy];
+}
+// 画布像素 → 宏观坐标
+function s2m(sx, sy) {
+  return [(sx - mapView.ox) / mapView.scale, (sy - mapView.oy) / mapView.scale];
+}
+function drawWorldMap() {
+  if (!wctx || !worldCanvas || !$("#worldmap").classList.contains("show")) return;
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const cw = worldCanvas.clientWidth, ch = worldCanvas.clientHeight;
+  wctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  wctx.clearRect(0, 0, cw, ch);
+  // 底：宣纸色 + 淡淡的网格
+  wctx.fillStyle = "#eef3e8"; wctx.fillRect(0, 0, cw, ch);
+  wctx.strokeStyle = "rgba(90,120,90,.10)"; wctx.lineWidth = 1;
+  const grid = 40 * mapView.scale;
+  if (grid > 10) {
+    for (let x = (mapView.ox % grid + grid) % grid; x < cw; x += grid) {
+      wctx.beginPath(); wctx.moveTo(x, 0); wctx.lineTo(x, ch); wctx.stroke();
+    }
+    for (let y = (mapView.oy % grid + grid) % grid; y < ch; y += grid) {
+      wctx.beginPath(); wctx.moveTo(0, y); wctx.lineTo(cw, y); wctx.stroke();
+    }
+  }
+
+  // 土路：先画，压在区块下面
+  wctx.strokeStyle = "#c9ad7e"; wctx.lineWidth = Math.max(3, 6 * mapView.scale);
+  wctx.setLineDash([10, 8]); wctx.lineCap = "round"; wctx.lineJoin = "round";
+  MACRO_ROADS.forEach(pts => {
+    wctx.beginPath();
+    pts.forEach((p, i) => { const s = m2s(p[0], p[1]); i ? wctx.lineTo(s[0], s[1]) : wctx.moveTo(s[0], s[1]); });
+    wctx.stroke();
+  });
+  wctx.setLineDash([]);
+
+  // 四块区域
+  for (const k in MACRO) {
+    const r = MACRO[k], q = macroRect(r);
+    const tl = m2s(q.x, q.y), br = m2s(q.x + q.w, q.y + q.h);
+    const x = tl[0], y = tl[1], w = br[0] - tl[0], h = br[1] - tl[1];
+    const here = roomState.name === k;
+    // 底纹
+    const mat = outdoorMats.get(k);
+    const cv = mat && mat.map && mat.map.userData && mat.map.userData.canvas;
+    wctx.save();
+    roundRectPath(wctx, x, y, w, h, 12); wctx.clip();
+    if (cv) wctx.drawImage(cv, x, y, w, h);
+    else { wctx.fillStyle = r.color; wctx.fillRect(x, y, w, h); }
+    // 夜色
+    if (document.body.classList.contains("night")) {
+      wctx.fillStyle = "rgba(20,32,58,.32)"; wctx.fillRect(x, y, w, h);
+    }
+    wctx.restore();
+    // 边框：所在区域加粗高亮
+    roundRectPath(wctx, x, y, w, h, 12);
+    wctx.lineWidth = here ? 4 : 2;
+    wctx.strokeStyle = here ? "#1f8a6b" : "rgba(70,80,60,.45)";
+    wctx.stroke();
+    if (here) {
+      wctx.shadowColor = "rgba(31,138,107,.5)"; wctx.shadowBlur = 14; wctx.stroke(); wctx.shadowBlur = 0;
+    }
+    // 区域名（画布够大才画）
+    if (w > 56) {
+      const fs = Math.max(11, Math.min(19, 15 * mapView.scale / mapView.fitScale));
+      wctx.font = "700 " + fs + "px system-ui, sans-serif";
+      wctx.textAlign = "center"; wctx.textBaseline = "middle";
+      wctx.lineWidth = 3; wctx.strokeStyle = "rgba(255,255,255,.9)";
+      const labelY = y + Math.min(18, h * .14);
+      wctx.strokeText(r.name, x + w / 2, labelY);
+      wctx.fillStyle = "#243a2c"; wctx.fillText(r.name, x + w / 2, labelY);
+    }
+    // 锚点
+    if (state.anchors[k]) {
+      const a = ANCHORS[k], p = toWorld(r.map, a.tx, a.tz);
+      const rx = q.x + (p.x - r.map.ox), ry = q.y + (p.z - r.map.oz);
+      const s = m2s(rx, ry);
+      wctx.beginPath(); wctx.arc(s[0], s[1], 7, 0, 7);
+      wctx.fillStyle = "#37c9b4"; wctx.fill();
+      wctx.lineWidth = 2; wctx.strokeStyle = "#fff"; wctx.stroke();
+      wctx.fillStyle = "#0b5a46"; wctx.font = "700 10px system-ui"; wctx.textAlign = "center";
+      wctx.fillText("✦", s[0], s[1] + 3);
+    }
+    // 玩家位置
+    if (roomState.name === k) {
+      const rx = q.x + (player.x - r.map.ox), ry = q.y + (player.z - r.map.oz);
+      const s = m2s(rx, ry);
+      wctx.beginPath(); wctx.arc(s[0], s[1], 9, 0, 7);
+      wctx.fillStyle = "rgba(214,84,54,.28)"; wctx.fill();
+      wctx.beginPath(); wctx.arc(s[0], s[1], 5, 0, 7);
+      wctx.fillStyle = "#d65436"; wctx.fill();
+      wctx.lineWidth = 2; wctx.strokeStyle = "#fff"; wctx.stroke();
+    }
+  }
+  updateMapLegend();
+}
+function roundRectPath(c, x, y, w, h, r) {
+  r = Math.min(r, w / 2, h / 2);
+  c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r);
+  c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r);
+  c.arcTo(x, y, x + w, y, r); c.closePath();
+}
+function updateMapLegend() {
+  const el = $("#mapLegend");
+  if (!el || el.dataset.built) return;
+  el.innerHTML =
+    '<span><b style="background:#d65436"></b>你在这里</span>' +
+    '<span><b style="background:#37c9b4"></b>已点亮锚点</span>' +
+    '<span><b style="background:#c9ad7e"></b>连通土路</span>';
+  el.dataset.built = "1";
+}
+function zoomMap(factor, cx, cy) {
+  if (!mapView.ready) return;
+  const cw = worldCanvas.clientWidth, ch = worldCanvas.clientHeight;
+  cx = cx == null ? cw / 2 : cx; cy = cy == null ? ch / 2 : cy;
+  const before = s2m(cx, cy);
+  mapView.scale = clamp(mapView.scale * factor, mapView.fitScale * .7, mapView.fitScale * 5);
+  const after = s2m(cx, cy);
+  mapView.ox += (before[0] - after[0]) * mapView.scale;
+  mapView.oy += (before[1] - after[1]) * mapView.scale;
+  drawWorldMap();
+}
+function resetMapView() {
+  if (!mapView.ready) return;
+  const cw = worldCanvas.clientWidth, ch = worldCanvas.clientHeight;
+  let minX = 1e9, maxX = -1e9, minY = 1e9, maxY = -1e9;
+  for (const k in MACRO) {
+    const q = macroRect(MACRO[k]);
+    minX = Math.min(minX, q.x); maxX = Math.max(maxX, q.x + q.w);
+    minY = Math.min(minY, q.y); maxY = Math.max(maxY, q.y + q.h);
+  }
+  mapView.scale = mapView.fitScale * MACRO_BASE;
+  mapView.ox = cw / 2 - (minX + maxX) / 2 * mapView.scale;
+  mapView.oy = ch / 2 - (minY + maxY) / 2 * mapView.scale;
+  drawWorldMap();
+}
+// 鼠标事件：滚轮缩放、拖拽平移、点锚点传送
+if (worldCanvas) {
+  worldCanvas.addEventListener("wheel", e => {
+    e.preventDefault();
+    const r = worldCanvas.getBoundingClientRect();
+    zoomMap(e.deltaY < 0 ? 1.12 : 1 / 1.12, e.clientX - r.left, e.clientY - r.top);
+  }, { passive: false });
+  worldCanvas.addEventListener("pointerdown", e => {
+    mapView.drag = { id: e.pointerId, x: e.clientX, y: e.clientY, ox: mapView.ox, oy: mapView.oy, moved: 0 };
+    try { worldCanvas.setPointerCapture(e.pointerId); } catch (err) {}
+  });
+  worldCanvas.addEventListener("pointermove", e => {
+    if (!mapView.drag || e.pointerId !== mapView.drag.id) return;
+    const dx = e.clientX - mapView.drag.x, dy = e.clientY - mapView.drag.y;
+    mapView.drag.moved += Math.abs(dx) + Math.abs(dy);
+    mapView.ox = mapView.drag.ox + dx; mapView.oy = mapView.drag.oy + dy;
+    drawWorldMap();
+  });
+  const dragEnd = e => {
+    if (!mapView.drag || e.pointerId !== mapView.drag.id) return;
+    const wasClick = mapView.drag.moved < 6;
+    mapView.drag = null;
+    if (wasClick) macroClick(e.clientX, e.clientY);
+  };
+  worldCanvas.addEventListener("pointerup", dragEnd);
+  worldCanvas.addEventListener("pointercancel", dragEnd);
+}
+function macroClick(clientX, clientY) {
+  const r = worldCanvas.getBoundingClientRect();
+  const mx = clientX - r.left, my = clientY - r.top;
+  // 点在已点亮锚点上就传送
+  for (const k in MACRO) {
+    if (!state.anchors[k]) continue;
+    const r0 = MACRO[k], q = macroRect(r0), a = ANCHORS[k];
+    const p = toWorld(r0.map, a.tx, a.tz);
+    const rx = q.x + (p.x - r0.map.ox), ry = q.y + (p.z - r0.map.oz);
+    const s = m2s(rx, ry);
+    if (Math.hypot(s[0] - mx, s[1] - my) < 14) {
+      closeWorldMap();
+      travelTo(a.map, { tx: a.tx, tz: a.tz + 2, heading: 0 });
+      return;
+    }
+  }
+}
+
 /* ---- 世界地图（M 键）---- */
 function openWorldMap() {
   if (Fight.on || dlg.open || overlayOpen()) return;
@@ -3967,6 +4443,8 @@ function openWorldMap() {
   const tl = $("#troupeLine");
   if (tl) tl.textContent = troupeProgressText();
   $("#worldmap").classList.add("show");
+  // 面板 show 之后 canvas 才有实际尺寸，下一帧再量、再画
+  requestAnimationFrame(() => { if (worldCanvas && worldCanvas.clientWidth) macroFit(); });
 }
 function closeWorldMap() {
   const el = $("#worldmap");
@@ -4677,6 +5155,37 @@ function toggleSound() {
 }
 
 $("#btnDex").onclick = () => { buildDex(); $("#dex").classList.add("show"); };
+/* ---- 2D / 3D 视角切换：同一张地图、同一份存档，只是镜头表现不同 ----
+   3D = 第三人称透视跟拍（开放世界）；2D = 正交俯视（房间式的平面感）。
+   切的时候人原地不动，位置 / 进度都保留。 */
+function syncViewBtn() {
+  const b = $("#btnView");
+  if (b) b.textContent = state.viewMode === "3d" ? "🌐 3D" : "🗺 2D";
+  const f = $("#btnFollow");
+  if (f) f.textContent = state.camFollow ? "🎥 跟随" : "🎥 手动";
+}
+function setViewMode(mode, quiet) {
+  if (mode !== "3d" && mode !== "2d") return;
+  if (state.viewMode === mode) return;
+  state.viewMode = mode;
+  moveSig = -1;
+  resize();
+  updateCamera(true);
+  syncViewBtn();
+  if (!quiet) toast(mode === "3d" ? "已切到 3D 开放世界视角" : "已切到 2D 俯视视角 · 按 V 切回");
+  save();
+}
+function toggleFollow() {
+  state.camFollow = !state.camFollow;
+  moveSig = -1;
+  syncViewBtn();
+  toast(state.camFollow ? "镜头自动跟随：开" : "镜头自动跟随：关（Z/C 手动转）");
+  save();
+}
+$("#btnView").onclick = () => setViewMode(state.viewMode === "3d" ? "2d" : "3d");
+$("#btnFollow").onclick = toggleFollow;
+syncViewBtn();
+
 $("#btnStyle").onclick = () => {
   styleIdx = (styleIdx + 1) % STYLES.length;
   applyStyle();
@@ -4689,6 +5198,9 @@ $("#btnStyle").textContent = "🎨 " + STYLES[styleIdx].name;
 $("#btnHelp").onclick = () => $("#help").classList.add("show");
 if ($("#btnMap")) $("#btnMap").onclick = () => openWorldMap();
 if ($("#btnMapClose")) $("#btnMapClose").onclick = closeWorldMap;
+if ($("#mapZoomIn")) $("#mapZoomIn").onclick = () => zoomMap(1.25);
+if ($("#mapZoomOut")) $("#mapZoomOut").onclick = () => zoomMap(1 / 1.25);
+if ($("#mapZoomReset")) $("#mapZoomReset").onclick = resetMapView;
 $("#btnDexClose").onclick = () => $("#dex").classList.remove("show");
 if ($("#btnReel")) $("#btnReel").onclick = reelFish;
 if ($("#btnFishClose")) $("#btnFishClose").onclick = closeFishing;
@@ -4724,7 +5236,10 @@ function loop() {
    启动
    ========================================================= */
 resize();
-window.addEventListener("resize", () => { resize(); syncPad(); });
+window.addEventListener("resize", () => {
+  resize(); syncPad();
+  if ($("#worldmap").classList.contains("show") && worldCanvas && worldCanvas.clientWidth) macroFit();
+});
 
 // 星露谷里天黑要真的黑下来。地面是不受光材质，所以直接调曝光 + 天空色
 let lastLightO = null;
@@ -4762,6 +5277,9 @@ async function boot() {
     buildGrove();
     buildHill();
     buildFar();
+    // 村庄 / 镇也撒少量立体草丛，近景不再是纯平贴图
+    buildGrassTufts(VILLAGE, world, 520, 5011);
+    if (OUTDOOR.town) buildGrassTufts(TOWN, OUTDOOR.town, 360, 6011);
     buildTroupeProps();
     troupeResetIfNewDay();
     applyStyle();   // 场景搭好后统一套用主题（国风染色 / 飞檐 / 背景）
@@ -4888,6 +5406,9 @@ if (location.search.indexOf("debug") >= 0) {
     startStage, hitStage, endStage, closeStage,
     OUTDOOR, outdoorMats, position: () => ({ x: player.x, z: player.z, map: roomState.name }),
     tpYaw: () => TP.yaw, tpDist: () => TP.dist, camPos: () => camTP.position, camOrtho: () => camera, camTP: () => camTP,
+    setViewMode, toggleFollow, syncViewBtn, topDown, currentCam,
+    viewMode: () => state.viewMode, camFollow: () => state.camFollow,
+    MACRO, macroFit, drawWorldMap, zoomMap, resetMapView, mapView,
     qiyetTalk, qiyetWin, qiyetLose, Gomoku, lieDown, getUp, sleepPose,
     modelDbg: () => ({
       loadedNailong: srcScenes.has("nailong") ? "3d" : (loaded.get("nailong") === null ? "billboard" : "unset"),
