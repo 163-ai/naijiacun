@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>奶家村-全站结构与系统优化方案-20261118</title><style>
+*{box-sizing:border-box}
+body{margin:0;background:#f7f8fa;color:#24292f;font:15px/1.75 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
+.wrap{max-width:960px;margin:0 auto;padding:32px 24px 64px}
+header.top{margin-bottom:28px}
+a{color:#0969da;text-decoration:none}
+a:hover{text-decoration:underline}
+.crumb{font-size:13px;color:#57606a}
+h1{font-size:28px;line-height:1.35;margin:12px 0 4px;color:#1f2328}
+.sub{color:#57606a;font-size:13px}
+main{background:#fff;border:1px solid #d8dee4;border-radius:10px;padding:28px 32px}
+main h1{font-size:24px;border-bottom:1px solid #d8dee4;padding-bottom:10px}
+main h2{font-size:20px;margin-top:32px;border-bottom:1px solid #eaeef2;padding-bottom:8px}
+main h3{font-size:17px;margin-top:24px}
+main h4{font-size:15px;margin-top:20px}
+p{margin:10px 0}
+ul,ol{padding-left:24px}
+li{margin:4px 0}
+code{background:#f0f3f6;border-radius:4px;padding:2px 5px;font:13px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;color:#24292f}
+pre{background:#f6f8fa;border:1px solid #d8dee4;border-radius:8px;padding:14px 16px;overflow:auto}
+pre code{background:none;padding:0;font-size:12.5px;line-height:1.6}
+table{border-collapse:collapse;width:100%;margin:14px 0;font-size:14px}
+th,td{border:1px solid #d8dee4;padding:8px 10px;text-align:left}
+th{background:#f6f8fa;font-weight:600}
+hr{border:0;border-top:1px solid #d8dee4;margin:26px 0}
+footer{margin-top:22px;color:#57606a;font-size:13px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;margin:18px 0 34px}
+.card{display:block;background:#fff;border:1px solid #d8dee4;border-radius:9px;padding:14px 16px;transition:border-color .15s,box-shadow .15s}
+.card:hover{border-color:#0969da;box-shadow:0 2px 10px rgba(9,105,218,.12);text-decoration:none}
+.card .t{font-weight:600;color:#1f2328;margin-bottom:4px}
+.card .d{color:#57606a;font-size:12.5px}
+.sec{font-size:18px;font-weight:600;margin:34px 0 4px;color:#1f2328}
+.note{background:#fff8e5;border:1px solid #f0d998;border-radius:8px;padding:12px 16px;color:#4d3b00;font-size:13.5px;margin:18px 0}
+.list{background:#fff;border:1px solid #d8dee4;border-radius:10px;padding:8px 18px}
+.list a{display:flex;justify-content:space-between;gap:12px;padding:9px 4px;border-bottom:1px solid #eaeef2;font-size:14px}
+.list a:last-child{border-bottom:0}
+.list .sz{color:#57606a;font-size:12.5px;white-space:nowrap}
+@media(max-width:600px){.wrap{padding:20px 14px}main{padding:18px 16px}}
+</style></head>
+<body><div class="wrap"><header class="top">
+<a class="crumb" href="index.html">&larr; 返回 2026-11-18 交付目录</a>
+<h1>奶家村-全站结构与系统优化方案-20261118</h1><div class="sub">奶家村 · 资料库当日更新归档 · 2026-11-18</div></header>
+<main><h1>奶家村-全站结构与系统优化方案-20261118</h1>
+<h1>奶家村 · 全站结构与系统优化方案</h1>
+<p>&gt; 分析日期：2026-11-18 &gt; 分析对象：https://github.com/163-ai/naijiacun （GitHub 当前 main） &gt; 参考材料：资料库中 5 份审查/数值报告（3 轮代码审查 + 2 轮数值审查）+ 数值改动包 &gt; 审查方式：全站源码静态勘察 + 关键 P0/P1 逐条本地复现核对</p>
+<hr>
+<h2>0. 一句话结论（先说人话）</h2>
+<p>这个站不是"代码烂"，恰恰相反——模块划得清、有 CI、有测试、密钥管理规范，工程底子在业余项目里算优等生。真正的问题有两层：</p>
+<ul><li><strong>诊断和代码之间裂了一道"落地断层"</strong>：资料库里 5 份报告把问题挖得很准、修法也写好了，但我逐条核对 GitHub 当前代码，<strong>这些修复一个都没进去</strong>。P0 那条"一个请求打挂全站"的漏洞，现在线上还开着门。</li><li><strong>"一个村"被拆成了十几个孤岛</strong>：8 个 HTML 页面、4 个端（网页 / 站内桌宠 / 浏览器扩展 / C# 桌宠），各写各的导航、各维护一份角色表、各存一份状态。玩家眼里是同一个奶家村，代码里是十几套平行宇宙。</li></ul>
+<p>优化的正确顺序不是"先美化、先重构"，而是：<strong>先止血（把已诊断的修复落地）→ 再缝合（统一导航与数据入口）→ 最后调系统（经济与成长）</strong>。反过来做，等于在漏水的房子里搞装修。</p>
+<hr>
+<h2>1. 评判标准：先把"这游戏好玩在哪"写清楚</h2>
+<p>优化不是把代码改漂亮，是守住玩家体验。先把 fun hypothesis 和 5 条设计支柱定下来，后面每一条优化都用它们过审。</p>
+<p><strong>Fun hypothesis（一句话）</strong>：</p>
+<p>&gt; 把刷到过的网络热梗，认领成"我村里的村民"——用逛村、撸宠、唠嗑、种地把"看热闹"变成"过日子"。</p>
+<p><strong>5 条设计支柱（不可妥协的体验标准）</strong>：</p>
+<table><thead><tr><th>#</th><th>支柱</th><th>一句话</th><th>本次诊断里被谁违反</th></tr></thead><tbody><tr><td>P1</td><td><strong>一个村，不是十个孤岛</strong></td><td>网页/桌宠/扩展/3D 共享同一份"村民"数据与称呼</td><td>4 端各自维护角色表；C# 桌宠只有 9 人无小草；game.html 完全脱离公共导航</td></tr><tr><td>P2</td><td><strong>点开就能玩，不配置也能爽</strong></td><td>零依赖、免配置、永远有兜底</td><td>这条做得好（TTS 三档降级、聊天无 Key 有话术），保持</td></tr><tr><td>P3</td><td><strong>过日子的节奏</strong></td><td>以"一天"为单位的种田循环是游戏心跳</td><td>每日任务靠 7 处各自惰性比对，没有统一"新的一天"处理器，节奏是靠约定不是靠机制</td></tr><tr><td>P4</td><td><strong>每个数字对得起玩家的时间</strong></td><td>成长和经济要有 rationale，不虚假成长、不无限通胀</td><td>atk 是死字段；金币只进少出；捕捉球只增不减；每天白送 300–480 金</td></tr><tr><td>P5</td><td><strong>谁都能来搭一把</strong></td><td>粉丝协作（Issue/PR/提名），文档和实现要对得上</td><td>README 项目结构只列 2 个页面（实际 8 个）；extension.html 是孤儿页；bridge 脚本是死代码</td></tr></tbody></table>
+<hr>
+<h2>2. 🔴 头号问题：诊断成果没有落地（落地断层）</h2>
+<p>这是全站最高优先级，因为它同时踩中 P1/P3/P4 三根支柱。资料库报告写了修复方案，但<strong>GitHub 当前代码逐条核对仍是未修状态</strong>：</p>
+<table><thead><tr><th>编号</th><th>报告定位</th><th>报告里的修法</th><th>GitHub 现状（本次核对）</th><th>严重度</th></tr></thead><tbody><tr><td>#1</td><td><code>server.js:84</code> <code>decodeURIComponent</code> 无 try/catch</td><td>包 try/catch，失败返回 null</td><td><code>const decoded = decodeURIComponent(...)</code> 仍无捕获 → <code>GET /%%</code> 即可打挂进程</td><td><strong>P0 线上可被打挂</strong></td></tr><tr><td>#2</td><td><code>server.js:186/212</code> 给 <code>const encoding</code> 重新赋值</td><td>改 <code>let</code></td><td>仍是 <code>const encoding = ...</code> + catch 里 <code>encoding = "identity"</code> → 压缩抛错时二次崩溃</td><td>P1</td></tr><tr><td>#3</td><td><code>serve.js:39</code> 前缀比较绕过目录穿越</td><td>加 <code>path.sep</code> 边界判断</td><td>仍是 <code>if (!filePath.startsWith(ROOT))</code> → 同前缀兄弟目录可穿越</td><td>P1</td></tr><tr><td>#4</td><td><code>js/kof.js</code> atk 死字段</td><td>伤害公式改读 atk，抽 BALANCE 块</td><td><code>dmg = mv.dmg * (1 + (a.lv - 3) * .07)</code> 仍只认 lv → 升级 +3 攻击是假成长</td><td>P1（设计）</td></tr><tr><td>#5</td><td><code>js/game2d.js</code> 钓鱼第 8 竿 900ms 刷球/刷钱</td><td>开头硬拦 rods 上限、立即置 off</td><td><code>if (!fishing.on) return</code> 后直接 <code>rods++</code>，第 8 竿到 close 之间仍可重复收</td><td>P1</td></tr><tr><td>#6</td><td><code>game.html</code> 缓存版本号</td><td>v87→v88 / v57→v58</td><td>仍是 <code>game2d.js?v=87</code>、<code>kof.js?v=57</code></td><td>配套项</td></tr><tr><td>#7</td><td>LLM 代理 <code>/api/chat</code> 无配额</td><td>加按 IP 限流或去 fallback</td><td>（本仓库 <code>server/</code> 仅 2 个文件，线上代理在仓库外，需你确认是否已修）</td><td>P1 待确认</td></tr></tbody></table>
+<p>&gt; 关键判断：<strong>这不是"代码有问题"，而是"已有结论没被执行"。</strong> 在动手做任何结构重构之前，必须先把这 6 条已确诊的修复合进 main——否则重构会把这些坑一起搬进新结构，返工成本翻倍。 &gt; &gt; 注意一个现实风险：报告说修复"在本地副本，未 commit / 未 push"。如果那份本地副本就是你现在在用的，直接对 GitHub 裸基线动刀会和你的本地版本冲突。<strong>所以第一步是确认哪份是真正的生产代码</strong>，见文末选项 A/B。</p>
+<hr>
+<h2>3. 结构诊断（信息架构 / 导航 / 多端）</h2>
+<h3>3.1 页面全景（8 个入口页）</h3>
+<table><thead><tr><th>页面</th><th>职责</th><th>公共导航</th><th>外观体系</th></tr></thead><tbody><tr><td><code>index.html</code></td><td>首页 / 村口：图鉴、搜索、盲盒、提名、语音设置、管理面板</td><td>✅</td><td>style+village+blindbox 三层</td></tr><tr><td><code>chat.html</code></td><td>和村民聊两句</td><td>✅</td><td>style+chat+village 三层</td></tr><tr><td><code>pet.html</code></td><td>桌宠小院</td><td>✅</td><td>style+pet+village 三层</td></tr><tr><td><code>pet3d.html</code></td><td>3D 展台</td><td>✅</td><td>style+pet+pet3d+actions+village <strong>五层</strong></td></tr><tr><td><code>gallery.html</code></td><td>形象总表 / 导出</td><td>✅</td><td>style+gallery+village 三层</td></tr><tr><td><code>extension.html</code></td><td>扩展/桌宠引导页</td><td>⚠️ 加载 village.css 但不注入导航</td><td>style+pet+village+内联 style</td></tr><tr><td><code>group.html</code></td><td>放映厅 / 群聊</td><td>❌ 只加载 css，不加载 <code>village.js</code></td><td>style+chat+village+group 四层</td></tr><tr><td><code>game.html</code></td><td>大冒险（2D/3D 游戏）</td><td>❌ 完全独立，仅 <code>game.css</code></td><td>单文件独立体系</td></tr></tbody></table>
+<h3>3.2 结构问题清单（按影响排序）</h3>
+<table><thead><tr><th>#</th><th>问题</th><th>证据</th><th>违反支柱</th></tr></thead><tbody><tr><td>S1</td><td><strong>游戏页与内容站几乎零耦合</strong></td><td><code>game.html</code> 是唯一不带 <code>village-theme</code>、不加载 <code>village.js</code> 的页面；有独立 HUD/返回链接</td><td>P1</td></tr><tr><td>S2</td><td><strong>导航覆盖不全</strong></td><td><code>village.js:21-25</code> 顶部导航 5 项里没有 game / group / extension；这 3 页只能从首页卡片进入，进去后除了"回村口"哪也去不了</td><td>P1</td></tr><tr><td>S3</td><td><strong>孤儿页 + 死代码</strong></td><td><code>extension.html</code> 全仓无任何入站链接；<code>js/pet-extension-bridge.js</code> 没有任何页面加载，README 描述的"网页按钮交给扩展"能力实际不存在</td><td>P5</td></tr><tr><td>S4</td><td><strong>外观 migration 只做了一半</strong></td><td>几乎所有页面同时加载旧 <code>style.css</code> + 新 <code>village.css</code>；同是 village.css，版本参数不一致（index 用 <code>?v=site-pets-1</code>，其余用 <code>?v=village-1</code>）→ 缓存不一致 + 样式互相覆盖</td><td>P1</td></tr><tr><td>S5</td><td><strong>多端能力/数据逐端递减</strong></td><td>10 位村民（9×3D + 小草 2D）在网页/扩展；C# 桌宠硬编码 9 位、无小草、无走路/聊天/语音，角色 ID 各自维护</td><td>P1</td></tr><tr><td>S6</td><td><strong>文档与实现脱节</strong></td><td>README:279-297 项目结构只列 index/chat 两页和 style/chat 两个 css，与实际 8 页 11 css 严重不符；README:9 又声称"共用青瓦导航"（game/group 并没有）</td><td>P5</td></tr><tr><td>S7</td><td><strong>伪锚点靠 JS 拦截</strong></td><td>导航目标 <code>#blindbox</code> / <code>#voice</code> / <code>#admin</code> 在 index.html 里没有对应 DOM id，靠 <code>village.js</code> 拦截 hash 模拟点击——SEO/深链接/无 JS 场景全失效</td><td>P1</td></tr><tr><td>S8</td><td><strong>移动端禁用缩放</strong></td><td><code>game.html:5</code> 显式 <code>user-scalable=no</code>；group.css 仅 2 条媒体查询；extension.html 适配写在内联 style</td><td>P2</td></tr></tbody></table>
+<h3>3.3 建议的目标结构（缝合方向）</h3>
+<pre><code>一个入口（index.html  village.js 统一注入导航）
+├── 逛：图鉴 / 盲盒 / 画廊 / 放映厅
+├── 养：桌宠（站内）/ 3D 展台 / 浏览器扩展 / C# 桌宠   ← 四端共用同一份村民数据
+├── 聊：聊天 / 群聊
+└── 玩：大冒险（接入公共导航，保留独立 HUD）
+数据层：js/data.js 作为唯一村民数据源 → 各端构建期/运行期读取，不再各写 ID 列表
+配置层：js/config.js 统一代理地址 + 配额参数，避免多处硬编码</code></pre>
+<hr>
+<h2>4. 系统诊断（核心循环 / 经济 / 系统交互）</h2>
+<h3>4.1 核心循环（游玩层）</h3>
+<pre><code>每天 6:00 起床（现实≈4分钟/天，1秒=5分）
+├─ 白天：锄地→浇水→播种 →（睡觉推进天数，需 wet/下雨）→ 成熟→收→卖钱
+├─ 野外：高草区每移动&gt;6单位、26%遭遇 → 拳皇式对战（60秒）
+│         → 打到≤30%血扔球 → 收服/ KO 拿经验/ 败则 HP 归 35% 送回村口
+├─ 每日：钓鱼8竿(+12/条)、唱戏(≥5命中+50+6×hits)、竹笋4根(+8/根)
+│         、驿站委托(70~100)、奶察悬赏(50~90)、戏班(+150)、外卖(+60)、擂台首胜(+120)
+└─ 睡觉：day++，体力/水/HP 回满，天气 26% 雨，各每日任务惰性刷新</code></pre>
+<p>这个循环本身是成立且好玩的（种田节奏 + 收集 + 格斗三种动机叠加）。问题出在循环背后的数值与系统耦合。</p>
+<h3>4.2 经济 sources &amp; sinks（金币）</h3>
+<p><strong>Sources（每天稳定进账）</strong>：</p>
+<table><thead><tr><th>来源</th><th>单次</th><th>频率</th><th>日均上限</th><th>位置</th></tr></thead><tbody><tr><td>卖作物</td><td>萝卜44/玉米78/甜瓜132</td><td>反复</td><td>看种田量</td><td>farm.js:16-18</td></tr><tr><td>掰竹笋</td><td>+8/根</td><td>4根/天</td><td>32</td><td>game2d.js:2563</td></tr><tr><td>钓鱼</td><td>+12/条</td><td>8竿/天</td><td>96</td><td>game2d.js:5440</td></tr><tr><td>唱戏</td><td>50+6×命中</td><td>1场/天</td><td>\~98</td><td>game2d.js:5606</td></tr><tr><td>驿站委托</td><td>70/80/75/90/100</td><td>1单/天</td><td>100</td><td>game2d.js:4648</td></tr><tr><td>奶察悬赏</td><td>60/90/50</td><td>1件/天</td><td>90</td><td>villagers.js:148</td></tr><tr><td>戏班 / 外卖 / 擂台</td><td>+150 / +60 / +120</td><td>各1次/天</td><td>330</td><td>game2d.js:4143/5744/5848</td></tr><tr><td>图鉴档位（一次性）</td><td>+60(3人)/+180(8人)</td><td>一次性</td><td>—</td><td>game2d.js:5897</td></tr></tbody></table>
+<p><strong>Sinks（出口）</strong>：</p>
+<table><thead><tr><th>出口</th><th>数值</th><th>问题</th></tr></thead><tbody><tr><td>买种子</td><td>20/35/55</td><td>卖 44/78/132 → 每棵净赚 24\~77，是"赚钱"不是"花钱"</td></tr><tr><td>点传送锚点</td><td>30/40/35/45</td><td><strong>一次性</strong> 4 个点共 150，之后永久免费</td></tr><tr><td>累倒扣钱</td><td>min(50, 10%gold)</td><td>偶发，不构成稳定回收</td></tr></tbody></table>
+<p><strong>结论（经济诊断）</strong>：每天净进账约 <strong>300\~</strong><strong>480 金</strong>，稳定出口几乎为零，<strong>只有一次性的 150 金锚点</strong>。这是一个典型的"source 找不到 sink"——按纵深设计，通胀不是"会不会"而是"什么时候"。金币在中期就会失去约束意义，种田/钓鱼/委托的奖励权重随之归零。</p>
+<p>&gt; 这不是数值调一调能解决的，是<strong>结构缺 sink</strong>。需要引入持续性金币出口（如装备/天赋/宠物喂养/竞技场入场费），且每个 sink 要能回答"玩家花了钱换到什么新决策"。任何新增 sink 必须配 rationale，未 playtest 的数值标 \[PLACEHOLDER\]。</p>
+<h3>4.3 捕捉球供需</h3>
+<ul><li><strong>Sources</strong>：初始 8 + 奶蛙送2（一次性）+ 钓鱼≥3条送1（每天）+ 委托/悬赏送1\~2（每天）+ 戏班+2 + 外卖+1 + 图鉴档位+3/+5</li><li><strong>Sink</strong>：捕捉消耗 1/次（失败也扣）</li><li><strong>结论</strong>：每天白送多颗、没有购买渠道，出口只有捕捉 → 球必然过剩，捕捉的稀缺性和策略性消失。另 <code>game2d.js:5837</code> 有一行 <code>state.balls = state.balls;</code> 自赋值，疑似本想处理收服后的球增减却写成了空操作。</li></ul>
+<h3>4.4 系统交互矩阵（intended / acceptable / bug）</h3>
+<table><thead><tr><th>系统 A ↔ B</th><th>当前行为</th><th>判定</th></tr></thead><tbody><tr><td>升级 ↔ 战斗</td><td>升级提示"体力上限+8"，atk+3 被传入战斗但伤害公式只读 lv</td><td><strong>bug</strong>（虚假成长，P4）</td></tr><tr><td>钓鱼 ↔ 球/钱</td><td>第 8 竿到 close 的 900ms 窗口可重复收竿，每次 +12 金且 balls++</td><td><strong>bug</strong>（刷资源）</td></tr><tr><td>戏班 ↔ 唱戏</td><td>交差强制加场，endStage 每次给钱并改写 stageDay → 同一天可拿两次赏钱</td><td><strong>bug</strong>（每日奖励破口）</td></tr><tr><td>体力 ↔ 泡水/煮汤</td><td>泡水 +26（每天1次）、煮汤 +32（<strong>无次数上限</strong>，消耗1作物）→ 只要种得出作物就能反复回体力</td><td><strong>acceptable→偏 bug</strong>（体力约束被稀释，煮汤↔种田↔卖钱成闭环）</td></tr><tr><td>战斗失败 ↔ 睡觉/包扎</td><td>败则 HP 归 35%，但睡觉/包扎/升级都回满 → 失败几乎无代价</td><td><strong>acceptable</strong>（休闲定位可接受，但削弱战斗张力）</td></tr><tr><td>委托 ↔ 地图</td><td>battle 类委托 map:null，用 roomState.name 比对，地图键与委托 map 值若不一致则无法完成</td><td><strong>bug 风险</strong>（耦合脆弱）</td></tr><tr><td>存档 ↔ boot 流程</td><td><code>troupeResetIfNewDay()</code> 在 load 前跑，靠 <code>loadDone</code> 布尔门闩防止冲掉存档</td><td><strong>acceptable</strong>（靠约定规避，新增启动期逻辑易重踩"继续游戏变从头"）</td></tr><tr><td>dayFlags ↔ 时间</td><td><code>onceToday</code> 存 <code>"key:day"</code> 但从不清理</td><td><strong>bug</strong>（存档无限膨胀）</td></tr><tr><td>重新开始 ↔ 任务状态</td><td><code>startGame(fresh)</code> 重置部分 day 字段，但未重置 bounty/visitOn/shootQuest 等</td><td><strong>bug 风险</strong>（新档带入旧任务）</td></tr></tbody></table>
+<hr>
+<h2>5. 优化方案（分三层，带 rationale）</h2>
+<h3>第一层 · 止血（P0/P1，先做，不做完别重构）</h3>
+<table><thead><tr><th>动作</th><th>依据 / rationale</th><th>验证方式</th></tr></thead><tbody><tr><td>A1. <code>server.js</code> decodeURIComponent 包 try/catch</td><td>单请求 DoS，已复现；修复成本 1 行，收益是全站可用性</td><td>起本地服务，<code>curl 'http://x/%%'</code> 应返回非 200 且进程存活</td></tr><tr><td>A2. const encoding 改 let</td><td>压缩抛错时二次崩溃打挂进程</td><td>构造异常 Accept-Encoding，进程存活</td></tr><tr><td>A3. <code>serve.js</code> 加 <code>path.sep</code> 边界</td><td>前缀比较可穿越同前缀兄弟目录</td><td>请求 <code>../naijiacun-main-evil/secret.txt</code> 应 403</td></tr><tr><td>A4. 钓鱼收竿开头硬拦 <code>rods&gt;=FISH_RODS</code>、满竿立即置 off</td><td>堵住刷钱/刷球</td><td>8 竿后连点，gold/balls 不再增长</td></tr><tr><td>A5. atk 接入伤害公式 + 抽 BALANCE 配置块</td><td>修虚假成长，让升级 +3 攻击真实生效；配置块让后续数值可调</td><td>与报告一致，逐等级验证等价性后再改系数</td></tr><tr><td>A6. <code>game.html</code> 版本号 +1</td><td>避免线上缓存导致模块导出不一致</td><td>浏览器强刷后加载新版本</td></tr><tr><td>A7. 确认线上 <code>/api/chat</code> 是否已加限流</td><td>报告标注线上代理在仓库外，本仓库无法核对</td><td>你确认或提供代理仓库</td></tr></tbody></table>
+<h3>第二层 · 缝合（P1 结构，止血后做）</h3>
+<table><thead><tr><th>动作</th><th>rationale</th><th>影响面</th></tr></thead><tbody><tr><td>B1. 让 <code>game.html</code> / <code>group.html</code> 接入 <code>village.js</code> 公共导航</td><td>守住"一个村不是孤岛"；游戏页保留独立 HUD，只在外层加统一导航条</td><td>低：加 script + 一处 body class</td></tr><tr><td>B2. 清孤儿与死代码：给 extension.html 加入口，或并入 pet.html；删除/接通 <code>pet-extension-bridge.js</code></td><td>消除"文档说有、实际没有"的能力，P5</td><td>低</td></tr><tr><td>B3. 收敛外观：定一份 <code>village.css</code> 为唯一公共层，其他 css 只留各页专有规则；统一版本参数</td><td>消除多层覆盖和缓存不一致</td><td><strong>中</strong>：需逐页比对样式冲突，建议一次一页</td></tr><tr><td>B4. 村民数据源统一：<code>data.js</code> 为唯一 source，C# 桌宠构建期从它生成角色表</td><td>4 端能力递减的根源是各写 ID；生成而非手抄，才不会再漏小草</td><td>中：涉及构建脚本</td></tr><tr><td>B5. 更新 README 项目结构 + 修正"共用导航"表述</td><td>文档是新人第一触点，对不上会直接误导贡献者</td><td>低</td></tr></tbody></table>
+<h3>第三层 · 调系统（P2 玩法经济，最后做，且要先 paper 验证）</h3>
+<table><thead><tr><th>动作</th><th>rationale</th><th>注意</th></tr></thead><tbody><tr><td>C1. 引入持续性金币 sink（装备/天赋/喂养/入场费，选 1）</td><td>补上经济闭环，让每日奖励重新有意义</td><td>sink 必须制造新决策；数值全标 \[PLACEHOLDER\]，需 playtest</td></tr><tr><td>C2. 给捕捉球加购买/兑换 sink 或削减每日白送</td><td>恢复捕捉的稀缺性</td><td>与 C1 联动，别一次改太多</td></tr><tr><td>C3. 统一"新的一天"处理器，集中 7 处每日刷新</td><td>让"过日子的节奏"由机制保证，不再靠约定；根治 stageDay 双领、dayFlags 膨胀、新档带旧状态</td><td>中高风险：动核心循环，必须回归测试</td></tr><tr><td>C4. 重新审视煮汤无上限 / 泡水 / 包扎组成的免费恢复链</td><td>体力约束若形同虚设，种田的"一天能做多少事"就失去意义</td><td>先定义失败信号再 playtest</td></tr></tbody></table>
+<p>&gt; C 层所有数值改动遵守一条红线：<strong>没有 rationale 不写数，没 playtest 的数标 \[</strong><strong>PLACEHOLDER\]</strong>。我给的只是方向和验证路径，不会凭空造一个"感觉差不多"的系数。</p>
+<hr>
+<h2>6. 需要你拍板的事（选完我就动手）</h2>
+<p>在动代码前，有一个绕不开的现实问题必须先定：<strong>资料库报告说修复在"本地副本、未 push"，而我手上是从 GitHub clone 的裸基线。</strong> 改错分支会和你的本地版本打架。</p>
+<p>请你选一个执行起点：</p>
+<ul><li><strong>A. 以 GitHub main 为准</strong>（本地副本已废弃/或你已合并）：我直接在 <code>C:/Users/HP/WorkBuddy/2026-11-18-20-59-09/naijiacun</code> 上落地第一层止血修复，逐条验证后给你 diff。</li><li><strong>B. 以你的本地副本为准</strong>：你把那份路径给我（或把改动给我），我以它为基线做修复 + 结构缝合，避免覆盖你已做的修改。</li></ul>
+<p>以及本次想让我做到哪一层：</p>
+<ul><li><strong>①只止血</strong>：把 P0/P1 已确诊修复落地并验证（最快，风险最低）。</li><li><strong>②止血 + 结构缝合</strong>：加上 B1–B5，统一导航/外观/数据源。</li><li><strong>③全量</strong>：再加经济与成长系统调优（C 层，含 playtest 方案，周期最长）。</li></ul>
+<p>我的建议：<strong>A/B 先定基线 → ①止血 → 验证通过后做 ②</strong>。C 层值得单独开一轮，因为那才是真正决定"这游戏耐不耐玩"的地方，不该和结构重构挤在一次改动里。</p></main><footer><a href="%E5%A5%B6%E5%AE%B6%E6%9D%91-%E5%85%A8%E7%AB%99%E7%BB%93%E6%9E%84%E4%B8%8E%E7%B3%BB%E7%BB%9F%E4%BC%98%E5%8C%96%E6%96%B9%E6%A1%88-20261118.md">下载 Markdown 原文</a> · 基线 commit 54eec4c</footer></div></body></html>

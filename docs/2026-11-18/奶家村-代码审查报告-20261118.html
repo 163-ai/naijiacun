@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>奶家村-代码审查报告-20261118</title><style>
+*{box-sizing:border-box}
+body{margin:0;background:#f7f8fa;color:#24292f;font:15px/1.75 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
+.wrap{max-width:960px;margin:0 auto;padding:32px 24px 64px}
+header.top{margin-bottom:28px}
+a{color:#0969da;text-decoration:none}
+a:hover{text-decoration:underline}
+.crumb{font-size:13px;color:#57606a}
+h1{font-size:28px;line-height:1.35;margin:12px 0 4px;color:#1f2328}
+.sub{color:#57606a;font-size:13px}
+main{background:#fff;border:1px solid #d8dee4;border-radius:10px;padding:28px 32px}
+main h1{font-size:24px;border-bottom:1px solid #d8dee4;padding-bottom:10px}
+main h2{font-size:20px;margin-top:32px;border-bottom:1px solid #eaeef2;padding-bottom:8px}
+main h3{font-size:17px;margin-top:24px}
+main h4{font-size:15px;margin-top:20px}
+p{margin:10px 0}
+ul,ol{padding-left:24px}
+li{margin:4px 0}
+code{background:#f0f3f6;border-radius:4px;padding:2px 5px;font:13px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;color:#24292f}
+pre{background:#f6f8fa;border:1px solid #d8dee4;border-radius:8px;padding:14px 16px;overflow:auto}
+pre code{background:none;padding:0;font-size:12.5px;line-height:1.6}
+table{border-collapse:collapse;width:100%;margin:14px 0;font-size:14px}
+th,td{border:1px solid #d8dee4;padding:8px 10px;text-align:left}
+th{background:#f6f8fa;font-weight:600}
+hr{border:0;border-top:1px solid #d8dee4;margin:26px 0}
+footer{margin-top:22px;color:#57606a;font-size:13px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;margin:18px 0 34px}
+.card{display:block;background:#fff;border:1px solid #d8dee4;border-radius:9px;padding:14px 16px;transition:border-color .15s,box-shadow .15s}
+.card:hover{border-color:#0969da;box-shadow:0 2px 10px rgba(9,105,218,.12);text-decoration:none}
+.card .t{font-weight:600;color:#1f2328;margin-bottom:4px}
+.card .d{color:#57606a;font-size:12.5px}
+.sec{font-size:18px;font-weight:600;margin:34px 0 4px;color:#1f2328}
+.note{background:#fff8e5;border:1px solid #f0d998;border-radius:8px;padding:12px 16px;color:#4d3b00;font-size:13.5px;margin:18px 0}
+.list{background:#fff;border:1px solid #d8dee4;border-radius:10px;padding:8px 18px}
+.list a{display:flex;justify-content:space-between;gap:12px;padding:9px 4px;border-bottom:1px solid #eaeef2;font-size:14px}
+.list a:last-child{border-bottom:0}
+.list .sz{color:#57606a;font-size:12.5px;white-space:nowrap}
+@media(max-width:600px){.wrap{padding:20px 14px}main{padding:18px 16px}}
+</style></head>
+<body><div class="wrap"><header class="top">
+<a class="crumb" href="index.html">&larr; 返回 2026-11-18 交付目录</a>
+<h1>奶家村-代码审查报告-20261118</h1><div class="sub">奶家村 · 资料库当日更新归档 · 2026-11-18</div></header>
+<main><h1>奶家村-代码审查报告-20261118</h1>
+<h1>「奶家村」代码审查报告</h1>
+<ul><li>仓库：https://github.com/163-ai/naijiacun</li><li>审查时间：2026-11-18</li><li>审查范围：全部 120 个文本文件（约 2.3 万行 JS）、Node 服务、Cloudflare Worker、浏览器扩展、C# 桌宠、CI 脚本</li><li>审查方式：静态分析 + 关键问题本地复现验证</li></ul>
+<hr>
+<h2>总体评价</h2>
+<p>项目工程化程度较高：模块划分清晰、有 CI、有测试、密钥管理规范（全部走环境变量/localStorage，仓库内<strong>无硬编码真实密钥</strong>）、前端 XSS 防护到位（统一 <code>escapeHTML</code> 转义 + 消息渲染用 <code>textContent</code>）、Worker 有限流和 KV 队列设计。</p>
+<p>发现的问题集中在三类：<strong>服务端健壮性（含 1 个可远程打挂服务的 P0）</strong>、<strong>构建脚本必然失败</strong>、<strong>游戏逻辑边界 bug</strong>。以下按优先级排列。</p>
+<hr>
+<h2>🔴 P0 — 必须立刻修（可远程致服务瘫痪）</h2>
+<h3>1. <code>server.js:84</code> — 单次请求即可打挂整个服务</h3>
+<p><code>decodeURIComponent</code> 未捕获 <code>URIError</code>。Node 在 http 回调里抛未捕获异常会直接终止进程。</p>
+<pre><code>const decoded = decodeURIComponent(urlPath.split(&quot;?&quot;)[0].split(&quot;#&quot;)[0]); // ← 无 try/catch</code></pre>
+<p><strong>触发</strong>：服务监听 <code>0.0.0.0</code>，任何人 <code>GET /%</code>（任意非法 <code>%</code> 序列）即可让全站下线，无需认证。 <strong>已实测复现</strong>。 <strong>修复</strong>：</p>
+<pre><code>let decoded;
+try { decoded = decodeURIComponent(urlPath.split(&quot;?&quot;)[0].split(&quot;#&quot;)[0]); }
+catch (e) { return null; }</code></pre>
+<hr>
+<h2>🟠 P1 — 高优先级（功能错误 / 构建失败 / 资源滥用）</h2>
+<h3>2. <code>desktop/windows/build.ps1:61-62</code>、<code>verify.ps1:26</code> — 打包脚本必然失败</h3>
+<p>脚本复制并校验 <code>使用说明.txt</code>，但该文件<strong>不在仓库中</strong>（只存在于已打包的 zip 里），而 <code>$ErrorActionPreference='Stop'</code> 会让 <code>Copy-Item</code> 报错即中止。<code>README.md:15</code> 还声称包里有它。 <strong>修复</strong>：把 <code>使用说明.txt</code> 加入版本控制，或在 <code>build.ps1</code> 里先生成。</p>
+<h3>3. <code>server.js:212</code> — 给 <code>const</code> 重新赋值，异常时二次崩溃</h3>
+<p>第 186 行 <code>const encoding = ...</code>，第 212 行 <code>catch { ... encoding = "identity"; }</code> 给 const 赋值会抛 <code>TypeError</code>。压缩一旦抛错，catch 内再次抛错且无人捕获，同样打挂进程。 <strong>修复</strong>：第 186 行改为 <code>let encoding</code>。</p>
+<h3>4. <code>serve.js:39</code> — 前缀比较绕过导致目录穿越（已实测复现）</h3>
+<p><code>filePath.startsWith(ROOT)</code> 只做字符串前缀判断，无目录分隔符边界。 <strong>触发</strong>：<code>/../naijiacun-main-evil/secret.txt</code> 解析后仍以 ROOT 字符串开头，可读取同前缀兄弟目录任意文件。 <strong>修复</strong>：<code>if (filePath !== ROOT &amp;&amp; !filePath.startsWith(ROOT + path.sep))</code>。</p>
+<h3>5. <code>server/tts-worker.js:228</code> <code>/api/chat</code> — 开放的 LLM 代理，可被无限白嫖</h3>
+<p><code>handleChat</code> 的 key 逻辑：<code>x-llm-key</code> 请求头 || <code>env.LLM_KEY</code>。访客不带 key 时直接用站长的 Key；且<strong>该端点没有任何配额限制</strong>（对比 <code>/api/sf-tts</code> 有 <code>bumpQuota</code>）。CORS 白名单只挡浏览器，服务端脚本可随意伪造 <code>Origin</code> 直连。 <strong>风险</strong>：任何人可无限调用消耗站长 LLM 额度。 <strong>修复</strong>：给 <code>/api/chat</code> 加与 SF TTS 相同的按 IP 限流；或去掉 <code>env.LLM_KEY</code> fallback，强制访客自带 key。</p>
+<h3>6. <code>js/kof.js:789-798</code> — 捕捉判定与 KO 不同步，输了也能判赢</h3>
+<p><code>tryCatch()</code> 的 <code>setTimeout(..., 420)</code> 回调只检查 <code>Fight.on</code>，不检查是否已 KO / 回合结束。 <strong>触发</strong>：敌人残血时投球，420ms 内被 KO，<code>endRound("capture")</code> 抢先执行，把失败判成收服成功并发奖励。 <strong>修复</strong>：回调加 <code>if (!Fight.on || phase !== "fight" || roundEnded) return;</code>，并在 <code>Fight.start/finish</code> 里 <code>clearTimeout</code>。</p>
+<h3>7. <code>js/game2d.js:5490-5519</code> — 钓鱼第 8 竿后可无限刷捕捉球</h3>
+<p>第 8 竿后仅用 <code>setTimeout(closeFishing, 900)</code> 延迟关闭，<code>fishing.on</code> 仍为 true，期间重复按键继续 <code>fishing.rods++</code> 且每次 <code>state.balls += 1</code>。 <strong>修复</strong>：函数开头加 <code>if (!fishing.on || fishing.rods &gt;= FISH_RODS) return;</code>，第 8 竿立即置 <code>fishing.on = false</code>。</p>
+<hr>
+<h2>🟡 P2 — 中优先级（内存泄漏 / 交互 bug / 死代码 / CI 安全）</h2>
+<table><thead><tr><th>#</th><th>位置</th><th>问题</th><th>触发/修复</th></tr></thead><tbody><tr><td>8</td><td><code>js/farm.js:308-354</code></td><td>作物 mesh 重建时几何体从不 <code>dispose()</code>，持续 GPU 内存泄漏</td><td>每次 nextDay/播种累积；remove 前 <code>mesh.traverse(o=&gt;o.geometry?.dispose())</code></td></tr><tr><td>9</td><td><code>js/game2d.js:5817-5820</code></td><td><code>startEncounter</code> 异常时 <code>encounterLock</code> 永久卡死</td><td><code>Fight.start</code> 抛错后本局再不遇怪；catch 中复位 <code>encounterLock=false; Fight.on=false</code></td></tr><tr><td>10</td><td><code>js/kof.js:590-593</code></td><td>后退减速判定用错变量（<code>keys.right</code> 而非实际输入 <code>dir</code>），左右不对称</td><td>传入 <code>dir</code> 用 <code>dir*f.facing&lt;0</code> 判断</td></tr><tr><td>11</td><td><code>js/gomoku.js:264-267</code></td><td><code>finish()</code> 定时器未保存/清理，可关闭新一局</td><td>1.25s 内重开会被旧 timer 关掉；存 <code>finishTimer</code>，<code>open/close</code> 时 <code>clearTimeout</code></td></tr><tr><td>12</td><td><code>js/game2d.js:3668-3675</code></td><td><code>closeOverlays()</code> 遗漏五子棋面板 <code>#go</code></td><td>下棋时按 Esc 无反应；补上 <code>Gomoku.close()</code></td></tr><tr><td>13</td><td><code>js/farm.js:479-482</code></td><td>工具栏键盘监听无状态判断</td><td>对话/战斗中按 1-5 仍切工具并播放音效；入口加 <code>if (Fight.on </code>`\</td><td>``\</td><td>dlg.open) return`</td></tr><tr><td>14</td><td><code>browser-extension/service-worker.js:28-32</code></td><td>缓存了 rejected Promise</td><td>一次取模型失败后永久不可用；缓存 Promise 挂 <code>.catch</code> 清除自身</td></tr><tr><td>15</td><td><code>serve.js:55</code></td><td><code>createReadStream</code> 无 <code>error</code> 监听</td><td>stat 后文件被删会崩进程；加 <code>.on("error",()=&gt;res.destroy())</code>（server.js:191 已正确处理，此处遗漏）</td></tr><tr><td>16</td><td><code>.github/workflows/pregen-audio.yml:36</code></td><td><code>workflow_dispatch</code> 输入直接拼进 shell</td><td>传入特制字符串可命令注入（job 有 <code>contents:write</code>）；改用 <code>env</code> 中转</td></tr><tr><td>17</td><td><code>.github/workflows/pregen-audio.yml:24,27,29</code></td><td><code>actions/*@v4</code> 可变 tag、Node 版本浮动</td><td>上游 tag 被重打可在 CI 执行任意代码；固定完整 commit SHA</td></tr><tr><td>18</td><td><code>js/kof.js:19-35,637-647</code></td><td>招式 <code>top/bot</code> 字段是死代码，<code>checkHit</code> 未使用</td><td>命中高度配置全部失效；接入判定或删除字段</td></tr><tr><td>19</td><td><code>js/kof.js:606</code></td><td><code>blockstun</code> 赋值后从未读取，格挡硬直无效</td><td>初始化并在 <code>stepFighter</code>/<code>canAct</code> 中使用，或删除</td></tr><tr><td>20</td><td><code>js/game2d.js:5837</code></td><td><code>state.balls = state.balls;</code> 无意义自赋值</td><td>删除</td></tr></tbody></table>
+<hr>
+<h2>✅ 做得好的地方</h2>
+<ul><li><strong>密钥管理</strong>：全部环境变量 / 访客浏览器 localStorage，无硬编码；Worker 明确不存第三方 secret</li><li><strong>XSS 防护</strong>：<code>escapeHTML</code> 统一转义，<code>data.js</code> 外部内容进 DOM 前均转义，聊天回复用 <code>textContent</code> 而非 <code>innerHTML</code></li><li><strong>服务端</strong>：<code>server.js:86</code> 有正确的路径边界校验（对比 <code>serve.js</code> 的缺陷），有 ETag/gzip/缓存策略</li><li><strong>限流设计</strong>：KV + 内存双层配额、提名队列频率限制、输入长度截断</li><li><strong>可维护性</strong>：模块职责清晰、有中文注释、有测试文件和 smoke 脚本</li></ul>
+<hr>
+<h2>建议修复顺序</h2>
+<ul><li><strong>立即</strong>：#1（P0 DoS）→ #3（const 崩溃）→ #2（构建失败）</li><li><strong>本迭代</strong>：#4、#5（服务端安全）→ #6、#7（玩法逻辑）</li><li><strong>后续</strong>：P2 列表，其中 #8 内存泄漏和 #16 CI 注入优先</li></ul>
+<p>需要的话，我可以直接帮你把 P0/P1 的问题逐个改好并验证。</p></main><footer><a href="%E5%A5%B6%E5%AE%B6%E6%9D%91-%E4%BB%A3%E7%A0%81%E5%AE%A1%E6%9F%A5%E6%8A%A5%E5%91%8A-20261118.md">下载 Markdown 原文</a> · 基线 commit 54eec4c</footer></div></body></html>

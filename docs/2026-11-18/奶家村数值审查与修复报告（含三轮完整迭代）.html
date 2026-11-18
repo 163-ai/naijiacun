@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>奶家村数值审查与修复报告（含三轮完整迭代）</title><style>
+*{box-sizing:border-box}
+body{margin:0;background:#f7f8fa;color:#24292f;font:15px/1.75 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
+.wrap{max-width:960px;margin:0 auto;padding:32px 24px 64px}
+header.top{margin-bottom:28px}
+a{color:#0969da;text-decoration:none}
+a:hover{text-decoration:underline}
+.crumb{font-size:13px;color:#57606a}
+h1{font-size:28px;line-height:1.35;margin:12px 0 4px;color:#1f2328}
+.sub{color:#57606a;font-size:13px}
+main{background:#fff;border:1px solid #d8dee4;border-radius:10px;padding:28px 32px}
+main h1{font-size:24px;border-bottom:1px solid #d8dee4;padding-bottom:10px}
+main h2{font-size:20px;margin-top:32px;border-bottom:1px solid #eaeef2;padding-bottom:8px}
+main h3{font-size:17px;margin-top:24px}
+main h4{font-size:15px;margin-top:20px}
+p{margin:10px 0}
+ul,ol{padding-left:24px}
+li{margin:4px 0}
+code{background:#f0f3f6;border-radius:4px;padding:2px 5px;font:13px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;color:#24292f}
+pre{background:#f6f8fa;border:1px solid #d8dee4;border-radius:8px;padding:14px 16px;overflow:auto}
+pre code{background:none;padding:0;font-size:12.5px;line-height:1.6}
+table{border-collapse:collapse;width:100%;margin:14px 0;font-size:14px}
+th,td{border:1px solid #d8dee4;padding:8px 10px;text-align:left}
+th{background:#f6f8fa;font-weight:600}
+hr{border:0;border-top:1px solid #d8dee4;margin:26px 0}
+footer{margin-top:22px;color:#57606a;font-size:13px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;margin:18px 0 34px}
+.card{display:block;background:#fff;border:1px solid #d8dee4;border-radius:9px;padding:14px 16px;transition:border-color .15s,box-shadow .15s}
+.card:hover{border-color:#0969da;box-shadow:0 2px 10px rgba(9,105,218,.12);text-decoration:none}
+.card .t{font-weight:600;color:#1f2328;margin-bottom:4px}
+.card .d{color:#57606a;font-size:12.5px}
+.sec{font-size:18px;font-weight:600;margin:34px 0 4px;color:#1f2328}
+.note{background:#fff8e5;border:1px solid #f0d998;border-radius:8px;padding:12px 16px;color:#4d3b00;font-size:13.5px;margin:18px 0}
+.list{background:#fff;border:1px solid #d8dee4;border-radius:10px;padding:8px 18px}
+.list a{display:flex;justify-content:space-between;gap:12px;padding:9px 4px;border-bottom:1px solid #eaeef2;font-size:14px}
+.list a:last-child{border-bottom:0}
+.list .sz{color:#57606a;font-size:12.5px;white-space:nowrap}
+@media(max-width:600px){.wrap{padding:20px 14px}main{padding:18px 16px}}
+</style></head>
+<body><div class="wrap"><header class="top">
+<a class="crumb" href="index.html">&larr; 返回 2026-11-18 交付目录</a>
+<h1>奶家村数值审查与修复报告（含三轮完整迭代）</h1><div class="sub">奶家村 · 资料库当日更新归档 · 2026-11-18</div></header>
+<main><h1>奶家村数值审查与修复报告（含三轮完整迭代）</h1>
+<h1>奶家村 · 小游戏数值审查与修复报告</h1>
+<p>&gt; 项目：naijiacun（奶家村大冒险，纯静态前端） &gt; 仓库：https://github.com/163-ai/naijiacun （main，基线 54eec4c） &gt; 审查范围：小游戏战斗数值 + 大世界数据 + 存档一致性 + 每日任务边界 + 玩法设计升级 &gt; 日期：2026-11-18 &gt; 迭代：第一轮（数值/公式）+ 第二轮（存档健壮性 / 刷钱漏洞）+ 第三轮（玩法设计升级）</p>
+<hr>
+<h2>一、结论先行</h2>
+<p>数值体系<strong>半成体系</strong>：有 4 个集中配置表（招式表 MOVES、怪物分布 ZONES、作物表 CROPS、瓦片表 TI），但成长公式与战斗系数原本散落在函数体内，无统一配置入口。</p>
+<p><strong>最严重问题</strong>：<code>atk</code>（攻击力）是死字段——被定义、存档、升级加点、传入战斗模块，但伤害公式从不读取它，属于"虚假成长"。</p>
+<p>本次修复后：<strong>战斗平衡数值完全不变</strong>（逐等级、逐系数验证差值为 0），但 atk 成为真实可调属性；经济、捕捉、后期成长三处平衡问题已修正；战斗/成长系数已集中为可配置块。</p>
+<hr>
+<h2>二、数值体系勘察</h2>
+<table><thead><tr><th>系统</th><th>配置位置</th><th>说明</th></tr></thead><tbody><tr><td>招式表</td><td><code>js/kof.js</code> MOVES</td><td>快拳/重拳/必杀，含伤害、判定帧、硬直、击退、气槽</td></tr><tr><td>怪物分布</td><td><code>js/game2d.js</code> ZONES</td><td>6 个区域权重表</td></tr><tr><td>作物表</td><td><code>js/farm.js</code> CROPS</td><td>萝卜/玉米/甜瓜</td></tr><tr><td>瓦片表</td><td><code>js/tiles.js</code> TI</td><td>13 种地面类型与通行规则</td></tr><tr><td>主存档</td><td><code>naijiacun_game_v2</code></td><td>角色等级/经验/HP/ATK 与大世界进度</td></tr><tr><td>战斗入口</td><td><code>Fight.start</code></td><td>唯一的对战调用点</td></tr></tbody></table>
+<p><strong>遭遇链路</strong>：高草丛内每走 6 米判定一次 → 26% 触发 → 按区域权重抽怪 → 敌人等级 = 玩家等级 ±1 → 拳皇式对战 → 胜/收服给经验、战败送回村口。</p>
+<hr>
+<h2>三、修复清单</h2>
+<h3>P0 · 致命问题</h3>
+<ul><li><strong>ATK 死字段修复</strong>（<code>js/kof.js</code>）</li><li>原公式：<code>dmg = mv.dmg * (1 + (lv-3)*.07)</code>，只认等级。</li><li>新公式：<code>dmg = mv.dmg * (1 + (a.atk - ATK_BASE) * DMG_PER_ATK)</code>，其中 <code>ATK_BASE=28</code>、<code>DMG_PER_ATK=.07/3</code>。</li><li>等价性：当 <code>atk = 28+(lv-3)*3</code> 时，新旧公式<strong>逐等级完全等价</strong>（Lv2\~30 最大差 0），现有平衡不变。</li><li>敌人 atk 由废弃的 <code>20+lv*4</code> 改为同曲线 <code>28+(lv-3)*3</code>。</li><li>老存档 atk 天然落在新曲线上，<strong>无需数据迁移</strong>。</li><li>收益：以后装备、道具、天赋改 atk 都会真实反映到伤害。</li><li><strong>升级提示漏报</strong>：补上"攻击 +3"。</li></ul>
+<h3>P1 · 平衡问题</h3>
+<ul><li><strong>后期失衡</strong>（<code>js/game2d.js</code>）：敌人等级上限 12 → 30。原封顶会让高等级玩家 3 秒秒杀满级怪，挑战归零。</li><li><strong>捕捉偏易</strong>（<code>js/kof.js</code>）：概率公式 <code>(1-r)*.82+.22 (max .95)</code> → <code>(1-r)*.70+.16 (max .88)</code>。</li><li>30% 血：79% → 65%；10% 血：95% → 79%。保留"残血更好抓"，不再近乎必中。</li><li><strong>作物经济梯度</strong>（<code>js/farm.js</code>）：售价 萝卜 44→48 / 玉米 78→76 / 甜瓜 132→118，甜瓜成本 55→60。</li><li>金/天/格：8.0 / 10.8 / 15.4 → <strong>9.3 / 10.3 / 11.6</strong>，温和递增。</li><li>缓解甜瓜严格支配低阶作物的问题；萝卜保留"3 天回笼资金、门槛低"的定位。</li></ul>
+<h3>明显 Bug</h3>
+<ul><li>删除 <code>js/game2d.js</code> 中 <code>state.balls = state.balls</code> 的无意义自赋值。</li></ul>
+<h3>P2 · 工程重构（本轮新增）</h3>
+<ul><li><strong>抽离战斗配置块</strong>（<code>js/kof.js</code>）：新增 <code>BALANCE</code> 对象，集中格挡减伤/硬直/击退、气槽上限与回气、连击窗口、命中顿帧、AI 决策参数、捕捉参数。所有抽离值与原值逐项校验一致。</li><li><strong>抽离成长配置块</strong>（<code>js/game2d.js</code>）：新增 <code>GROWTH</code> 对象，集中经验曲线、每级 HP/ATK 成长、敌人等级上限与 HP 公式、遭遇步长与概率、战斗经验奖励、战败恢复比例。</li><li><strong>消除命名冲突</strong>（<code>js/game2d.js</code>）：画面曝光字段 <code>exp</code> → <code>exposure</code>（STYLES 表、STYLE\_STATE、setLight），与经验值 <code>state.exp</code> 彻底区分，消除误读风险。</li><li><strong>缓存版本</strong>：<code>kof.js?v=57→58</code>、<code>game2d.js?v=87→88</code>，避免线上缓存导致模块导出不一致。</li></ul>
+<hr>
+<h2>四、验证结果</h2>
+<table><thead><tr><th>验证项</th><th>方法</th><th>结果</th></tr></thead><tbody><tr><td>语法检查</td><td>node --check（3 文件）</td><td>全部通过</td></tr><tr><td>战斗伤害等价</td><td>脚本逐等级比对 Lv2\~30</td><td>最大差 0，完全等价</td></tr><tr><td>BALANCE 系数等价</td><td>逐项比对 + AI 攻击欲望 Lv1\~30</td><td>全部通过，最大差 0</td></tr><tr><td>捕捉新概率</td><td>脚本复算</td><td>30%血 65% / 10%血 79%</td></tr><tr><td>作物新梯度</td><td>脚本复算</td><td>金/天 9.3 / 10.3 / 11.6</td></tr><tr><td>遗留引用检查</td><td>grep 旧魔数与旧字段名</td><td>无遗留</td></tr><tr><td>存档兼容</td><td>atk 曲线一致性</td><td>老档无需迁移</td></tr></tbody></table>
+<p>第一轮改动统计：4 个文件，108 行新增 / 51 行删除。</p>
+<p><strong>未覆盖</strong>：未做浏览器实机跑图。改动为纯数值与公式重构，静态验证已覆盖全部改动点；建议上线前真机回归一次"遭遇 → 战斗 → 捕捉 → 升级 → 种地"链路。</p>
+<hr>
+<h2>四·补、第二轮补充复查（存档健壮性 / 刷钱漏洞 / 每日任务）</h2>
+<p>第一轮聚焦战斗与成长数值。第二轮对存档、经济闭环、每日任务边界做补充复查，又发现 10 个问题。本轮修复其中 8 项（全部高危 + 中危 + 2 项低危），2 项低危记录为待办。</p>
+<h3>高危（已修）</h3>
+<ul><li><strong>竹笋刷新页面无限刷钱</strong>（<code>js/game2d.js</code>）：<code>shootQuest.day/got</code> 原本完全不入档，刷新页面后 day 复位、4 根笋重新露出，每根 +8 金可无限重复，外卖任务也重复计数。</li><li>修复：<code>shootQuest.day</code> 与每根 <code>got</code> 位写入存档、读档恢复；<code>refreshShoots()</code> 改为"跨天才有条件清空 got、可见性按当天种子确定性重算并保持 got"，读档后不会重刷。</li><li><strong>"重新开始"按钮实际在读档</strong>（<code>js/game2d.js:6501</code>）：原写法 <code>startGame(!btnContinue.dataset.has)</code>，有存档时 <code>has="1"</code> → 取反为 false → 走读档，玩家无法开新档。</li><li>修复：<code>btnStart</code> 恒传 <code>startGame(true)</code>；"继续"按钮独立走 <code>startGame(false)</code>。</li></ul>
+<h3>中危（已修）</h3>
+<ul><li><strong>钓鱼满竿后 900ms 刷钱</strong>（<code>js/game2d.js</code>）：到 8 竿至 <code>closeFishing</code> 之间有窗口可连续收竿，每次 +12 金且把 <code>fishRods</code> 写成 \&gt;8。</li><li>修复：<code>reelFish()</code> 开头硬拦 <code>if (fishing.rods &gt;= FISH_RODS) { closeFishing(); return; }</code>；<code>closeFishing()</code> 把 <code>fishRods</code> 归一到上限。</li><li><strong>Farm 存档无类型校验</strong>（<code>js/farm.js</code>）：坏档会把 <code>NaN</code>/负数带进经济循环，或让整档读取失败。</li><li>修复：新增 <code>_finite</code>/<code>_cropCounts</code>，所有数值字段做有限性校验 + clamp；种子/背包按 CROPS key 白名单重建；地块坐标越界丢弃、未知作物 key 当空地。</li><li><strong>存档缺版本号 + 拜访记录不入档</strong>（<code>js/game2d.js</code>）：<code>state.visitOn</code> 刷新即清，"每天首次聊天"可重复领；嵌套结构无迁移钩子。</li><li>修复：<code>visitOn</code> 入档并在读档/新档两处恢复与重置。（内部版本号字段本轮未加，见待办。）</li><li><strong>敌人 atk 基数写死 3 处</strong>（<code>js/game2d.js</code>）：玩家初始、读档兜底、敌人 atk 各自硬编码 28。</li><li>修复：新增共享常量 <code>ATK_BASE=28</code>，三处统一引用，与 <code>kof.js</code> 标定同源。</li></ul>
+<h3>低危（已修 2 项 / 待办 2 项）</h3>
+<ul><li><strong>赏金领取未落盘</strong>（已修，<code>js/game2d.js</code>）：<code>claimBounty()</code> 补 <code>save()</code>，异常退出不丢已领状态。</li><li><strong>存档失败静默吞掉</strong>（已修，<code>js/game2d.js</code>）：<code>save()</code> 的 catch 里加一次性节流提示。</li><li>五子棋结算定时器未在 close 清理（待办，无害残留定时器，<code>gomoku.js:264</code>）。</li><li>遭遇区世界坐标与高草视觉椭圆未对齐（待办，体验一致性，非数值问题）。</li></ul>
+<h3>第二轮验证</h3>
+<table><thead><tr><th>验证项</th><th>方法</th><th>结果</th></tr></thead><tbody><tr><td>语法检查</td><td>node --check（3 文件）</td><td>全部通过</td></tr><tr><td>竹笋防刷</td><td>模拟读档恢复 + 同日/跨天重进</td><td>已掰保持、不可重刷、跨天正常重置</td></tr><tr><td>钓鱼上限</td><td>模拟连点 20 次</td><td>rods=8、金币=96，不超限</td></tr><tr><td>坏档兜底</td><td>NaN/字符串/负数/超大数</td><td>全部正确回退或 clamp</td></tr><tr><td>atk 等价</td><td>全等级比对 Lv2\~40</td><td>最大差 0，平衡不变</td></tr><tr><td>版本号</td><td>检查遗留 v87/v88/无版本引用</td><td>game2d v89 / farm v2 / kof v58，无遗漏</td></tr><tr><td>综合回归脚本</td><td>13 项断言</td><td>13 通过 / 0 失败</td></tr></tbody></table>
+<p>两轮累计：4 个文件，188 行新增 / 73 行删除。</p>
+<hr>
+<h2>五、改动文件</h2>
+<ul><li><code>js/kof.js</code> — BALANCE 配置块、atk 伤害公式、捕捉概率、气槽引用</li><li><code>js/game2d.js</code> — GROWTH 配置块、敌人等级/atk、经验奖励、exposure 改名、ATK\_BASE 统一；第二轮：竹笋/拜访入档、重开按钮、钓鱼上限、存档失败提示、赏金落盘；第三轮：今日面板、成就系统、明星挑战、五子棋钩子</li><li><code>js/farm.js</code> — CROPS 经济梯度；第二轮：反序列化类型/范围校验</li><li><code>js/villagers.js</code> — 第三轮：悬赏表新增 chess 类型</li><li><code>css/game.css</code> — 第三轮：今日面板与成就卡片样式</li><li><code>game.html</code> — 今日面板 DOM、T 键提示、资源版本号（game2d v90 / css v21 / villagers v2 / farm v2 / kof v58）</li></ul>
+<hr>
+<h2>六、待办与建议</h2>
+<ul><li>改动目前在<strong>本地副本，未 commit、未 push</strong>，需 review 后自行提交上线。</li><li>建议下一步：真机回归测试；如后续加入装备/天赋系统，直接改 atk 即可影响伤害，无需再动战斗公式。</li><li>第二轮遗留低危：五子棋结算定时器清理（<code>gomoku.js:264</code>）；遭遇区坐标与高草视觉区统一（需统一配置源，涉及视觉与判定，留待下轮）。</li><li>存档内部版本号字段（<code>version</code>）本轮未加——当前 SAVE\_KEY 已带 v2 且标量字段有 <code>??</code> 兜底；若未来改动嵌套结构（troupe/courier/captured），应先加 version 分支再迁移。</li></ul>
+<hr>
+<h2>七、第三轮 · 玩法设计升级</h2>
+<h3>设计诊断</h3>
+<p>对玩法结构做全面梳理后，结论是：<strong>日常循环扎实，长期循环断裂</strong>。</p>
+<ul><li><strong>优势</strong>：所有小游戏产出（种田/钓鱼/竹笋/唱戏/对战/戏班）汇入 <code>Farm.gold</code>/<code>state.balls</code>/<code>grantExp()</code> 三个通用出口，再用 <code>questProgress()</code>/<code>courierProgress()</code> 两个钩子把底层动作复用到多套每日任务，系统复用率极高。</li><li><strong>结构性问题</strong>：成长只有产出无消耗（升级只加 HP/ATK、玩家等级无上限），终局只有图鉴 8/8 的一个称号；且 <code>pouches</code>/<code>steps</code>/<code>arenaWins</code> 等累计数据写入存档后全代码无人读取，五子棋首胜拿一次经验后成孤岛；玩家缺少"今天该干什么"的目标面板。</li></ul>
+<h3>本轮落地（用户选"低成本组合"）</h3>
+<ul><li><strong>今日任务面板</strong>（<code>game.html</code> + <code>game2d.js</code> + <code>css/game.css</code>）</li><li>HUD 新增「今日」按钮（T 键），红点提示有可领奖励。</li><li><code>dailyQuestCards()</code> 统一生成悬赏/驿务/戏班/外卖四套每日任务卡片，展示目标、进度条、报酬、完成状态。</li><li>新增成就页签，<code>buildToday()</code> 渲染，支持领取交互。</li><li><strong>成就/里程碑系统</strong>（<code>game2d.js</code>）</li><li><code>ACHIEVEMENTS</code> 12 项成就，专门消费原本"只存不用"的死数据：步数（1000/5000）、外卖次数（3/15）、擂台胜场（3/15）、钓鱼累计（20，新增 <code>state.fishCaught</code> 计数）、收服数（5）、等级（10/20）、图鉴（8）、明星挑战胜场（5，新增 <code>state.starWins</code>）。</li><li>达成后边沿检测 toast 提示一次；手动领奖，奖励金币/球/经验。</li><li><code>achievements</code>/<code>starChallenge</code>/<code>fishCaught</code>/<code>starWins</code> 全部入档并有老档兜底。</li><li><strong>五子棋接入每日循环</strong>（<code>game2d.js</code> + <code>villagers.js</code>）</li><li>悬赏表新增第 4 种 <code>chess</code>（陪棋爷下棋）；驿务委托也新增 chess 类。</li><li><code>qiyetLose()</code> 胜利时调用 <code>questProgress("chess")</code> + <code>courierProgress("chess")</code>，首胜经验保留。五子棋从孤岛上移除。</li><li><strong>图鉴集齐解锁明星挑战</strong>（<code>game2d.js</code>）</li><li>图鉴 8/8 后，图鉴面板出现「明星挑战」：每天一场，对手等级 = 玩家 +8（上限同步 +8），复用现有 <code>startEncounter</code>/<code>Fight</code> 战斗，无需新战斗系统。</li><li>胜利奖励 <code>150 + lv*4</code> 金 + 2 球，计入 <code>starWins</code> 与当日完成标记，不能重复刷。</li><li><code>startEncounter</code> 新增可选 <code>opts.lvBonus</code>/<code>opts.enemyName</code>，不改原有遭遇逻辑。</li></ul>
+<h3>第三轮验证</h3>
+<ul><li>5 个 JS 文件 <code>node --check</code> 全部通过。</li><li>21 项逻辑回归断言全部通过：成就达成判定、悬赏 4 天轮换（老档第 1 天仍是 harvest）、五子棋钩子 kind 匹配、明星挑战等级与上限、存档新字段兜底。</li><li>所有新增 DOM 元素均有对应 JS 引用，无重复函数定义。</li><li>版本号：game2d v90 / css v21 / villagers v2 / farm v2 / kof v58。</li></ul>
+<p>三轮累计：6 个文件（含 css 与 villagers），495 行新增 / 81 行删除。</p>
+<p><strong>遗留机制性建议（本轮未做，需重新平衡）</strong>：给经验一个真正的消耗出口（等级上限 + 突破/天赋系统），解决后期碾压与终局空洞——这属于长线成长重构，建议单独排期。</p></main><footer><a href="%E5%A5%B6%E5%AE%B6%E6%9D%91%E6%95%B0%E5%80%BC%E5%AE%A1%E6%9F%A5%E4%B8%8E%E4%BF%AE%E5%A4%8D%E6%8A%A5%E5%91%8A%EF%BC%88%E5%90%AB%E4%B8%89%E8%BD%AE%E5%AE%8C%E6%95%B4%E8%BF%AD%E4%BB%A3%EF%BC%89.md">下载 Markdown 原文</a> · 基线 commit 54eec4c</footer></div></body></html>

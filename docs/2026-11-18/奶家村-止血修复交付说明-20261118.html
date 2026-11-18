@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>奶家村-止血修复交付说明-20261118</title><style>
+*{box-sizing:border-box}
+body{margin:0;background:#f7f8fa;color:#24292f;font:15px/1.75 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
+.wrap{max-width:960px;margin:0 auto;padding:32px 24px 64px}
+header.top{margin-bottom:28px}
+a{color:#0969da;text-decoration:none}
+a:hover{text-decoration:underline}
+.crumb{font-size:13px;color:#57606a}
+h1{font-size:28px;line-height:1.35;margin:12px 0 4px;color:#1f2328}
+.sub{color:#57606a;font-size:13px}
+main{background:#fff;border:1px solid #d8dee4;border-radius:10px;padding:28px 32px}
+main h1{font-size:24px;border-bottom:1px solid #d8dee4;padding-bottom:10px}
+main h2{font-size:20px;margin-top:32px;border-bottom:1px solid #eaeef2;padding-bottom:8px}
+main h3{font-size:17px;margin-top:24px}
+main h4{font-size:15px;margin-top:20px}
+p{margin:10px 0}
+ul,ol{padding-left:24px}
+li{margin:4px 0}
+code{background:#f0f3f6;border-radius:4px;padding:2px 5px;font:13px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;color:#24292f}
+pre{background:#f6f8fa;border:1px solid #d8dee4;border-radius:8px;padding:14px 16px;overflow:auto}
+pre code{background:none;padding:0;font-size:12.5px;line-height:1.6}
+table{border-collapse:collapse;width:100%;margin:14px 0;font-size:14px}
+th,td{border:1px solid #d8dee4;padding:8px 10px;text-align:left}
+th{background:#f6f8fa;font-weight:600}
+hr{border:0;border-top:1px solid #d8dee4;margin:26px 0}
+footer{margin-top:22px;color:#57606a;font-size:13px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;margin:18px 0 34px}
+.card{display:block;background:#fff;border:1px solid #d8dee4;border-radius:9px;padding:14px 16px;transition:border-color .15s,box-shadow .15s}
+.card:hover{border-color:#0969da;box-shadow:0 2px 10px rgba(9,105,218,.12);text-decoration:none}
+.card .t{font-weight:600;color:#1f2328;margin-bottom:4px}
+.card .d{color:#57606a;font-size:12.5px}
+.sec{font-size:18px;font-weight:600;margin:34px 0 4px;color:#1f2328}
+.note{background:#fff8e5;border:1px solid #f0d998;border-radius:8px;padding:12px 16px;color:#4d3b00;font-size:13.5px;margin:18px 0}
+.list{background:#fff;border:1px solid #d8dee4;border-radius:10px;padding:8px 18px}
+.list a{display:flex;justify-content:space-between;gap:12px;padding:9px 4px;border-bottom:1px solid #eaeef2;font-size:14px}
+.list a:last-child{border-bottom:0}
+.list .sz{color:#57606a;font-size:12.5px;white-space:nowrap}
+@media(max-width:600px){.wrap{padding:20px 14px}main{padding:18px 16px}}
+</style></head>
+<body><div class="wrap"><header class="top">
+<a class="crumb" href="index.html">&larr; 返回 2026-11-18 交付目录</a>
+<h1>奶家村-止血修复交付说明-20261118</h1><div class="sub">奶家村 · 资料库当日更新归档 · 2026-11-18</div></header>
+<main><h1>奶家村-止血修复交付说明-20261118</h1>
+<h1>奶家村 · 止血修复交付说明（2026-11-18）</h1>
+<h2>本轮做了什么</h2>
+<p>按"先止血"的默认范围，把资料库 5 份报告里<strong>已确诊、修法明确、低风险</strong>的服务端 P0/P1 与游戏逻辑 bug 落地。基线用的是 GitHub main（本地 clone），<strong>只改本地、未 commit、未 push</strong>。</p>
+<h2>已实现并验证（逐项）</h2>
+<table><thead><tr><th>#</th><th>修复</th><th>文件</th><th>验证方式</th><th>结果</th></tr></thead><tbody><tr><td>1</td><td>P0：<code>decodeURIComponent</code> 无 try/catch，单请求打挂全站</td><td><code>server.js:83</code></td><td>起真实服务，<code>curl /%%</code></td><td>✅ 返回 400，随即请求正常页 200，进程存活</td></tr><tr><td>2</td><td>P1：给 <code>const encoding</code> 重新赋值，压缩异常时二次崩溃</td><td><code>server.js:188</code></td><td><code>node --check</code> + 代码走查</td><td>✅ 改为 let，语法通过</td></tr><tr><td>3</td><td>P1：目录穿越（前缀比较可绕过）</td><td><code>serve.js:38</code></td><td><code>curl --path-as-is /../naijiacun-evil/secret.txt</code></td><td>✅ 返回 400/403，被挡</td></tr><tr><td>4</td><td>P1：钓鱼第 8 竿 900ms 窗口重复收竿刷钱刷球</td><td><code>js/game2d.js:5491</code></td><td>逻辑走查 + 语法检查</td><td>✅ 满竿硬拦并立即关窗</td></tr><tr><td>5</td><td>P1：<code>atk</code> 虚假成长（升级 +3 攻击从不生效）</td><td><code>js/kof.js:16,605</code> + <code>js/game2d.js:5811</code></td><td>逐等级数学验证 2–30 级 + 3 招式伤害</td><td>✅ 差值 ≤7e-15（浮点误差），战斗平衡<strong>完全不变</strong></td></tr><tr><td>6</td><td>P1：捕捉判定与 KO 不同步（输了也能判赢）</td><td><code>js/kof.js:69,299,799,865</code></td><td>逻辑走查 + 扩展测试 7/7</td><td>✅ 加 phase/roundEnded 守卫 + timer 清理</td></tr><tr><td>7</td><td>缓存版本：v87→88 / v57→58</td><td><code>game.html:20,23,384</code></td><td>grep 核对</td><td>✅ 三处全改，避免线上缓存不生效</td></tr></tbody></table>
+<p><strong>配套验证汇总</strong>：</p>
+<ul><li>所有改动 JS <code>node --check</code>：4/4 通过</li><li>真实 HTTP 实测：<code>/</code> <code>/index.html</code> <code>/js/game2d.js</code> <code>/css/village.css</code> <code>/api/group-videos</code> 全部 200</li><li>浏览器扩展 <code>npm test</code>：7/7 通过</li><li>atk 等价性：等级 2–30 + 三招式，最大差值 7.1e-15（等价）</li></ul>
+<h2>已验证但本轮未改（需你确认或真机复现）</h2>
+<ul><li><strong>LLM 代理 </strong><code>/api/chat</code><strong> 无配额</strong>：报告标注线上代理在仓库外（WorkBuddy 托管），本仓库 <code>server/</code> 只有 2 个文件，无法核对是否已加限流。需你确认线上状态。</li><li><strong>atk 改动未做浏览器实机跑图</strong>：数学等价已严格验证，但"遭遇→战斗→捕捉→升级→种地"整条链路建议上线前真机回归一次（我这边没有浏览器实机环境）。</li><li><strong>戏班任务同一天双领唱戏赏钱</strong>、<strong>dayFlags 只增不删导致存档膨胀</strong>、<strong>重新开始带入旧任务状态</strong>：这三项属每日任务/存档系统，报告归为 P1/P2，修它们要动核心 <code>day</code> 刷新逻辑（系统层），本轮"止血"范围未含，建议放到下一轮和系统调优一起做。</li></ul>
+<h2>未实现（属于后续两层，本轮明确不做）</h2>
+<ul><li>结构缝合：game/group 接入公共导航、清孤儿页 extension.html、死代码 pet-extension-bridge.js、外观层收敛、村民数据源统一。</li><li>系统调优：经济 sink（金币通胀、捕捉球过剩）、统一"新的一天"处理器、体力恢复链重审。</li></ul>
+<h2>生效前还差的步骤</h2>
+<ul><li><strong>选基线</strong>：本补丁基于 GitHub main 裸基线。你资料库报告说修复在"本地副本未 push"——若那份本地副本就是你线上在用的，直接套这个补丁会重复改同一处。请先确认线上到底用哪份。</li><li>确认后：把 5 个文件的改动 merge 进你的生产代码（补丁见 <code>奶家村-止血补丁.patch</code>），或我直接在指定路径上重做。</li><li>部署：改了 <code>server.js</code> / <code>serve.js</code> 需<strong>重启 Node 服务</strong>才生效；<code>game.html</code> 版本号 +1 后浏览器强刷即可拿到新 JS。</li><li>上线前真机回归一次"遭遇→战斗→捕捉→升级→种地"链路。</li></ul>
+<h2>改动文件清单</h2>
+<p><code>game.html</code>、<code>js/game2d.js</code>、<code>js/kof.js</code>、<code>serve.js</code>、<code>server.js</code>（5 个文件，+30 / −11 行）</p></main><footer><a href="%E5%A5%B6%E5%AE%B6%E6%9D%91-%E6%AD%A2%E8%A1%80%E4%BF%AE%E5%A4%8D%E4%BA%A4%E4%BB%98%E8%AF%B4%E6%98%8E-20261118.md">下载 Markdown 原文</a> · 基线 commit 54eec4c</footer></div></body></html>

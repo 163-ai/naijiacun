@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>奶家村小游戏数值审查与修复报告</title><style>
+*{box-sizing:border-box}
+body{margin:0;background:#f7f8fa;color:#24292f;font:15px/1.75 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
+.wrap{max-width:960px;margin:0 auto;padding:32px 24px 64px}
+header.top{margin-bottom:28px}
+a{color:#0969da;text-decoration:none}
+a:hover{text-decoration:underline}
+.crumb{font-size:13px;color:#57606a}
+h1{font-size:28px;line-height:1.35;margin:12px 0 4px;color:#1f2328}
+.sub{color:#57606a;font-size:13px}
+main{background:#fff;border:1px solid #d8dee4;border-radius:10px;padding:28px 32px}
+main h1{font-size:24px;border-bottom:1px solid #d8dee4;padding-bottom:10px}
+main h2{font-size:20px;margin-top:32px;border-bottom:1px solid #eaeef2;padding-bottom:8px}
+main h3{font-size:17px;margin-top:24px}
+main h4{font-size:15px;margin-top:20px}
+p{margin:10px 0}
+ul,ol{padding-left:24px}
+li{margin:4px 0}
+code{background:#f0f3f6;border-radius:4px;padding:2px 5px;font:13px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;color:#24292f}
+pre{background:#f6f8fa;border:1px solid #d8dee4;border-radius:8px;padding:14px 16px;overflow:auto}
+pre code{background:none;padding:0;font-size:12.5px;line-height:1.6}
+table{border-collapse:collapse;width:100%;margin:14px 0;font-size:14px}
+th,td{border:1px solid #d8dee4;padding:8px 10px;text-align:left}
+th{background:#f6f8fa;font-weight:600}
+hr{border:0;border-top:1px solid #d8dee4;margin:26px 0}
+footer{margin-top:22px;color:#57606a;font-size:13px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;margin:18px 0 34px}
+.card{display:block;background:#fff;border:1px solid #d8dee4;border-radius:9px;padding:14px 16px;transition:border-color .15s,box-shadow .15s}
+.card:hover{border-color:#0969da;box-shadow:0 2px 10px rgba(9,105,218,.12);text-decoration:none}
+.card .t{font-weight:600;color:#1f2328;margin-bottom:4px}
+.card .d{color:#57606a;font-size:12.5px}
+.sec{font-size:18px;font-weight:600;margin:34px 0 4px;color:#1f2328}
+.note{background:#fff8e5;border:1px solid #f0d998;border-radius:8px;padding:12px 16px;color:#4d3b00;font-size:13.5px;margin:18px 0}
+.list{background:#fff;border:1px solid #d8dee4;border-radius:10px;padding:8px 18px}
+.list a{display:flex;justify-content:space-between;gap:12px;padding:9px 4px;border-bottom:1px solid #eaeef2;font-size:14px}
+.list a:last-child{border-bottom:0}
+.list .sz{color:#57606a;font-size:12.5px;white-space:nowrap}
+@media(max-width:600px){.wrap{padding:20px 14px}main{padding:18px 16px}}
+</style></head>
+<body><div class="wrap"><header class="top">
+<a class="crumb" href="index.html">&larr; 返回 2026-11-18 交付目录</a>
+<h1>奶家村小游戏数值审查与修复报告</h1><div class="sub">奶家村 · 资料库当日更新归档 · 2026-11-18</div></header>
+<main><h1>奶家村小游戏数值审查与修复报告</h1>
+<h1>奶家村 · 小游戏数值审查与修复报告</h1>
+<p>&gt; 项目：naijiacun（奶家村大冒险，纯静态前端） &gt; 仓库：https://github.com/163-ai/naijiacun （main，基线 54eec4c） &gt; 审查范围：小游戏战斗数值 + 大世界数据 &gt; 日期：2026-11-18</p>
+<hr>
+<h2>一、结论先行</h2>
+<p>数值体系<strong>半成体系</strong>：有 4 个集中配置表（招式表 MOVES、怪物分布 ZONES、作物表 CROPS、瓦片表 TI），但成长公式与战斗系数原本散落在函数体内，无统一配置入口。</p>
+<p><strong>最严重问题</strong>：<code>atk</code>（攻击力）是死字段——被定义、存档、升级加点、传入战斗模块，但伤害公式从不读取它，属于"虚假成长"。</p>
+<p>本次修复后：<strong>战斗平衡数值完全不变</strong>（逐等级、逐系数验证差值为 0），但 atk 成为真实可调属性；经济、捕捉、后期成长三处平衡问题已修正；战斗/成长系数已集中为可配置块。</p>
+<hr>
+<h2>二、数值体系勘察</h2>
+<table><thead><tr><th>系统</th><th>配置位置</th><th>说明</th></tr></thead><tbody><tr><td>招式表</td><td><code>js/kof.js</code> MOVES</td><td>快拳/重拳/必杀，含伤害、判定帧、硬直、击退、气槽</td></tr><tr><td>怪物分布</td><td><code>js/game2d.js</code> ZONES</td><td>6 个区域权重表</td></tr><tr><td>作物表</td><td><code>js/farm.js</code> CROPS</td><td>萝卜/玉米/甜瓜</td></tr><tr><td>瓦片表</td><td><code>js/tiles.js</code> TI</td><td>13 种地面类型与通行规则</td></tr><tr><td>主存档</td><td><code>naijiacun_game_v2</code></td><td>角色等级/经验/HP/ATK 与大世界进度</td></tr><tr><td>战斗入口</td><td><code>Fight.start</code></td><td>唯一的对战调用点</td></tr></tbody></table>
+<p><strong>遭遇链路</strong>：高草丛内每走 6 米判定一次 → 26% 触发 → 按区域权重抽怪 → 敌人等级 = 玩家等级 ±1 → 拳皇式对战 → 胜/收服给经验、战败送回村口。</p>
+<hr>
+<h2>三、修复清单</h2>
+<h3>P0 · 致命问题</h3>
+<ul><li><strong>ATK 死字段修复</strong>（<code>js/kof.js</code>）</li><li>原公式：<code>dmg = mv.dmg * (1 + (lv-3)*.07)</code>，只认等级。</li><li>新公式：<code>dmg = mv.dmg * (1 + (a.atk - ATK_BASE) * DMG_PER_ATK)</code>，其中 <code>ATK_BASE=28</code>、<code>DMG_PER_ATK=.07/3</code>。</li><li>等价性：当 <code>atk = 28+(lv-3)*3</code> 时，新旧公式<strong>逐等级完全等价</strong>（Lv2\~30 最大差 0），现有平衡不变。</li><li>敌人 atk 由废弃的 <code>20+lv*4</code> 改为同曲线 <code>28+(lv-3)*3</code>。</li><li>老存档 atk 天然落在新曲线上，<strong>无需数据迁移</strong>。</li><li>收益：以后装备、道具、天赋改 atk 都会真实反映到伤害。</li><li><strong>升级提示漏报</strong>：补上"攻击 +3"。</li></ul>
+<h3>P1 · 平衡问题</h3>
+<ul><li><strong>后期失衡</strong>（<code>js/game2d.js</code>）：敌人等级上限 12 → 30。原封顶会让高等级玩家 3 秒秒杀满级怪，挑战归零。</li><li><strong>捕捉偏易</strong>（<code>js/kof.js</code>）：概率公式 <code>(1-r)*.82+.22 (max .95)</code> → <code>(1-r)*.70+.16 (max .88)</code>。</li><li>30% 血：79% → 65%；10% 血：95% → 79%。保留"残血更好抓"，不再近乎必中。</li><li><strong>作物经济梯度</strong>（<code>js/farm.js</code>）：售价 萝卜 44→48 / 玉米 78→76 / 甜瓜 132→118，甜瓜成本 55→60。</li><li>金/天/格：8.0 / 10.8 / 15.4 → <strong>9.3 / 10.3 / 11.6</strong>，温和递增。</li><li>缓解甜瓜严格支配低阶作物的问题；萝卜保留"3 天回笼资金、门槛低"的定位。</li></ul>
+<h3>明显 Bug</h3>
+<ul><li>删除 <code>js/game2d.js</code> 中 <code>state.balls = state.balls</code> 的无意义自赋值。</li></ul>
+<h3>P2 · 工程重构（本轮新增）</h3>
+<ul><li><strong>抽离战斗配置块</strong>（<code>js/kof.js</code>）：新增 <code>BALANCE</code> 对象，集中格挡减伤/硬直/击退、气槽上限与回气、连击窗口、命中顿帧、AI 决策参数、捕捉参数。所有抽离值与原值逐项校验一致。</li><li><strong>抽离成长配置块</strong>（<code>js/game2d.js</code>）：新增 <code>GROWTH</code> 对象，集中经验曲线、每级 HP/ATK 成长、敌人等级上限与 HP 公式、遭遇步长与概率、战斗经验奖励、战败恢复比例。</li><li><strong>消除命名冲突</strong>（<code>js/game2d.js</code>）：画面曝光字段 <code>exp</code> → <code>exposure</code>（STYLES 表、STYLE\_STATE、setLight），与经验值 <code>state.exp</code> 彻底区分，消除误读风险。</li><li><strong>缓存版本</strong>：<code>kof.js?v=57→58</code>、<code>game2d.js?v=87→88</code>，避免线上缓存导致模块导出不一致。</li></ul>
+<hr>
+<h2>四、验证结果</h2>
+<table><thead><tr><th>验证项</th><th>方法</th><th>结果</th></tr></thead><tbody><tr><td>语法检查</td><td>node --check（3 文件）</td><td>全部通过</td></tr><tr><td>战斗伤害等价</td><td>脚本逐等级比对 Lv2\~30</td><td>最大差 0，完全等价</td></tr><tr><td>BALANCE 系数等价</td><td>逐项比对 + AI 攻击欲望 Lv1\~30</td><td>全部通过，最大差 0</td></tr><tr><td>捕捉新概率</td><td>脚本复算</td><td>30%血 65% / 10%血 79%</td></tr><tr><td>作物新梯度</td><td>脚本复算</td><td>金/天 9.3 / 10.3 / 11.6</td></tr><tr><td>遗留引用检查</td><td>grep 旧魔数与旧字段名</td><td>无遗留</td></tr><tr><td>存档兼容</td><td>atk 曲线一致性</td><td>老档无需迁移</td></tr></tbody></table>
+<p>改动统计：4 个文件，108 行新增 / 51 行删除。</p>
+<p><strong>未覆盖</strong>：未做浏览器实机跑图。改动为纯数值与公式重构，静态验证已覆盖全部改动点；建议上线前真机回归一次"遭遇 → 战斗 → 捕捉 → 升级 → 种地"链路。</p>
+<hr>
+<h2>五、改动文件</h2>
+<ul><li><code>js/kof.js</code> — BALANCE 配置块、atk 伤害公式、捕捉概率、气槽引用</li><li><code>js/game2d.js</code> — GROWTH 配置块、敌人等级/atk、经验奖励、exposure 改名、bug 修复</li><li><code>js/farm.js</code> — CROPS 经济梯度</li><li><code>game.html</code> — 资源版本号</li></ul>
+<hr>
+<h2>六、待办与建议</h2>
+<ul><li>改动目前在<strong>本地副本，未 commit、未 push</strong>，需 review 后自行提交上线。</li><li>建议下一步：真机回归测试；如后续加入装备/天赋系统，直接改 atk 即可影响伤害，无需再动战斗公式。</li></ul></main><footer><a href="%E5%A5%B6%E5%AE%B6%E6%9D%91%E5%B0%8F%E6%B8%B8%E6%88%8F%E6%95%B0%E5%80%BC%E5%AE%A1%E6%9F%A5%E4%B8%8E%E4%BF%AE%E5%A4%8D%E6%8A%A5%E5%91%8A.md">下载 Markdown 原文</a> · 基线 commit 54eec4c</footer></div></body></html>
