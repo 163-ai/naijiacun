@@ -921,7 +921,7 @@ function buildFar() {
   land.position.y = -2.8;
   farGroup.add(land);
   // 地图外的远草地也铺手绘草皮：贴图自带绿色，color 提白避免双重染色
-  texMap("grass.png", landMat, 60, 60);
+  texMap("grass.webp", landMat, 60, 60);
 
   const r = mulberry(20261117);
 
@@ -1052,7 +1052,7 @@ function texMap(file, mat, rx = 1, ry = 1, keepTint = false) {
 }
 
 const trunkMat = new T.MeshStandardMaterial({ color: 0x7d5a3c, roughness: 1 });
-texMap("bark.png", trunkMat, 1, 2);     // 树皮纹理：贴图自带棕色，color 提白
+texMap("bark.webp", trunkMat, 1, 2);     // 树皮纹理：贴图自带棕色，color 提白
 // 明暗两套叶色交错堆叠，低多边形也能有星露谷那种蓬松的层次感
 const leafMatA = new T.MeshStandardMaterial({ color: 0x6fae66, roughness: .92, flatShading: true });
 const leafMatB = new T.MeshStandardMaterial({ color: 0x4e8f57, roughness: .94, flatShading: true });
@@ -1145,7 +1145,7 @@ function addRock(x, z, parent = world) {
 function addFence(x, z, len, horiz) {
   const g = new T.Group();
   const mat = new T.MeshStandardMaterial({ color: 0xd8c39c, roughness: .9 });
-  texMap("wood.png", mat, 1, 1, true);   // 栅栏也披上木板纹理（保留浅木 tint）
+  texMap("wood.webp", mat, 1, 1, true);   // 栅栏也披上木板纹理（保留浅木 tint）
   for (let i = 0; i < len; i++) {
     const p = new T.Mesh(new T.BoxGeometry(.12, .8, .12), mat);
     p.position.set(horiz ? i * TILE : 0, .4, horiz ? 0 : i * TILE);
@@ -1217,7 +1217,7 @@ function addHouse(x, z, w, d, bodyColor, roofColor, rot = 0, parent = world, sty
 
   // 主墙体（国风时转粉墙）
   const bodyMat = new T.MeshStandardMaterial({ color: bodyColor, roughness: .92 });
-  texMap("wall.png", bodyMat, 1.6, 1.2, true);   // 灰度抹灰墙纹理，靠 bodyColor tint 出各色房子
+  texMap("wall.webp", bodyMat, 1.6, 1.2, true);   // 灰度抹灰墙纹理，靠 bodyColor tint 出各色房子
   themeTints.push({ mat: bodyMat, base: new T.Color(bodyColor), guofeng: new T.Color(0xf3efe2) });
   box(new T.BoxGeometry(w, H, d), bodyMat, 0, H / 2, 0, true);
 
@@ -1239,7 +1239,7 @@ function addHouse(x, z, w, d, bodyColor, roofColor, rot = 0, parent = world, sty
   const slopeLen = Math.hypot(d / 2 + overhang, roofH); // 斜板长度（沿 d 方向倾斜）
   const tilt = Math.atan2(roofH, d / 2 + overhang);      // 倾角
   const roofMat = new T.MeshStandardMaterial({ color: roofColor, roughness: .9, flatShading: true });
-  texMap("roof.png", roofMat, 3, 2, true);       // 灰度鱼鳞瓦纹理，靠 roofColor tint
+  texMap("roof.webp", roofMat, 3, 2, true);       // 灰度鱼鳞瓦纹理，靠 roofColor tint
   // 黛瓦：国风时屋顶转青灰瓦色（保留瓦纹贴图）
   const tileColor = new T.Color(roofColor);
   const tileGuo = new T.Color(0x4a5c5b);
@@ -1402,8 +1402,8 @@ const lampGlasses = [];      // 晚上要点亮的灯罩
 const woodMat = new T.MeshStandardMaterial({ color: 0xd8b58c, roughness: .95 });
 const darkWood = new T.MeshStandardMaterial({ color: 0x8a6540, roughness: .95 });
 // 木板纹理 tint 到浅/深两种木色：贴图提底色、材质 color 出深浅对比
-texMap("wood.png", woodMat, 1.4, 1, true);
-texMap("wood.png", darkWood, 1, 1, true);
+texMap("wood.webp", woodMat, 1.4, 1, true);
+texMap("wood.webp", darkWood, 1, 1, true);
 const stoneMat = new T.MeshStandardMaterial({ color: 0x9d9b90, roughness: 1, flatShading: true });
 
 function addWell(x, z, parent = world) {
@@ -2733,17 +2733,34 @@ function queueModelRetry(key, delay = 4000) {
 }
 
 
+// v87：把一组 NPC 的 GLB 先并行拉起来。之前在循环里一个个 await，
+// 6 个模型排队串行下载，村里人齐要 5 秒；现在网络层同时开跑，
+// rig 仍按到达顺序搭（谁先到谁先出场）
+function prewarmModels(defs) {
+  for (const def of defs) {
+    if (def.rig) continue;                    // oldman / troupemaster 用几何拼，不占模型
+    const c = CAST[def.char], e = c && PACK[def.char];
+    if (!c || !c.model || !e) continue;
+    ensureSrc(def.char, e).catch(err => console.warn("[game] 预取模型失败：" + def.char, err));
+  }
+}
+
 // 共享只读的 glTF 源场景：每个角色只加载一次文件。
 // 角色 rig 每次都用 createPetMotion 现建——跟展台/桌宠同一条管线。
 // 之前走 cloneSkinned 克隆蒙皮骨架，boneInverses 对不上克隆的世界矩阵，
 // 骨骼动画整体失效，网格还被拧翻（角色一直倒置渲染，躺下才露馅）。
 const srcScenes = new Map();        // key -> gltf.scene
-async function ensureSrc(key, entry) {
-  if (!srcScenes.has(key)) {
-    const gltf = await gltfLoader.loadAsync(entry.file);
-    srcScenes.set(key, gltf.scene);
+const srcLoading = new Map();       // key -> Promise：下载进行中，保证同一文件只拉一次
+function ensureSrc(key, entry) {
+  if (!srcLoading.has(key)) {
+    srcLoading.set(key, gltfLoader.loadAsync(entry.file).then(g => {
+      srcScenes.set(key, g.scene);
+    }).catch(err => {
+      srcLoading.delete(key);   // 失败允许下次重试
+      throw err;
+    }));
   }
-  return srcScenes.get(key);
+  return srcLoading.get(key);
 }
 
 function buildRig(key, c, entry) {
@@ -3819,7 +3836,9 @@ function npcDefObj(def, mapKey, x, z) {
 }
 
 async function spawnVillageNpcs() {
-  for (const def of NPCS) {
+  prewarmModels(NPCS);   // 并行开拉，下面循环里谁先到谁先出场
+  for (let i = 0; i < NPCS.length; i++) {
+    const def = NPCS[i];
     try {
       // 棋爷没有现成模型，用几何体现拼；其他人还是仓库里的 GLB
       const obj = def.rig === "oldman" ? makeOldMan() : await getActor(def.char);
@@ -3834,6 +3853,8 @@ async function spawnVillageNpcs() {
       n.obj = g;
       npcs.push(n);
     } catch (e) { console.warn("[game] 村民没来：" + def.id, e); }
+    // 搭 rig 很重（每个几百毫秒），让画面渲染一帧再搭下一个，村民一个个冒出来
+    if (i < NPCS.length - 1) await new Promise(r => requestAnimationFrame(r));
   }
 }
 
@@ -4224,7 +4245,9 @@ function tryPouch() {
 
 async function spawnMapNpcs(key, defs, group) {
   if (!group) return;
-  for (const def of defs) {
+  prewarmModels(defs);   // 进图先把这批人的模型并行拉起
+  for (let i = 0; i < defs.length; i++) {
+    const def = defs[i];
     if (npcs.some(n => n.map === key && n.def.id === def.id)) continue;
     try {
       // 没有现成模型的角色用几何体现拼
@@ -4241,6 +4264,7 @@ async function spawnMapNpcs(key, defs, group) {
       n.obj = g;
       npcs.push(n);
     } catch (e) { console.warn("[game] " + key + " 上有人没来：" + def.id, e); }
+    if (i < defs.length - 1) await new Promise(r => requestAnimationFrame(r));
   }
 }
 function spawnTownNpcs() { return spawnMapNpcs("town", TOWN_NPCS, OUTDOOR.town); }
@@ -6351,25 +6375,57 @@ function setLight(o) {
 
 let booted = false;
 
+// 加载耗时埋点：performance.mark 开销是微秒级，生产也留着，
+// 出问题时在控制台 performance.getEntriesByType("mark") 就能看出卡在哪一段
+function pm(name) { try { performance.mark(name); } catch (e) {} }
+
+// v87：加载进度反馈。搭建场景是重活（主线程上几百毫秒一段），
+// 分段让出主线程 + 更新按钮文字，标题页不再是冻住的假死状态
+const nextFrame = () => new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));
+async function bootNote(txt) {
+  const b = $("#btnStart");
+  if (b) {
+    if (!b.dataset.label) b.dataset.label = b.textContent;   // 记住原始文案，进度走完还原
+    b.textContent = txt;
+    b.disabled = true;
+  }
+  await nextFrame();
+}
+
 async function boot() {
+  pm("boot:start");
+  // 村民的 GLB 在搭场景的同时就开始并行下载：网络等模型、CPU 搭场景，互不挡路
+  prewarmModels(NPCS);
+  if (typeof DESK_OFFICER === "object" && DESK_OFFICER.char) prewarmModels([DESK_OFFICER]);
+  await bootNote("正在搭村子 10%");
   try {
-    buildGround();
+    buildGround();   pm("boot:ground");
+    await bootNote("正在搭村子 25%");
     buildProps();
-    buildTown();
+    buildTown();     pm("boot:town");
+    await bootNote("正在搭村子 45%");
     buildGrove();
     buildHill();
-    buildFar();
+    buildFar();      pm("boot:far");
+    await bootNote("正在搭村子 60%");
     // 四张户外图搭完就一起亮出来：一进游戏就是一整片连着的大地
     setOutdoorVisible("village");
     // 村庄 / 镇也撒少量立体草丛，近景不再是纯平贴图
     buildGrassTufts(VILLAGE, world, 520, 5011);
     if (OUTDOOR.town) buildGrassTufts(TOWN, OUTDOOR.town, 360, 6011);
+    pm("boot:grass");
+    await bootNote("正在搭村子 75%");
     buildTroupeProps();
     troupeResetIfNewDay();
     batchOutdoors();   // 静态摆件统一合批：四图同时可见也不涨 draw call
+    pm("boot:batch");
     applyStyle();   // 场景搭好后统一套用主题（国风染色 / 飞檐 / 背景）
+    pm("boot:style");
+    await bootNote("正在搭村子 85%");
     buildAmbientLife();   // v86：水车 / 栈桥 / 蝴蝶 / 萤火虫 / 飞鸟 / 炊烟（要贴已建好的地形）
+    pm("boot:ambient");
   } catch (e) { console.error("[game] 场景搭建出错", e); }
+  await bootNote("加载角色…");
 
   Farm.init({
     world, player, light: setLight, say, toast, sfx, save,
@@ -6417,10 +6473,15 @@ async function boot() {
     $("#btnContinue").style.display = "";
     $("#btnContinue").dataset.has = "1";
     $("#btnStart").textContent = "重新开始";
+    $("#btnStart").dataset.label = "重新开始";   // 加载进度条恢复按钮文字时要还原成这个
     $("#btnSound").textContent = state.muted ? "🔇" : "🔊";
   }
   buildDex();
   hudTick();
+  // 村子搭好了：把开始按钮交还给玩家
+  pm("boot:done");
+  const sb = $("#btnStart");
+  if (sb) { sb.textContent = sb.dataset.label || "进入村子"; sb.disabled = false; }
 }
 
 $("#btnStart").onclick = () => startGame(!$("#btnContinue").dataset.has);
@@ -6434,6 +6495,8 @@ function startGame(fresh) {
       // 重开就是全新的一天：锚点、外卖、擂台、小游戏的每日计数都得归零，
       // 不然同一个浏览器里「重新开始」会带着上一档的进度进新档
       anchors: {}, pouchDay: 0, pouches: 0, arenaWins: 0,
+      // 重新开始也把视角归位到默认 3D：读档恢复的 2D 不该带进新档
+      viewMode: "3d", camFollow: true,
       fishDay: 0, fishRods: 0, stageDay: 0, courier: null,
       metChar: {}, dexRewards: [], dexTitle: "",
       troupe: { day: 0, stage: 0, gotList: [], invited: [] },
@@ -6462,6 +6525,7 @@ function startGame(fresh) {
   state.started = true;
   $("#hud").classList.remove("hidden");
   syncPad();
+  syncViewBtn();   // 视角可能被重新开始重置过，按钮文字跟着刷一遍
   playerObj.position.set(visX(), terrainY(player.x, player.z), visZ());
   hudTick();
   Farm.paint();
