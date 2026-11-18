@@ -578,3 +578,39 @@ body:has(#help.show) #toast{top:auto;bottom:22px}
 .dex-tier:first-of-type{border-top:0}
 .dex-tier b{color:var(--ink);font-size:13px}
 .dex-tier button{flex:0 0 auto;min-width:78px;font-size:11px;padding:6px 10px}
+
+/* ---------- 今日任务 / 成就 ---------- */
+.dot-badge{position:absolute;top:3px;right:3px;width:8px;height:8px;border-radius:99px;
+  background:#d05a4e;border:1px solid #fff;pointer-events:none}
+#btnToday{position:relative}
+.today-tabs{display:flex;gap:8px;margin:0 0 16px}
+.today-tabs .btn.active{background:var(--green);border-color:var(--green);color:#fff}
+.quest-list{display:grid;gap:10px}
+.quest-card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.quest-card.done{background:#f8f5ee;border-style:dashed;opacity:.72}
+.quest-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+.quest-head b{font-size:14px;color:var(--ink)}
+.quest-card.done .quest-head b{text-decoration:line-through;color:var(--ink-3)}
+.quest-tag{font-size:11px;color:var(--ink-3);border:1px solid var(--line);border-radius:6px;padding:2px 7px;white-space:nowrap}
+.quest-tag.ready{color:var(--green);border-color:var(--green);background:var(--green-soft)}
+.quest-desc{font-size:12px;color:var(--ink-2);line-height:1.6;margin:6px 0 0}
+.quest-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:8px;font-size:11px;color:var(--ink-3)}
+.quest-foot b{color:var(--amber)}
+.ach-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px}
+.ach-card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:flex;gap:12px;align-items:flex-start}
+.ach-card.locked{opacity:.62;background:#f8f5ee}
+.ach-card.claimed{border-color:var(--green);background:var(--green-soft)}
+.ach-medal{flex:0 0 auto;width:34px;height:34px;border-radius:99px;display:grid;place-items:center;
+  background:var(--amber-soft);color:var(--amber);font-size:16px;font-weight:700}
+.ach-card.claimed .ach-medal{background:var(--green);color:#fff}
+.ach-card.locked .ach-medal{background:#efede7;color:var(--ink-3)}
+.ach-body{min-width:0;flex:1}
+.ach-body b{font-size:13px;color:var(--ink)}
+.ach-body p{margin:3px 0 6px;font-size:11px;color:var(--ink-2);line-height:1.55}
+.ach-bar{height:5px;border-radius:99px;background:#eae5da;overflow:hidden;margin-bottom:6px}
+.ach-bar i{display:block;height:100%;background:var(--green);border-radius:99px}
+.ach-reward{font-size:11px;color:var(--amber)}
+.ach-card button{margin-top:6px;font-size:11px;padding:5px 10px}
+@media (max-width:640px){
+  .ach-list{grid-template-columns:1fr}
+}

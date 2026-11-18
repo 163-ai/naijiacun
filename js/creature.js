@@ -12,6 +12,36 @@ export function makeAnimator(root) {
   for (const n in bones) rest.push([bones[n], bones[n].position.clone(), bones[n].rotation.clone()]);
   const kind = bones.hipLeft ? "biped" : bones.footLeft ? "hop" : bones.pawLeft ? "bowl" : "roll";
 
+  // 手臂安全钳制：单网格模型的手臂与躯干连成一体，肩根有一圈共享顶点。
+  // 绕肩转过一个上限（各模型在 pet-motion.js 的 armLimit 里实测标定）后，
+  // 这圈顶点就被拽离身体、翻折成尖片——这正是挥手/出拳穿模的根因。
+  // 乘法缩放（旧 armSwing）治标不治本：wavePose 给 -2.5rad，乘 0.3 仍有 -0.75rad，
+  // 且玩家角色 nailongStand 曾漏配系数而完全不收敛。改成逐骨「硬性钳制绝对角度」，
+  // 任何动画姿势（挥手/出拳/受伤/跳）应用后都压回安全范围，从骨架层根治。
+  const ARM_BONES = [bones.armLeft, bones.armRight, bones.pawLeft, bones.pawRight]
+    .filter(Boolean).map(b => ({ bone: b, limit: b.userData && b.userData.armLimit != null ? b.userData.armLimit : 2.6 }));
+  const clamp = (v, lim) => v < -lim ? -lim : v > lim ? lim : v;
+  // 贴身短臂的三轴安全上限不一样，关键是「外展」与「内收」方向相反：
+  //   · x（前后摆）与 y：仍收紧到 armLimit（~0.42），抡大了会把手臂从身侧撕开
+  //   · z：外展（远离身体）是安全方向，可放宽到 ~0.65 —— 这正是自然的挥手方向；
+  //        内收（压向胸腹）危险，仍收紧到 armLimit 的一半
+  // 左右手镜像：右臂 z 正=外展，左臂 z 负=外展。
+  const armSide = b => (b.name === "armLeft" || b.name === "pawLeft") ? -1 : 1;
+  const armOutLimit = b => (b.userData && b.userData.armOut != null) ? b.userData.armOut : Math.min(.68, b.userData.armLimit * 1.1);
+  function clampArm(b, limit) {
+    if (limit >= 2.6) return;                       // 手臂独立的模型不限制
+    b.rotation.x = clamp(b.rotation.x, limit);
+    b.rotation.y = clamp(b.rotation.y, limit);
+    const side = armSide(b);
+    const outward = b.rotation.z * side;            // >0 = 外展（安全），<0 = 内收（危险）
+    const outLimit = armOutLimit(b);
+    const z = outward > 0 ? Math.min(outward, outLimit) : Math.max(outward, -limit * .5);
+    b.rotation.z = z * side;
+  }
+  function scaleArms() {
+    for (const { bone, limit } of ARM_BONES) clampArm(bone, limit);
+  }
+
   function reset() {
     for (const [b, p, r] of rest) { b.position.copy(p); b.rotation.copy(r); }
   }
@@ -98,9 +128,21 @@ export function makeAnimator(root) {
       const b = bones[name];
       if (!b) continue;
       const tgt = targets[name];
-      b.rotation.x += (tgt[0] - b.rotation.x) * blend;
-      b.rotation.y += (tgt[1] - b.rotation.y) * blend;
-      b.rotation.z += (tgt[2] - b.rotation.z) * blend;
+      const entry = ARM_BONES.find(a => a.bone === b);
+      if (entry && entry.limit < 2.6) {
+        // 贴身短臂：目标角先按分轴安全上限钳制（外展可大、内收/前摆收紧），再混合。
+        const lim = entry.limit, side = armSide(b), outLimit = armOutLimit(b);
+        const tz0 = clamp(tgt[0], lim), tz1 = clamp(tgt[1], lim);
+        const outward = tgt[2] * side;
+        const tz2 = (outward > 0 ? Math.min(outward, outLimit) : Math.max(outward, -lim * .5)) * side;
+        b.rotation.x += (tz0 - b.rotation.x) * blend;
+        b.rotation.y += (tz1 - b.rotation.y) * blend;
+        b.rotation.z += (tz2 - b.rotation.z) * blend;
+      } else {
+        b.rotation.x += (tgt[0] - b.rotation.x) * blend;
+        b.rotation.y += (tgt[1] - b.rotation.y) * blend;
+        b.rotation.z += (tgt[2] - b.rotation.z) * blend;
+      }
     }
   }
 
@@ -155,19 +197,32 @@ export function makeAnimator(root) {
 
   /* ---- 打招呼：举一只手来回挥，身子微微侧倾，像老朋友碰面 ---- */
   function wavePose(t = 0) {
-    const w = Math.sin(t * 9) * .45;
+    const w = Math.sin(t * 9);
     if (kind === "biped") {
-      bones.armRight.rotation.x = -2.5;
-      bones.armRight.rotation.z = -.25 + w * .4;
-      bones.armLeft.rotation.x = .2;
-      bones.armLeft.rotation.z = -.06;
+      const ar = bones.armRight, lim = ar.userData && ar.userData.armLimit != null ? ar.userData.armLimit : 2.6;
+      if (lim < 2.6) {
+        // 贴身短臂：向「外展」方向挥手（远离身体），在该模型实测的安全外展角内摆动。
+        // 绝不内收、绝不大幅前摆——那会把贴着胸腹的手臂压进身体、翻成尖片。
+        // armOut 逐模型标定（奶蛙仅 0.26、玩家奶龙 0.46），在 55%~90% 之间摆。
+        const out = armOutLimit(ar);
+        ar.rotation.x = -.08;
+        ar.rotation.z = out * (.72 + w * .17);
+      } else {
+        // 手臂独立张开的挥手版奶龙：可以大幅举臂过头
+        ar.rotation.x = -2.5;
+        ar.rotation.z = -.25 + w * .18;
+      }
+      bones.armLeft.rotation.x = .12;
+      bones.armLeft.rotation.z = -.05;
       bones.body.rotation.y = -.1;
       bones.head.rotation.z = .08;
     } else if (bones.pawRight) {
-      bones.pawRight.rotation.x = -1.9 + w * .35;
+      const out = armOutLimit(bones.pawRight);
+      bones.pawRight.rotation.z = out * (.72 + w * .17);
       bones.head.rotation.z = .12;
     } else if (bones.armRight) {
-      bones.armRight.rotation.x = -2.3 + w * .35;
+      const out = armOutLimit(bones.armRight);
+      bones.armRight.rotation.z = out * (.72 + w * .17);
       bones.head.rotation.z = .1;
     } else if (bones.head) {
       bones.head.rotation.z = .1 + w * .1;   // 没手臂的家伙就歪头示意
@@ -190,6 +245,7 @@ export function makeAnimator(root) {
           case "wave": wavePose(opt.t ?? 0); break;
           default: idle(t);
         }
+        scaleArms();
       } catch (e) { /* 某个关节缺失就少动一下，不能把游戏循环带崩 */ }
     },
     // 供战斗姿势逐帧混目标角用（kof 里想完全接管时先 reset 再 pose）

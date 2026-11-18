@@ -5,17 +5,23 @@ const smooth = (a, b, x) => T.MathUtils.smoothstep(x, a, b);
 // Measurements are fractions of each model's standing height. The waving hand,
 // short dinosaur legs, uniform, and seated feet need different joint locations.
 const ANATOMY = {
-  nailong: { hip: .19, knee: .085, legX: .205, legTop: .26, head: .63, shoulders: [[-.225, .57, 0], [.23, .52, 0]], hands: [[-.49, .72, .02], [.44, .34, .02]], armRadius: .095, armGate: .25 },
+  // armLimit：手臂骨骼旋转的「解剖学安全上限」（弧度）。这些模型是单网格静态 GLB，
+  // 手臂和躯干在同一张网格上连成一体，绑定权重必然在肩根留一圈过渡顶点。
+  // 关键不在摆幅比例，而在「绝对角度」：一旦绕肩转过 ~0.4rad，肩根过渡顶点就
+  // 被拽离身体、翻折成尖片（wavePose 的 -2.5rad 出拳/挥手必然穿模）。
+  // 因此按模型实测，给每根手臂骨设一个硬上限，所有动画姿势应用后统一钳制。
+  //   · nailong 挥手版双臂外张、与躯干分界清楚 → 可大幅摆动（±2.6）
+  //   · nailongStand / naiwa / naicha / niulai / xiaoqi 贴身短臂 → ±0.4 左右
+  nailong: { hip: .19, knee: .085, legX: .205, legTop: .26, head: .63, shoulders: [[-.225, .57, 0], [.23, .52, 0]], hands: [[-.49, .72, .02], [.44, .34, .02]], armRadius: .095, armGate: .25, armLimit: 2.6 },
   // 站立版奶龙（nailong.glb，游戏主角用）：双手贴身斜向外垂下——肩在身高 .53、
   // 手在 .19（2026-11-09 按模型逐层实测：外侧凸起 y.3~.7、偏背面 z -0.33~0.05）。
-  // 腿/头与挥手版相同（两版模型下半身一致）；手不能照搬挥手版的
-  // [-.49,.72] 高举胶囊，否则垂下的手臂离胶囊太远、权重为 0，走路只有一只手摆。
-  nailongStand: { hip: .19, knee: .085, legX: .205, legTop: .26, head: .63, shoulders: [[-.23, .53, -.02], [.23, .53, -.02]], hands: [[-.335, .19, -.07], [.335, .19, -.07]], armRadius: .11, armGate: .27 },
-  naiwa: { hip: .28, knee: .13, legX: .14, legTop: .33, head: .67, shoulders: [[-.19, .61, 0], [.19, .61, 0]], hands: [[-.235, .32, .025], [.235, .32, .025]], armRadius: .075, armGate: .185 },
-  baobaolong: { hip: .17, knee: .075, legX: .18, legTop: .24, head: .57, shoulders: [[-.27, .49, 0], [.27, .49, 0]], hands: [[-.33, .24, .06], [.33, .24, .06]], armRadius: .09, armGate: .26, wings: true },
-  xiaoqi: { hip: .40, knee: .20, legX: .08, legTop: .43, head: .72, shoulders: [[-.105, .62, 0], [.105, .62, 0]], hands: [[-.13, .40, .025], [.13, .40, .025]], armRadius: .05, armGate: .105 },
-  niulai: { hip: .36, knee: .17, legX: .12, legTop: .41, head: .71, shoulders: [[-.18, .62, 0], [.18, .62, 0]], hands: [[-.22, .33, .025], [.22, .33, .025]], armRadius: .065, armGate: .18 },
-  naicha: { hip: .18, knee: .075, legX: .155, legTop: .24, head: .64, shoulders: [[-.22, .55, 0], [.22, .55, 0]], hands: [[-.29, .22, .035], [.29, .22, .035]], armRadius: .085, armGate: .225 }
+  // 手臂贴身 → 肩根过渡顶点多，实测旋转超过 ±0.45rad 就开始翻折穿模。
+  nailongStand: { hip: .19, knee: .085, legX: .205, legTop: .26, head: .63, shoulders: [[-.23, .53, -.02], [.23, .53, -.02]], hands: [[-.335, .19, -.07], [.335, .19, -.07]], armRadius: .11, armGate: .27, armLimit: .42, armOut: .46 },
+  naiwa: { hip: .28, knee: .13, legX: .14, legTop: .33, head: .67, shoulders: [[-.19, .61, 0], [.19, .61, 0]], hands: [[-.235, .32, .025], [.235, .32, .025]], armRadius: .06, armGate: .22, armLimit: .42, armOut: .26 },
+  baobaolong: { hip: .17, knee: .075, legX: .18, legTop: .24, head: .57, shoulders: [[-.27, .49, 0], [.27, .49, 0]], hands: [[-.33, .24, .06], [.33, .24, .06]], armRadius: .09, armGate: .26, wings: true, armLimit: .5, armOut: .32 },
+  xiaoqi: { hip: .40, knee: .20, legX: .08, legTop: .43, head: .72, shoulders: [[-.105, .62, 0], [.105, .62, 0]], hands: [[-.13, .40, .025], [.13, .40, .025]], armRadius: .05, armGate: .13, armLimit: .5, armOut: .28 },
+  niulai: { hip: .36, knee: .17, legX: .12, legTop: .41, head: .71, shoulders: [[-.18, .62, 0], [.18, .62, 0]], hands: [[-.22, .33, .025], [.22, .33, .025]], armRadius: .06, armGate: .20, armLimit: .42, armOut: .30 },
+  naicha: { hip: .18, knee: .075, legX: .155, legTop: .24, head: .64, shoulders: [[-.22, .55, 0], [.22, .55, 0]], hands: [[-.29, .22, .035], [.29, .22, .035]], armRadius: .065, armGate: .235, armLimit: .42, armOut: .42 }
 };
 
 function segmentDistance(x, y, z, a, b) {
@@ -36,6 +42,11 @@ function makeBones(config, kind) {
   }
   bone('body', [0, 0, 0], null);
   if (kind !== 'roll') bone('head', [0, kind === 'biped' ? config.head * 2 : 1.25, 0]);
+  // 手臂安全上限写到骨骼上，动画控制器逐骨钳制。没有配置的类型（hop/bowl）
+  // 用宽松默认，不限制它们原本就独立的手脚。
+  const armLimit = config && config.armLimit != null ? config.armLimit : 2.6;
+  const armOut = config && config.armOut != null ? config.armOut : Math.min(.68, armLimit * 1.1);
+  const markArm = name => { if (named[name]) { named[name].userData.armLimit = armLimit; named[name].userData.armOut = armOut; } };
   if (kind === 'biped') {
     for (let side = 0; side < 2; side++) {
       const s = side === 0 ? -1 : 1, suffix = side === 0 ? 'Left' : 'Right';
@@ -43,11 +54,14 @@ function makeBones(config, kind) {
       bone('knee' + suffix, [s * config.legX * 2, config.knee * 2, .025], 'hip' + suffix);
       bone('arm' + suffix, config.shoulders[side].map(v => v * 2));
     }
+    markArm('armLeft'); markArm('armRight');
   } else if (kind === 'hop') {
     bone('footLeft', [-.40, .24, .22]); bone('footRight', [.40, .24, .22]);
     bone('armLeft', [-.32, .88, .25]); bone('armRight', [.32, .88, .25]);
+    markArm('armLeft'); markArm('armRight');
   } else if (kind === 'bowl') {
     bone('pawLeft', [-.48, 1.02, .53]); bone('pawRight', [.48, 1.02, .53]);
+    markArm('pawLeft'); markArm('pawRight');
   }
   return { bones, named };
 }
@@ -223,5 +237,9 @@ export function createPetMotion(source, id) {
     root.position.set(bodyCenter.x, bounds.min.y + extent + pose.lift, bodyCenter.z - halfSize.y * Math.sin(angle) * .55).sub(transformedCenter);
     root.updateMatrixWorld(true);
   }
-  return { root, bones: named, skeleton, meshes, bounds, kind, reset, update, laugh, stats, get time() { return time; } };
+  // 手臂安全上限已写在每根手臂骨的 userData.armLimit 上，creature.js 逐骨钳制。
+  // armSwing 兼容字段：给外部只读代码一个「相对摆幅」的粗略表示（1=可不限制）。
+  const limit = config && config.armLimit != null ? config.armLimit : 2.6;
+  root.userData.armSwing = limit >= 2 ? 1 : +(limit / 2.6).toFixed(3);
+  return { root, bones: named, skeleton, meshes, bounds, kind, armLimit: limit, armSwing: root.userData.armSwing, reset, update, laugh, stats, get time() { return time; } };
 }

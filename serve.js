@@ -35,8 +35,8 @@ http.createServer((req, res) => {
   if (urlPath === '/') urlPath = '/index.html';
 
   const filePath = path.join(ROOT, urlPath);
-  // 防目录穿越
-  if (!filePath.startsWith(ROOT)) {
+  // 防目录穿越：必须有目录分隔符边界，否则 ROOT-evil 这类同前缀兄弟目录会被绕过
+  if (filePath !== ROOT && !filePath.startsWith(ROOT + path.sep)) {
     res.writeHead(403); res.end('Forbidden'); return;
   }
 
@@ -52,7 +52,7 @@ http.createServer((req, res) => {
       'Content-Length': st.size,
       'Cache-Control': 'no-cache'
     });
-    fs.createReadStream(filePath).pipe(res);
+    fs.createReadStream(filePath).on('error', () => res.destroy()).pipe(res);
   });
 }).listen(PORT, '127.0.0.1', () => {
   console.log(`Serving ${ROOT} at http://127.0.0.1:${PORT}/ (MIME-correct)`);

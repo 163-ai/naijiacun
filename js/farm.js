@@ -13,9 +13,11 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 export const PLOT = { x0: -32, z0: 10, cols: 12, rows: 9, ts: 1 };
 
 export const CROPS = {
-  radish: { name: "萝卜", icon: "🥕", cost: 20, sell: 44, days: 3, fruit: 0xd9774f, leaf: 0x7fbb62, h: .5 },
-  corn:   { name: "玉米", icon: "🌽", cost: 35, sell: 78, days: 4, fruit: 0xf2c14e, leaf: 0x76a94f, h: .78 },
-  melon:  { name: "甜瓜", icon: "🍈", cost: 55, sell: 132, days: 5, fruit: 0x8fcc4f, leaf: 0x5c9b3f, h: .6 }
+  // 经济梯度：金/天 9.3 → 10.3 → 11.6 温和递增，避免甜瓜严格支配低阶作物。
+  // 萝卜快（3 天回笼资金、门槛低），甜瓜单格利润高但周期长、要 60 金起步。
+  radish: { name: "萝卜", icon: "🥕", cost: 20, sell: 48, days: 3, fruit: 0xd9774f, leaf: 0x7fbb62, h: .5 },
+  corn:   { name: "玉米", icon: "🌽", cost: 35, sell: 76, days: 4, fruit: 0xf2c14e, leaf: 0x76a94f, h: .78 },
+  melon:  { name: "甜瓜", icon: "🍈", cost: 60, sell: 118, days: 5, fruit: 0x8fcc4f, leaf: 0x5c9b3f, h: .6 }
 };
 
 const TOOLS = [
@@ -306,7 +308,13 @@ function mat(color, rough = .95) {
 }
 
 Farm.refreshCrop = function (t) {
-  if (t.mesh) { this._root.remove(t.mesh); t.mesh = null; }
+  if (t.mesh) {
+    this._root.remove(t.mesh);
+    // 每次刷新都新建几何体，材质走 mat() 缓存可复用，但几何体必须释放，
+    // 否则每天生长/播种/收获都会累积，显存持续增长。
+    t.mesh.traverse(o => { if (o.isMesh && o.geometry) o.geometry.dispose(); });
+    t.mesh = null;
+  }
   if (!t.crop) return;
   const C = CROPS[t.crop.k];
   const { x, z } = this.tileCenter(t.c, t.r);
@@ -374,6 +382,12 @@ const SKY_NIGHT = new T.Color(0x22364f);
 const SUN_DAY = new T.Color(0xfff4e4);
 const SUN_DUSK = new T.Color(0xffc79a);
 const SUN_NIGHT = new T.Color(0x9fb8da);
+// applyLight 每帧调用，复用临时色避免每帧 new 4~8 个 Color 喂给 GC
+const RAIN_SKY = new T.Color(0x8a97a4);
+const RAIN_GROUND = new T.Color(0x9aa4ae);
+const GROUND_NIGHT = new T.Color(0x2c3a58);
+const GROUND_WHITE = new T.Color(1, 1, 1);
+const _sky = new T.Color(), _sun = new T.Color(), _ground = new T.Color();
 
 Farm.applyLight = function () {
   const L = this._o.light;
@@ -382,13 +396,15 @@ Farm.applyLight = function () {
   const rain = this.weather === "rain";
   const eff = rain ? d * .68 : d;
 
-  const sky = SKY_NIGHT.clone().lerp(SKY_DAY, eff);
-  if (rain) sky.lerp(new T.Color(0x8a97a4), .5);
-  const sunC = d > .72 ? SUN_DAY.clone() : (d > .3 ? SUN_DUSK.clone().lerp(SUN_DAY, (d - .3) / .42) : SUN_NIGHT.clone());
+  // 复用临时色：setLight 会立即 .copy() 消费，不保留引用
+  const sky = _sky.copy(SKY_NIGHT).lerp(SKY_DAY, eff);
+  if (rain) sky.lerp(RAIN_SKY, .5);
+  const sunC = d > .72 ? _sun.copy(SUN_DAY)
+    : (d > .3 ? _sun.copy(SUN_DUSK).lerp(SUN_DAY, (d - .3) / .42) : _sun.copy(SUN_NIGHT));
 
   // 地面是不受光的贴图，只能靠乘色来变暗，否则夜里还是一片白天的绿
-  const groundC = new T.Color(1, 1, 1).lerp(new T.Color(0x2c3a58), Math.pow(1 - eff, 1.2));
-  if (rain) groundC.lerp(new T.Color(0x9aa4ae), .22);
+  const groundC = _ground.copy(GROUND_WHITE).lerp(GROUND_NIGHT, Math.pow(1 - eff, 1.2));
+  if (rain) groundC.lerp(RAIN_GROUND, .22);
 
   L({
     exposure: .5 + .54 * eff,
@@ -476,13 +492,24 @@ Farm.select = function (i) {
   this._o.sfx && this._o.sfx("pick");
 };
 
+// 战斗/对话/面板打开时不响应工具栏快捷键，避免切工具并播放音效造成干扰。
+function farmUILocked() {
+  if (document.body.classList.contains("infight")) return true;
+  if (document.body.classList.contains("ingomoku")) return true;
+  const dialog = document.querySelector("#dialog");
+  if (dialog && dialog.classList.contains("show")) return true;
+  // 任一全屏面板打开时都算锁定
+  return ["#shop", "#dex", "#help", "#worldmap", "#fishing", "#stage", "#go"]
+    .some(sel => { const el = document.querySelector(sel); return el && el.classList.contains("show"); });
+}
+
 Farm.bindInput = function () {
   window.addEventListener("keydown", e => {
+    if (farmUILocked()) return;
     if (e.key >= "1" && e.key <= "5") { this.select(+e.key - 1); }
   });
   window.addEventListener("wheel", e => {
-    if (document.body.classList.contains("infight")) return;
-    if ($("#shop").classList.contains("show")) return;
+    if (farmUILocked()) return;
     this.select((this.sel + (e.deltaY > 0 ? 1 : -1) + TOOLS.length) % TOOLS.length);
   }, { passive: true });
 };
@@ -719,22 +746,41 @@ Farm.serialize = function () {
   };
 };
 
+// 存档字段兜底：坏档(手改/旧版残留)也不能把 NaN 或负数带进经济循环
+const _finite = (v, fallback, lo, hi) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? clamp(n, lo, hi) : fallback;
+};
+const _cropCounts = src => {
+  const out = { radish: 0, corn: 0, melon: 0 };
+  for (const k of Object.keys(out)) {
+    if (src && Object.prototype.hasOwnProperty.call(src, k)) {
+      out[k] = _finite(src[k], 0, 0, 999999);
+    }
+  }
+  return out;
+};
+
 Farm.deserialize = function (d) {
   if (!d) return;
-  this.day = d.day || 1;
+  this.day = _finite(d.day, 1, 1, 999999);
   this.time = clamp(d.time == null ? T_START : d.time, T_START, T_END);
   this.weather = d.weather === "rain" ? "rain" : "sun";
-  this.stamina = d.stamina == null ? this.maxStamina : d.stamina;
-  this.gold = d.gold == null ? 120 : d.gold;
-  this.water = d.water == null ? this.maxWater : d.water;
-  this.seeds = Object.assign({ radish: 5, corn: 0, melon: 0 }, d.seeds || {});
-  this.bag = Object.assign({ radish: 0, corn: 0, melon: 0 }, d.bag || {});
+  this.stamina = _finite(d.stamina, this.maxStamina, 0, this.maxStamina);
+  this.gold = _finite(d.gold, 120, 0, 999999999);
+  this.water = _finite(d.water, this.maxWater, 0, this.maxWater);
+  this.seeds = Object.assign({ radish: 5, corn: 0, melon: 0 }, _cropCounts(d.seeds));
+  this.bag = _cropCounts(d.bag);
   this.sel = clamp(d.sel || 0, 0, TOOLS.length - 1);
   this.tiles.clear();
-  (d.tiles || []).forEach(([c, r, tilled, wet, k, dd]) => {
-    const t = this.get(c, r);
+  (Array.isArray(d.tiles) ? d.tiles : []).forEach(([c, r, tilled, wet, k, dd]) => {
+    const cc = _finite(c, -1, 0, PLOT.cols - 1), rr = _finite(r, -1, 0, PLOT.rows - 1);
+    if (cc < 0 || rr < 0) return;                 // 越界格子直接丢弃
+    const t = this.get(cc, rr);
     t.tilled = !!tilled; t.wet = !!wet;
-    t.crop = k ? { k, d: dd || 0 } : null;
+    // 作物 key 必须合法，否则当作空地，避免未知作物卡住生长逻辑
+    t.crop = (k && Object.prototype.hasOwnProperty.call(CROPS, k))
+      ? { k, d: _finite(dd, 0, 0, 99) } : null;
   });
 };
 

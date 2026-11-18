@@ -81,7 +81,14 @@ function compress(buffer, encoding) {
 }
 
 function safePath(urlPath) {
-  const decoded = decodeURIComponent(urlPath.split("?")[0].split("#")[0]);
+  let decoded;
+  try {
+    decoded = decodeURIComponent(urlPath.split("?")[0].split("#")[0]);
+  } catch (e) {
+    // 非法 % 序列（如 /%）会让 decodeURIComponent 抛 URIError，
+    // 在 http 回调里未捕获会直接终止进程 —— 必须拦截。
+    return null;
+  }
   const resolved = path.resolve(ROOT, "." + decoded);
   if (resolved !== ROOT && !resolved.startsWith(ROOT + path.sep)) return null;
   return resolved;
@@ -183,7 +190,7 @@ function serveFile(file, req, res) {
       "Last-Modified": stat.mtime.toUTCString()
     };
 
-    const encoding = COMPRESSIBLE.has(ext) ? pickEncoding(req.headers["accept-encoding"]) : "identity";
+    let encoding = COMPRESSIBLE.has(ext) ? pickEncoding(req.headers["accept-encoding"]) : "identity";
     if (encoding === "identity") {
       headers["Content-Length"] = stat.size;
       res.writeHead(200, headers);

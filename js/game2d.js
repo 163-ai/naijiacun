@@ -7,17 +7,22 @@ import { GLTFLoader } from "../vendor/three/GLTFLoader.js";
 import { MeshoptDecoder } from "../vendor/meshopt/meshopt_decoder.module.js";
 import { createPetMotion } from "./pet-motion.js?v=2";
 import { makeAnimator } from "./creature.js?v=59";
-import { Fight } from "./kof.js?v=57";
+import { Fight } from "./kof.js?v=58";
 import {
   TS, TI, VILLAGE, TOWN, GROVE, HILL, TOWN_LOTS, TOWN_STALLS, HOUSE, SHOP, STATION, ARCHIVE, MAPS,
   tileAt, setSolid, solidAt, markAt, mapTexture, toTile, toWorld
 } from "./tiles.js?v=6";
-import { Farm, CROPS, PLOT } from "./farm.js";
+import { Farm, CROPS, PLOT } from "./farm.js?v=2";
 import { portrait, moodFilter, speakerKey, PLAYER_KEY } from "./portraits.js?v=57";
-import { NPCS, DESK_OFFICER, bountyOf } from "./villagers.js";
+import { NPCS, DESK_OFFICER, bountyOf } from "./villagers.js?v=2";
 import { Gomoku } from "./gomoku.js";
 
 const $ = s => document.querySelector(s);
+// 热路径 DOM 缓存：浮层节点在 game.html 中静态存在，module 脚本执行时 DOM 已解析完毕。
+// overlayOpen() 每帧被调用，此前每帧 7~12 次全文档 querySelector（60fps ≈ 500+ 次/秒）。
+const OVERLAY_NODES = ["dex", "help", "shop", "go", "worldmap", "fishing", "stage", "today"]
+  .map(id => document.getElementById(id)).filter(Boolean);
+const KOF_EL = document.getElementById("kof");
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const rnd = (a, b) => a + Math.random() * (b - a);
 const pick = a => a[Math.floor(Math.random() * a.length)];
@@ -38,6 +43,14 @@ const CAST = {
     name: "奶蛙", h: 1.62, model: true,
     img: "assets/characters/naiwa.webp",
     desc: "梨形身体、绿色虹膜大眼、张嘴大笑。出生方式是一次 AI 翻车，如今靠“齁齁齁”统治评论区。"
+  },
+  // 奶察有用户提供的独立模型（自带警帽/制服/短袖，assets/models/naicha.glb）。
+  // 早先用奶蛙模型现拼蓝帽子，短袖警服和奶蛙的长胳膊对不上；改用真模型后
+  // 不用再走 addCopCap/addCopUniform 拼装（见 spawnVillageNpcs / spawnRoomNpcs）。
+  naicha: {
+    name: "奶察", h: 1.7, model: true,
+    img: "assets/characters/3d/naicha-avatar.webp",
+    desc: "村里巡逻的片警，戴着警帽、穿着短袖制服，见谁都要先“嘎嘎滴辣虾”打个招呼。"
   },
   niulai: {
     name: "牛来", h: 1.55, model: true, node: "NIU_LAI",
@@ -83,12 +96,15 @@ const ZONES = {
 /* =========================================================
    状态
    ========================================================= */
+// 攻击力基数：玩家初始、读档兜底、敌人 atk 三处共用同一来源。
+// 与 kof.js 的 ATK_BASE 必须保持一致（伤害公式标定基准）。
+const ATK_BASE = 28;
 const state = {
   started: false, muted: false, balls: 8,
   // 视角：3d=户外第三人称透视 / 2d=同世界降维的正交俯视；camFollow=镜头自动跟人转向
   viewMode: "3d", camFollow: true,
   captured: {}, metNpc: false, steps: 0,
-  lv: 3, exp: 0, maxHp: 62, hp: 62, atk: 28,
+  lv: 3, exp: 0, maxHp: 62, hp: 62, atk: ATK_BASE,
   // 探索：见过谁、聊过谁、领了什么活
   met: {},                 // npcId → true
   dayFlags: {},            // "xiaocao:3" → true（每天一次的事）
@@ -106,10 +122,26 @@ const state = {
   courier: null,
   // 图鉴：见过谁（按角色 char 记）、领过哪几档奖励、当前称号
   metChar: {}, dexRewards: [], dexTitle: "",
+  // 元进度：成就已领 id 列表 + 图鉴集齐后的明星挑战每日记录
+  achievements: [], starChallenge: { day: 0, done: false },
+  fishCaught: 0, starWins: 0,   // 成就用的累计计数
   // 镇内任务：戏班子的三件戏家伙 { day, stage:0未接/1收集中/2待交/3今日完成, gotList:已拾取序号, invited:已送帖对象id }
   troupe: { day: 0, stage: 0, gotList: [], invited: [] }
 };
-const expNeed = lv => 18 + lv * 12;
+/* ---- 角色成长 / 遭遇平衡：集中可调节的成长系数 -------------------
+   与 kof.js 的 BALANCE 分工：这里管野外成长循环，那边管擂台对战。 */
+const GROWTH = {
+  expBase: 18, expPerLv: 12,        // 升级经验需求 = base + lv*perLv
+  hpPerLv: 8, atkPerLv: 3,          // 每级体力/攻击成长
+  enemyLvCap: 30,                   // 敌人等级上限
+  enemyHpBase: 34, enemyHpPerLv: 9, // 敌人HP = base + lv*perLv
+  encounterStep: 6,                 // 高草丛内每走多少米判定一次
+  encounterChance: .26,             // 每次判定的遭遇概率
+  expWinBase: 8, expWinHpRatio: .18,// 战胜经验 = base + 敌HP*ratio
+  expCapture: 12,                   // 收服经验
+  defeatHpRatio: .35                // 战败恢复的血量比例
+};
+const expNeed = lv => GROWTH.expBase + lv * GROWTH.expPerLv;
 
 const SPAWN = { x: .5, z: 27 };
 // jumpY：脚离地高度；vy：竖直速度。落地由重力积分 + 地形面判定，不用定时器。
@@ -117,6 +149,7 @@ let player = { x: SPAWN.x, z: SPAWN.z, heading: Math.PI, moving: false, run: fal
   jumpY: 0, vy: 0, jumping: false };
 
 let loadDone = false;   // 读档阶段结束之前，禁止任何启动期 save() 覆盖已有存档
+let _saveFailWarned = false;  // 存档失败提示只弹一次
 function save() {
   // boot 里 troupeResetIfNewDay() 早于 load()，若不拦住，它会拿初始 state
   // 把刚存的进度整份冲掉，玩家点「继续」就等于从头开始。
@@ -136,14 +169,25 @@ function save() {
       arenaWins: state.arenaWins,
       fishDay: state.fishDay, fishRods: state.fishRods, stageDay: state.stageDay,
       courier: state.courier,
+      // 每日任务进度入档：竹笋(哪天/哪几根掰过)、拜访记录，刷新页面不能重刷
+      shootDay: shootQuest.day, shootGot: shootQuest.objs.map(o => !!o.got),
+      visitOn: state.visitOn || {},
       metChar: state.metChar, dexRewards: state.dexRewards, dexTitle: state.dexTitle,
+      achievements: state.achievements, starChallenge: state.starChallenge,
+      fishCaught: state.fishCaught, starWins: state.starWins,
       troupe: state.troupe,
       // 存档点永远记在村里：镇上/屋里的位置不入档，下次开局从村的落点开始
       px: roomState.name === "village" ? player.x : roomState.back.x,
       pz: roomState.name === "village" ? player.z : roomState.back.z,
       farm: Farm.serialize()
     }));
-  } catch (e) { /* 存不了就算了 */ }
+  } catch (e) {
+    // 配额满/隐私模式/禁用存储时给一次提示，节流避免每次 save 都弹
+    if (!_saveFailWarned) {
+      _saveFailWarned = true;
+      try { toast("存档失败：浏览器存储不可用，本次进度可能丢失"); } catch (_) {}
+    }
+  }
 }
 function load() {
   loadDone = true;   // 无论有没有存档、读没读成，启动期写档保护到此为止
@@ -154,7 +198,7 @@ function load() {
     const d = JSON.parse(raw);
     Object.assign(state, {
       lv: d.lv ?? 3, exp: d.exp ?? 0, maxHp: d.maxHp ?? 62, hp: d.hp ?? 62,
-      atk: d.atk ?? 28, balls: d.balls ?? 8, captured: d.captured || {},
+      atk: d.atk ?? ATK_BASE, balls: d.balls ?? 8, captured: d.captured || {},
       metNpc: !!d.metNpc, steps: d.steps || 0, muted: !!d.muted,
       viewMode: d.viewMode === "2d" ? "2d" : "3d", camFollow: d.camFollow !== false,
       met: d.met || {}, dayFlags: d.dayFlags || {}, gifts: d.gifts || {},
@@ -165,8 +209,22 @@ function load() {
       fishDay: d.fishDay || 0, fishRods: d.fishRods || 0, stageDay: d.stageDay || 0,
       courier: d.courier || null,
       metChar: d.metChar || {}, dexRewards: d.dexRewards || [], dexTitle: d.dexTitle || "",
-      troupe: d.troupe || { day: 0, stage: 0, gotList: [], invited: [] }
+      achievements: Array.isArray(d.achievements) ? d.achievements : [],
+      starChallenge: d.starChallenge && typeof d.starChallenge === "object"
+        ? { day: d.starChallenge.day | 0, done: !!d.starChallenge.done }
+        : { day: 0, done: false },
+      fishCaught: d.fishCaught | 0, starWins: d.starWins | 0,
+      troupe: d.troupe || { day: 0, stage: 0, gotList: [], invited: [] },
+      visitOn: d.visitOn || {}   // 每天一次走访：刷新页面不能重刷
     });
+    // 竹笋每日进度入档：哪天刷新过、哪几根掰过（objs 已在启动时 buildShoots 建好）
+    // 可见性不存档，进竹林时 refreshShoots() 会按当天种子重算并保持这些 got 标记。
+    if (d.shootDay != null) {
+      shootQuest.day = d.shootDay;
+      if (Array.isArray(d.shootGot)) {
+        shootQuest.objs.forEach((o, i) => { o.got = !!d.shootGot[i]; });
+      }
+    }
     // 外卖任务进度也入档：捡了几份、哪几份捡过，刷新页面不能从头再来
     if (d.pouchActive) {
       pouchQuest.active = true;
@@ -249,12 +307,12 @@ Fight.init(renderer);
 /* ---- 画面风格：几套滤镜 + 曝光，一键循环切换，存本地 ---- */
 const STYLES = [
   // 国风：宣纸淡彩 + 青绿山水，配水墨远山 / 竹林 / 红灯笼 / 飞檐翘角
-  { id: "guofeng", name: "国风",   filter: "sepia(.2) saturate(.86) contrast(.95) brightness(1.03)", exp: 1.02 },
-  { id: "fresh",  name: "清新",   filter: "none",                                              exp: 1.00 },
-  { id: "warm",   name: "暖阳",   filter: "sepia(.18) saturate(1.16) brightness(1.03)",        exp: 1.03 },
-  { id: "dusk",   name: "黄昏",   filter: "sepia(.36) saturate(1.22) hue-rotate(-10deg) contrast(1.04)", exp: 1.00 },
-  { id: "mint",   name: "薄荷",   filter: "hue-rotate(22deg) saturate(.92) brightness(1.05)",  exp: 1.02 },
-  { id: "retro",  name: "复古",   filter: "sepia(.3) saturate(.8) contrast(1.06) brightness(.98)", exp: 1.00 }
+  { id: "guofeng", name: "国风",   filter: "sepia(.2) saturate(.86) contrast(.95) brightness(1.03)", exposure: 1.02 },
+  { id: "fresh",  name: "清新",   filter: "none",                                              exposure: 1.00 },
+  { id: "warm",   name: "暖阳",   filter: "sepia(.18) saturate(1.16) brightness(1.03)",        exposure: 1.03 },
+  { id: "dusk",   name: "黄昏",   filter: "sepia(.36) saturate(1.22) hue-rotate(-10deg) contrast(1.04)", exposure: 1.00 },
+  { id: "mint",   name: "薄荷",   filter: "hue-rotate(22deg) saturate(.92) brightness(1.05)",  exposure: 1.02 },
+  { id: "retro",  name: "复古",   filter: "sepia(.3) saturate(.8) contrast(1.06) brightness(.98)", exposure: 1.00 }
 ];
 let guofengGroup = null;          // 国风装饰组（竹林 / 红灯笼），场景搭好后再填充
 const guofengEaves = [];          // 房子飞檐翘角，随主题显隐
@@ -266,11 +324,11 @@ try {
   const at = STYLES.findIndex(s => s.id === savedStyle);
   if (at >= 0) styleIdx = at;
 } catch (e) {}
-const STYLE_STATE = { exp: STYLES[styleIdx].exp };
+const STYLE_STATE = { exposure: STYLES[styleIdx].exposure };
 function applyStyle() {
   const s = STYLES[styleIdx];
   canvas.style.filter = s.filter;
-  STYLE_STATE.exp = s.exp;
+  STYLE_STATE.exposure = s.exposure;
   const guo = s.id === "guofeng";
   if (guofengGroup) guofengGroup.visible = guo;
   for (const e of guofengEaves) e.visible = guo;
@@ -492,7 +550,9 @@ function mulberry(a) {
    地面：把瓦片地图画成一整张贴图铺上去
    每格单独画、单独拼，所以近看是一块块的地砖，不是一个模糊的大色块
    ========================================================= */
-const groundMats = [];      // 所有地面材质（夜里要一起乘色）
+const groundMats = [];      // 所有地面材质（夜里要一起做轻微色调偏移）
+const WHITE = new T.Color(1, 1, 1);
+const groundColorTint = new T.Color(1, 1, 1);
 let groundMat = null;       // 村庄地面（雷达要拿它的贴图当缩略图）
 const rooms = new Map();    // 室内房间：name → { group, mat }
 
@@ -532,11 +592,47 @@ function terrainY(x, z) {
 function groundAtBuild(x, z) {
   return buildMap ? surfaceY(buildMap, x, z) : (buildHeight ? buildHeight(x, z) : 0);
 }
+
+/* 水塘碗形深度场：给每个「格点」算到最近陆地的距离（BFS）。
+   地形顶点都落在整数格点上，用这个场下沉，水心最深、岸线为 0，天然连续不裂缝。
+   返回 { at(tx,tz) -> 0..1 的下沉系数 }，非水图直接返回全 0。 */
+const POND_DEPTH = .55;   // 塘心相对岸线最多下沉多少（世界单位）
+function makeWaterBasin(map) {
+  const W = map.w, H = map.h;
+  const isW = (tx, tz) => tx >= 0 && tz >= 0 && tx < W && tz < H && tileAt(map, tx, tz) === TI.WATER;
+  const dist = new Map(), q = [];
+  for (let tz = 0; tz < H; tz++) for (let tx = 0; tx < W; tx++) {
+    if (!isW(tx, tz)) continue;
+    let shore = false;
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if (!isW(tx + dx, tz + dz)) { shore = true; break; }
+    if (shore) { dist.set(tx + ',' + tz, 0); q.push([tx, tz]); }
+  }
+  for (let hd = 0; hd < q.length; hd++) {
+    const [tx, tz] = q[hd], d = dist.get(tx + ',' + tz);
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = tx + dx, nz = tz + dz, k = nx + ',' + nz;
+      if (isW(nx, nz) && !dist.has(k)) { dist.set(k, d + 1); q.push([nx, nz]); }
+    }
+  }
+  const maxD = Math.max(1, ...dist.values());
+  // 格点 (gx,gz) 被四周最多 4 个水格包围，取这些水格深度的最大归一化值。
+  // 岸边格点（周围只有 1 个水格）深度≈0，与陆地齐平 → 岸线不出现台阶。
+  function at(gx, gz) {
+    let best = 0;
+    for (const [cx, cz] of [[gx - 1, gz - 1], [gx, gz - 1], [gx - 1, gz], [gx, gz]]) {
+      const d = dist.get(cx + ',' + cz);
+      if (d != null) best = Math.max(best, (d + 1) / (maxD + 1));
+    }
+    return best;
+  }
+  return { at, maxD, hasWater: dist.size > 0 };
+}
 function makeHeightFn(map, seed) {
   const s = seed || 0;
   // 野外（草坡/竹林）起伏大，才不像一张纸；村镇房子多，压小免得穿模
   const wild = map.name === "南高草坡" || map.name === "竹林水塘";
   const amp = wild ? 1.85 : (map.name === "奶家镇" ? .5 : .72);
+  const basin = makeWaterBasin(map);
   // 原始起伏（不含拼缝混合）。先给每张户外图都算好，邻图才拿得到。
   const raw = function (x, z) {
     const tx = x - map.ox, tz = z - map.oz;
@@ -545,8 +641,16 @@ function makeHeightFn(map, seed) {
       + Math.sin(tx * .19 - tz * .16 + s * 2) * .30
       + Math.sin((tx + tz) * .048 + s * .7) * .46
       + Math.sin(tx * .33 + tz * .27 + s) * .10;
-    // 压平水面：水塘必须是平的，不然岸线穿帮
     const t = tileAt(map, Math.floor(tx), Math.floor(tz));
+    // 水塘：真实挖一个碗。地形顶点落在该处的水域深度场里，越靠塘心越低；
+    // 岸边（深度≈0）保留原地形高度并把它压平到 0 附近，和水面齐平，不露台阶。
+    if (basin.hasWater) {
+      const dep = basin.at(Math.round(tx), Math.round(tz));
+      if (dep > 0) {
+        const shoreH = 0;                       // 岸线基准：与水面下沿齐平
+        return shoreH - dep * POND_DEPTH;       // 岸 0 → 塘心 -POND_DEPTH
+      }
+    }
     if (t === TI.WATER) return 0;
     // 村中心广场（锚点一带）压成平台，房子/摊位落脚也稳
     const cx = map.w / 2, cz = map.h / 2;
@@ -596,7 +700,9 @@ function makeHeightFn(map, seed) {
    每个水格上方铺一层半透明、会起伏的水面网格：水面高于水底（有厚度），
    离岸越远颜色越深，表面有流动波纹与高光。塘边一圈浅水允许涉进去。
    ========================================================= */
-const WATER_LEVEL = .17;
+// 水面是固定水平面（物理上水永远平），略低于岸线基准 0，所以从岸上看是凹下去的塘。
+// 水底由 makeWaterBasin 挖到 -POND_DEPTH，二者之间就是真实水深。
+const WATER_LEVEL = -.06;
 const waterSurfaces = [];
 let waterRipple = null;
 
@@ -643,42 +749,84 @@ function buildWaterSurface(map, group) {
     }
   }
   for (let k = 0; k < VN; k++) if (vc[k]) { vh[k] /= vc[k]; vd[k] /= vc[k]; }
-  const interior = (vx, vz) => isW(vx - 1, vz - 1) && isW(vx, vz - 1) && isW(vx - 1, vz) && isW(vx, vz);
-  for (let pass = 0; pass < 10; pass++) {
-    const nh = Float32Array.from(vh);
+  // 对深度 vd 做多轮扩散平滑：BFS 距离是整数的，直接用会让浅滩颜色/透明度
+  // 按格子硬切成一圈圈矩形。平滑后水色从岸到塘心连续渐变，岸线看着圆润自然。
+  for (let pass = 0; pass < 12; pass++) {
+    const nd = Float32Array.from(vd);
     for (let vz = 0; vz <= map.h; vz++) for (let vx = 0; vx <= map.w; vx++) {
       const k = vz * stride + vx;
-      if (!vc[k] || !interior(vx, vz)) continue;
+      if (!vc[k]) continue;
       let sum = 0, n = 0;
       for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
         const nx = vx + dx, nz = vz + dz;
         if (nx < 0 || nz < 0 || nx > map.w || nz > map.h) continue;
         const kk = nz * stride + nx;
-        if (vc[kk]) { sum += vh[kk]; n++; }
+        if (vc[kk]) { sum += vd[kk]; n++; }
       }
-      if (n) nh[k] = vh[k] * .35 + (sum / n) * .65;   // 向岸线收敛，不留台阶
+      // 岸边格点始终锚定在浅水（0.06），只让内部平滑，避免水色爬上岸线漏边。
+      const shore = !isW(vx - 1, vz) || !isW(vx, vz - 1) || !isW(vx, vz) || !isW(vx - 1, vz - 1);
+      if (n && !shore) nd[k] = vd[k] * .3 + (sum / n) * .7;
     }
-    vh.set(nh);
+    vd.set(nd);
   }
 
+  // 水面细分：每格切成 SUB×SUB 小片，深度在角点间双线性插值，颜色连续渐变，
+  // 消除「一格一个矩形色块」的锯齿。高度仍统一 WATER_LEVEL（水平面）。
+  const SUB = 4;
+  const vdAt = (gx, gz) => {           // 格点坐标 (gx,gz) 处的连续深度
+    const x0 = Math.floor(gx), z0 = Math.floor(gz), fx = gx - x0, fz = gz - z0;
+    const val = (ix, iz) => (ix >= 0 && iz >= 0 && ix <= map.w && iz <= map.h) ? (vd[iz * stride + ix] || 0) : 0;
+    const a = val(x0, z0), b = val(x0 + 1, z0), c = val(x0, z0 + 1), d = val(x0 + 1, z0 + 1);
+    return (a * (1 - fx) + b * fx) * (1 - fz) + (c * (1 - fx) + d * fx) * fz;
+  };
   const vidx = new Map(), pos = [], dep = [], idx = [];
-  for (let vz = 0; vz <= map.h; vz++) for (let vx = 0; vx <= map.w; vx++) {
-    const k = vz * stride + vx;
-    if (!vc[k]) continue;
-    vidx.set(k, pos.length / 3);
-    pos.push(map.ox + vx, vh[k] + WATER_LEVEL, map.oz + vz);
-    dep.push(vd[k]);
-  }
+  const bedPos = [], bedIdx = [];   // 沙石水底：贴合碗形，盖住底下那张水面贴图
+  const key = (gx, gz) => gz * (map.w * SUB + 1) + gx;
   for (const [tx, tz] of cells) {
-    const a = vidx.get(tz * stride + tx), b = vidx.get(tz * stride + tx + 1);
-    const c = vidx.get((tz + 1) * stride + tx), e = vidx.get((tz + 1) * stride + tx + 1);
-    idx.push(a, c, b, b, c, e);
+    const corner = [], bedCorner = [];
+    for (let sz = 0; sz <= SUB; sz++) for (let sx = 0; sx <= SUB; sx++) {
+      const gx = tx * SUB + sx, gz = tz * SUB + sz, k = key(gx, gz);
+      const wx = map.ox + tx + sx / SUB, wz = map.oz + tz + sz / SUB;
+      let vi = vidx.get(k);
+      if (vi == null) {
+        vi = pos.length / 3; vidx.set(k, vi);
+        // 水面：固定水平面；沙床：贴碗底（地面网格上方一点点，避免 z-fighting）
+        pos.push(wx, WATER_LEVEL, wz);
+        dep.push(vdAt(tx + sx / SUB, tz + sz / SUB));
+        bedPos.push(wx, surfaceY(map, wx, wz) + .012, wz);
+      }
+      corner.push(vi); bedCorner.push(vi);
+    }
+    for (let sz = 0; sz < SUB; sz++) for (let sx = 0; sx < SUB; sx++) {
+      const a = corner[sz * (SUB + 1) + sx], b = corner[sz * (SUB + 1) + sx + 1];
+      const c = corner[(sz + 1) * (SUB + 1) + sx], d = corner[(sz + 1) * (SUB + 1) + sx + 1];
+      idx.push(a, c, b, b, c, d);
+      bedIdx.push(a, b, c, b, d, c);   // 沙床朝上（与水面相反绕序）
+    }
   }
   const geo = new T.BufferGeometry();
   geo.setAttribute("position", new T.Float32BufferAttribute(pos, 3));
   geo.setAttribute("aDepth", new T.Float32BufferAttribute(dep, 1));
   geo.setIndex(idx);
   geo.computeVertexNormals();
+
+  // 沙石水底 mesh：真实水塘该看到的是水底泥沙，而不是「一层画着水波的贴图」。
+  // 用顶点色做深浅斑驳，越靠塘心越暗（水越深），岸边偏浅沙色。
+  const bedGeo = new T.BufferGeometry();
+  bedGeo.setAttribute("position", new T.Float32BufferAttribute(bedPos, 3));
+  bedGeo.setIndex(bedIdx);
+  const bedCol = [];
+  for (let i = 0; i < bedPos.length; i += 3) {
+    const d = dep[i / 3] || 0;
+    const sand = new T.Color().setHSL(.11 - d * .02, .28 - d * .06, .52 - d * .24);
+    bedCol.push(sand.r, sand.g, sand.b);
+  }
+  bedGeo.setAttribute("color", new T.Float32BufferAttribute(bedCol, 3));
+  bedGeo.computeVertexNormals();
+  const bedMat = new T.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0, flatShading: true, side: T.DoubleSide });
+  const bedMesh = new T.Mesh(bedGeo, bedMat);
+  bedMesh.frustumCulled = false;
+  group.add(bedMesh);
 
   const mat = new T.ShaderMaterial({
     uniforms: { uTime: { value: 0 } },
@@ -699,16 +847,16 @@ function buildWaterSurface(map, group) {
       uniform float uTime;
       varying float vDepth; varying vec3 vP;
       void main(){
-        vec3 shallow = vec3(.34, .64, .60);
-        vec3 deep    = vec3(.06, .26, .44);
-        vec3 col = mix(shallow, deep, smoothstep(.0, .75, vDepth));
-        // 岸边一圈淡色水线，像浅滩打湿的沙
-        col = mix(col, vec3(.72, .90, .84), smoothstep(.16, .02, vDepth) * .45);
+        vec3 shallow = vec3(.42, .70, .66);
+        vec3 deep    = vec3(.07, .28, .46);
+        vec3 col = mix(shallow, deep, smoothstep(.0, .8, vDepth));
         // 高频细碎闪光：两个频率叠起来打散规则感，只留零星亮点
         float sp = sin(vP.x * 6.1 + uTime * 1.7) * sin(vP.z * 5.3 - uTime * 1.3)
                  + .6 * sin(vP.x * 11.7 - vP.z * 8.9 + uTime * 2.1);
-        col += vec3(.9, .95, .9) * smoothstep(1.28, 1.52, sp) * .3;
-        gl_FragColor = vec4(col, mix(.55, .86, vDepth));
+        col += vec3(.9, .95, .9) * smoothstep(1.34, 1.56, sp) * .22;
+        // 浅处透明、能看清沙底；深处才逐渐不透，露出水的蓝。这样才是「一汪水」而不是「一张贴纸」。
+        float alpha = mix(.22, .88, smoothstep(.0, .85, vDepth));
+        gl_FragColor = vec4(col, alpha);
       }`
   });
   const mesh = new T.Mesh(geo, mat);
@@ -741,9 +889,63 @@ function updateWaterRipple(t) {
   waterRipple.position.set(visX(), surfaceY(m, player.x, player.z) + WATER_LEVEL + .015, visZ());
 }
 
+/* 程序化细节法线贴图：用一张可平铺的灰度高度场经 Sobel 派生法线，
+   给受光地面补上细微的表面凹凸（草地颗粒 / 土路纹理）。零外部素材，
+   256² 一张、按地块尺寸 repeat 平铺，显存开销 < 300KB。
+   法线贴图是线性数据，colorSpace 必须设为 NoColorSpace。 */
+let _detailNormal = null;
+function detailNormalTexture() {
+  if (_detailNormal) return _detailNormal;
+  const S = 256, N = 32;
+  const c = document.createElement("canvas");
+  c.width = c.height = S;
+  const g = c.getContext("2d");
+  const rnd = mulberry(9087);
+  // 周期性噪声格：取模采样保证上下左右四边无缝拼接
+  const grid = new Float32Array(N * N);
+  for (let i = 0; i < N * N; i++) grid[i] = rnd();
+  const smp = (x, y) => grid[(((y % N) + N) % N) * N + (((x % N) + N) % N)];
+  const height = new Float32Array(S * S);
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    const fx = x / S * N, fy = y / S * N;
+    const ix = Math.floor(fx), iy = Math.floor(fy), tx = fx - ix, ty = fy - iy;
+    const sx = tx * tx * (3 - 2 * tx), sy = ty * ty * (3 - 2 * ty);
+    const h = smp(ix, iy) * (1 - sx) * (1 - sy) + smp(ix + 1, iy) * sx * (1 - sy)
+            + smp(ix, iy + 1) * (1 - sx) * sy + smp(ix + 1, iy + 1) * sx * sy;
+    height[y * S + x] = h * .68 + rnd() * .32;
+  }
+  const out = g.createImageData(S, S);
+  const K = 2.0;
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    const l = height[y * S + ((x - 1 + S) % S)], r = height[y * S + ((x + 1) % S)];
+    const u = height[((y - 1 + S) % S) * S + x], d = height[((y + 1) % S) * S + x];
+    let nx = (l - r) * K, ny = (u - d) * K, nz = 1;
+    const len = Math.hypot(nx, ny, nz) || 1;
+    const o = (y * S + x) * 4;
+    out.data[o] = (nx / len * .5 + .5) * 255;
+    out.data[o + 1] = (ny / len * .5 + .5) * 255;
+    out.data[o + 2] = (nz / len * .5 + .5) * 255;
+    out.data[o + 3] = 255;
+  }
+  g.putImageData(out, 0, 0);
+  const tex = new T.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = T.RepeatWrapping;
+  tex.colorSpace = T.NoColorSpace;
+  _detailNormal = tex;
+  return tex;
+}
+
 function buildGroundFor(map, group) {
   const tex = mapTexture(map, renderer);
-  const mat = new T.MeshBasicMaterial({ map: tex });
+  // 地面改为受光材质：真正接收半球光 + 太阳光与物体投影，丘陵起伏靠顶点法线塑形。
+  // 细节法线贴图按地块 repeat 平铺（clone 出独立 repeat，避免多张图互相覆盖）。
+  const nm = detailNormalTexture().clone();
+  nm.needsUpdate = true;
+  nm.repeat.set(map.w / 2, map.h / 2);
+  const mat = new T.MeshStandardMaterial({
+    map: tex, roughness: .98, metalness: 0,
+    normalMap: nm, normalScale: new T.Vector2(.38, .38)
+  });
   const w = map.w * TILE, h = map.h * TILE;
   const indoor = !!map.indoor;
   // 户外地面细分，逐顶点抬高；室内保持一整块平面
@@ -770,7 +972,8 @@ function buildGroundFor(map, group) {
       pos.setZ(i, hh);                       // 局部 +Z = 世界 +Y
       const ix = Math.round(wx - map.ox), iy = Math.round(wz - map.oz);
       if (ix >= 0 && ix <= map.w && iy >= 0 && iy <= map.h) grid[iy * stride + ix] = hh;
-      const sh = clamp(1 + hh * .17, .70, 1.28);   // 高处亮、低处暗（加强丘陵明暗）
+      // 顶点色只做很轻的高差提示；明暗主要交给真实光照，避免双重变暗
+      const sh = clamp(1 + hh * .07, .86, 1.14);
       colors[i * 3] = colors[i * 3 + 1] = colors[i * 3 + 2] = sh;
     }
     map.__hgrid = grid;
@@ -1377,13 +1580,17 @@ function addHouse(x, z, w, d, bodyColor, roofColor, rot = 0, parent = world, sty
     stele.position.set(w / 2 - .35, .55, d / 2 + .52);
     stele.castShadow = true;
     g.add(stele);
+    // 一对小红灯笼挂在门柱外侧：球心必须离开墙面（d/2）超过球半径 .16，
+    // 否则半球嵌进墙里从正面看只露出一片，和门楣/石碑穿模。放到 z=d/2+.42，
+    // 并比石碑(z=d/2+.52)略靠里、横向靠门柱两端，彼此不再重叠。
     [-1, 1].forEach(sd => {
+      const lx = sd * (w / 2 - .12), lz = d / 2 + .42;
       const lantern = new T.Mesh(new T.SphereGeometry(.16, 10, 8), lanternPaperMat);
       lantern.scale.y = 1.25;
-      lantern.position.set(sd * (w / 2 - .18), 1.5, d / 2 + .32);
+      lantern.position.set(lx, 1.42, lz);
       g.add(lantern);
       const cap = new T.Mesh(new T.CylinderGeometry(.1, .12, .07, 8), lanternCapMat);
-      cap.position.set(sd * (w / 2 - .18), 1.74, d / 2 + .32);
+      cap.position.set(lx, 1.66, lz);
       g.add(cap);
     });
   }
@@ -1595,10 +1802,12 @@ function buildGuofengDecor() {
   [[-30, -24], [-26, -28], [30, -26], [36, -22], [-38, 8], [40, 16],
    [-34, 30], [34, 34], [-16, -30], [18, -30], [46, 40], [-42, -6]]
     .forEach(([x, z]) => { if (freeSpot(x, z, .9)) addBamboo(x, z, r); });
-  // 红灯笼：挂在广场、路口、房前
+  // 红灯笼：挂在广场、路口。灯杆横臂要挑出 .62，所以必须离房子/招牌足够远——
+  // 旧坐标 [-7.5,22.4] 正杵在自家门口、[15.5,20.4] 堵着杂货铺门、[1.4,26] 和村名牌重叠，
+  // 横臂还会插进墙里。这里改成开阔处，并统一用 freeSpot 复检，绝不落在建筑/农田上。
   [[3.2, 7.6], [-3.2, 7.6], [3.2, -6.2], [-3.2, -6.2],
-   [11.2, 5], [18, 11], [-7.5, 22.4], [15.5, 20.4], [1.4, 26]]
-    .forEach(([x, z]) => addRedLantern(x, z));
+   [11.2, 5], [18, 11], [-11.5, 12.5], [8.5, 24.5], [-4.5, 30]]
+    .forEach(([x, z]) => { if (freeSpot(x, z, 1.1)) addRedLantern(x, z); });
 }
 
 function addFlowerBed(x, z, w = 2, d = 1) {
@@ -2539,17 +2748,23 @@ function buildShoots() {
 
 // 每天换一批：8 个备选点里随机露 4 根，掰完今天就没
 function refreshShoots() {
-  if (shootQuest.day === Farm.day) return;
-  shootQuest.day = Farm.day;
+  // 只有跨天才清空「已掰」标记；同一天重进竹林要保留读档恢复的 got 状态，
+  // 否则刷新页面 → day 复位 → 再露 4 根，就能无限掰竹笋刷钱。
+  if (shootQuest.day !== Farm.day) {
+    shootQuest.day = Farm.day;
+    shootQuest.objs.forEach(o => { o.got = false; });
+  }
+  // 可见性每次都按当天种子重算（纯确定性），已掰过的保持隐藏。
+  // 这样即使读档只恢复了 got、没存档 visible，进竹林也能还原出正确显示。
   const r = mulberry(Farm.day * 7919 + 41);
   const order = SHOOT_SPOTS.map((_, i) => i);
   for (let i = order.length - 1; i > 0; i--) {
     const j = Math.floor(r() * (i + 1));
     [order[i], order[j]] = [order[j], order[i]];
   }
+  const show = order.slice(0, 4);
   shootQuest.objs.forEach((o, i) => {
-    o.got = false;
-    o.group.visible = order.slice(0, 4).indexOf(i) >= 0;
+    o.group.visible = show.indexOf(i) >= 0 && !o.got;
   });
 }
 
@@ -2809,9 +3024,50 @@ async function getActor(key) {
   return makeBillboard(key);
 }
 
+/* =========================================================
+   接触阴影：每个角色脚下一小团径向渐变软阴影。
+   斜射的平行光会把影子投偏、角色像"浮"在地上；这层贴地阴影补上正下方的暗，
+   让脚真正"踩"进地面。纹理与几何全共享，只多一次透明 draw call / 角色。
+   ========================================================= */
+let _blobTex = null;
+function contactShadowTexture() {
+  if (_blobTex) return _blobTex;
+  const S = 128;
+  const c = document.createElement("canvas");
+  c.width = c.height = S;
+  const g = c.getContext("2d");
+  const grd = g.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
+  grd.addColorStop(0, "rgba(26,34,28,.60)");
+  grd.addColorStop(.42, "rgba(26,34,28,.32)");
+  grd.addColorStop(1, "rgba(26,34,28,0)");
+  g.fillStyle = grd;
+  g.fillRect(0, 0, S, S);
+  _blobTex = new T.CanvasTexture(c);
+  _blobTex.colorSpace = T.SRGBColorSpace;
+  return _blobTex;
+}
+const blobGeo = new T.PlaneGeometry(1, 1);
+function makeContactShadow(diameter = 1.3) {
+  const m = new T.Mesh(blobGeo, new T.MeshBasicMaterial({
+    map: contactShadowTexture(), transparent: true, depthWrite: false,
+    opacity: .9, polygonOffset: true, polygonOffsetFactor: -1
+  }));
+  m.rotation.x = -Math.PI / 2;
+  m.scale.set(diameter, diameter, 1);
+  m.position.y = .026;
+  m.renderOrder = 2;
+  m.userData.baseDiameter = diameter;
+  m.userData.contactShadow = true;
+  return m;
+}
+
 const playerObj = new T.Group();
 scene.add(playerObj);
 playerObj.position.set(player.x, 0, player.z);
+// 玩家的阴影独立挂在 scene：playerObj.children[0] 约定是模型，不能被阴影占位；
+// 而且玩家会跳跃/颠簸，阴影要留在地面，不能跟着升起来。
+const playerShadow = makeContactShadow(1.35);
+scene.add(playerShadow);
 
 /* =========================================================
    相机（固定俯角，不旋转 → 键位永远对应屏幕方向）
@@ -3077,6 +3333,13 @@ window.addEventListener("keydown", e => {
     else openWorldMap();
     e.preventDefault();
   }
+  if (k === "t" || k === "T") {
+    if (Fight.on || dlg.open) return;
+    const td = $("#today");
+    if (td.classList.contains("show")) td.classList.remove("show");
+    else { buildToday(); td.classList.add("show"); }
+    e.preventDefault();
+  }
   if (k === "v" || k === "V") { setViewMode(state.viewMode === "3d" ? "2d" : "3d"); e.preventDefault(); }
   if (k === "r" || k === "R") { toggleFollow(); e.preventDefault(); }
   if (k === "Escape") closeOverlays();
@@ -3291,9 +3554,9 @@ function update(dt) {
       grassDist += moved;
       const p = patches.find(p => p.map === roomState.name &&
         Math.hypot(player.x - p.x, (player.z - p.z) / .9) < p.r - .6);
-      if (p && grassDist > 6) {
+      if (p && grassDist > GROWTH.encounterStep) {
         grassDist = 0;
-        if (Math.random() < .26) startEncounter(p.zone);
+        if (Math.random() < GROWTH.encounterChance) startEncounter(p.zone);
       }
       if (!p) grassDist = 0;
     }
@@ -3324,6 +3587,13 @@ function update(dt) {
   const groundY = terrainY(player.x, player.z);
   const footY = groundY + player.jumpY;
   playerObj.position.set(visX(), sleepPose.on ? playerObj.position.y : footY, visZ());
+  // 接触阴影：贴地面（用 groundY，不随跳跃升高），跳起时缩小变淡，躺下藏起来
+  playerShadow.position.set(visX(), groundY + .026, visZ());
+  const jumpK = clamp(1 - player.jumpY * .34, .5, 1);
+  const pDia = playerShadow.userData.baseDiameter * jumpK;
+  playerShadow.scale.set(pDia, pDia, 1);
+  playerShadow.material.opacity = .9 * jumpK * (sleepPose.on ? 0 : 1);
+  playerShadow.visible = !sleepPose.on;
   // 躺下时不做朝向平滑：rot.y 一动，-90° 的躺倒旋转就会被拧歪，头转不到枕头上
   if (!sleepPose.on) {
     const cur = playerObj.rotation.y;
@@ -3411,6 +3681,7 @@ function hudTick() {
   $("#stepCount").textContent = Math.round(state.steps);
   $("#areaChip").innerHTML = '<span class="dot"></span> ' + areaName();
   $("#dexCount").textContent = dexCount();
+  if (typeof refreshTodayBadge === "function") refreshTodayBadge();
 
   // 站到谁旁边了：提一句，不然没人知道 NPC 能聊
   const near = (state.started && !dlg.open && !Fight.on) ? npcNear(2.4) : null;
@@ -3657,21 +3928,20 @@ function toast(msg) {
   toastT = setTimeout(() => n.classList.remove("show"), 2400);
 }
 function overlayOpen() {
-  return $("#dex").classList.contains("show")
-    || $("#help").classList.contains("show")
-    || $("#shop").classList.contains("show")
-    || $("#go").classList.contains("show")
-    || ($("#worldmap") && $("#worldmap").classList.contains("show"))
-    || ($("#fishing") && $("#fishing").classList.contains("show"))
-    || ($("#stage") && $("#stage").classList.contains("show"));
+  for (const el of OVERLAY_NODES) if (el.classList.contains("show")) return true;
+  return false;
 }
 function closeOverlays() {
   $("#dex").classList.remove("show");
   $("#help").classList.remove("show");
   $("#shop").classList.remove("show");
+  if ($("#today")) $("#today").classList.remove("show");
   if ($("#worldmap")) $("#worldmap").classList.remove("show");
   if ($("#fishing")) closeFishing();
   if ($("#stage")) closeStage();
+  // 五子棋也要能被 Escape 关闭；复用退出按钮的既有逻辑，
+  // 保证 over/aiTimer/ingomoku 状态与剧情回调都被正确处理。
+  if ($("#go").classList.contains("show")) $("#goQuit").click();
 }
 
 /* =========================================================
@@ -3748,6 +4018,12 @@ function fillWater() {
    村民
    ========================================================= */
 const npcs = [];
+
+// 给村民脚下补接触阴影。append 到 group 末尾，绝不占用 children[0]（动画约定）。
+function addNpcShadow(g, diameter) {
+  if (!g) return;
+  g.add(makeContactShadow(diameter || 1.15));
+}
 
 // 奶察的帽子：奶蛙模型顶上扣一顶蓝帽子，比拿表情图当立牌干净。
 // 全部尺寸照奶蛙头部逐层实测定的（h=1.62 时）：
@@ -3845,12 +4121,16 @@ async function spawnVillageNpcs() {
       if (!obj) continue;
       const g = new T.Group();
       g.add(obj);
-      if (def.cop) { const ch = (CAST[def.char] || {}).h || 1.5; addCopCap(g, ch); addCopUniform(g, ch); }
+      // 真奶察模型（char=naicha）自带警帽/制服/短袖，不能再用奶蛙那套配件叠上去，
+      // 否则帽子与短袖双份、皮带悬空，正是“模型不对/穿模”的来源。只有借奶蛙
+      // 顶替、又标记了 cop 的情况才需要现拼。
+      if (def.cop && def.char !== "naicha") { const ch = (CAST[def.char] || {}).h || 1.5; addCopCap(g, ch); addCopUniform(g, ch); }
       g.position.set(def.home.x, surfaceY(VILLAGE, def.home.x, def.home.z), def.home.z);
       g.rotation.y = def.face || 0;
       world.add(g);
       const n = npcDefObj(def, "village", def.home.x, def.home.z);
       n.obj = g;
+      addNpcShadow(g);
       npcs.push(n);
     } catch (e) { console.warn("[game] 村民没来：" + def.id, e); }
     // 搭 rig 很重（每个几百毫秒），让画面渲染一帧再搭下一个，村民一个个冒出来
@@ -3869,13 +4149,14 @@ async function spawnRoomNpcs(map, mapKey) {
       if (!obj) continue;
       const g = new T.Group();
       g.add(obj);
-      if (DESK_OFFICER.cop) { const ch = (CAST[DESK_OFFICER.char] || {}).h || 1.5; addCopCap(g, ch); addCopUniform(g, ch); }
+      if (DESK_OFFICER.cop && DESK_OFFICER.char !== "naicha") { const ch = (CAST[DESK_OFFICER.char] || {}).h || 1.5; addCopCap(g, ch); addCopUniform(g, ch); }
       const x = map.ox + spec.tx + .5, z = map.oz + spec.tz + .5;
       g.position.set(x, 0, z);
       g.rotation.y = spec.face || 0;
       room.group.add(g);
       const n = npcDefObj(DESK_OFFICER, mapKey, x, z);
       n.obj = g;
+      addNpcShadow(g);
       npcs.push(n);
       setSolid(map, spec.tx, spec.tz, 1);
     } catch (e) { console.warn("[game] 值班的没在", e); }
@@ -4175,6 +4456,7 @@ const POUCH_SPOTS = [
 ];
 const pouchQuest = { active: false, got: 0, objs: [] };
 let arenaPending = false;
+let starChallengeFight = false;   // 本场是否为图鉴集齐后的明星挑战
 
 function buildPouches() {
   if (pouchQuest.objs.length) return;
@@ -4262,6 +4544,7 @@ async function spawnMapNpcs(key, defs, group) {
       group.add(g);
       const n = npcDefObj(def, key, def.home.x, def.home.z);
       n.obj = g;
+      addNpcShadow(g);
       npcs.push(n);
     } catch (e) { console.warn("[game] " + key + " 上有人没来：" + def.id, e); }
     if (i < defs.length - 1) await new Promise(r => requestAnimationFrame(r));
@@ -4655,7 +4938,9 @@ const COURIER_JOBS = [
   { kind: "fish", map: "grove", need: 2, gold: 90, title: "想喝一锅鱼汤",
     desc: "在竹林水塘钓上两条鱼，带回驿站交差。" },
   { kind: "battle", map: null, need: 1, gold: 100, balls: 1, title: "草坡太闹腾了",
-    desc: "去野外打赢一场，把闹事的野物吓一吓。" }
+    desc: "去野外打赢一场，把闹事的野物吓一吓。" },
+  { kind: "chess", map: null, need: 1, gold: 85, title: "去陪棋爷杀一局",
+    desc: "镇上棋爷念叨没人陪他下棋，赢他一盘让他高兴高兴。" }
 ];
 
 function courierToday() {
@@ -4772,6 +5057,7 @@ function claimBounty() {
   grantExp(14);
   Farm.paint();
   hudTick();
+  save();   // 领奖即落盘，异常退出也不丢已领状态
   sfx("coin");
   say("奶察", [
     "钱点好了：" + (R.gold || 0) + " 金" +
@@ -5422,6 +5708,9 @@ function qiyetLose() {
       grantExp(14);
       toast("赢了棋爷 · 阅历 +14");
     }
+    // 五子棋接入每日循环：赢棋推进悬赏与驿务，不再是拿一次经验就荒废的孤岛
+    questProgress("chess");
+    courierProgress("chess", roomState.name);
   }, null, "normal", "棋爷");
 }
 
@@ -5441,16 +5730,25 @@ const FISH_RODS = 8;
 const fishing = { on: false, raf: 0, last: 0, pos: 0, dir: 1, speed: 34,
                   zoneA: 41, zoneB: 59, rods: 0, caught: 0 };
 
+// 钓鱼 UI 节点缓存 + 上次文案，避免每帧重建 innerHTML（caught/rods/gold 只在收竿时变化）
+const FISH_NODES = {
+  zone: document.getElementById("fishZone"),
+  bob: document.getElementById("fishBob"),
+  stat: document.getElementById("fishStat"),
+  gold: document.getElementById("fishGold")
+};
+let fishStatCache = "", fishGoldCache = "";
 function fishUI() {
-  const zone = $("#fishZone"), bob = $("#fishBob");
+  const zone = FISH_NODES.zone, bob = FISH_NODES.bob;
   if (!zone || !bob) return;
   zone.style.left = fishing.zoneA + "%";
   zone.style.width = (fishing.zoneB - fishing.zoneA) + "%";
-  zone.style.transform = "none";
+  zone.style.transform = "none"; // 覆盖 CSS 的 translateX(-50%)，让绿区落在 zoneA~zoneB
   bob.style.left = fishing.pos + "%";
-  $("#fishStat").innerHTML = "钓到 <b>" + fishing.caught + "</b> 条 · 还剩 <b>" +
-    (FISH_RODS - fishing.rods) + "</b> 竿";
-  $("#fishGold").textContent = "💰 " + Farm.gold;
+  const stat = "钓到 <b>" + fishing.caught + "</b> 条 · 还剩 <b>" + (FISH_RODS - fishing.rods) + "</b> 竿";
+  if (stat !== fishStatCache) { FISH_NODES.stat.innerHTML = stat; fishStatCache = stat; }
+  const gold = "💰 " + Farm.gold;
+  if (gold !== fishGoldCache) { FISH_NODES.gold.textContent = gold; fishGoldCache = gold; }
 }
 
 function fishTick(ts) {
@@ -5489,11 +5787,15 @@ function startFishing() {
 
 function reelFish() {
   if (!fishing.on) return;
+  // 满竿后到 closeFishing 之间还有 ~900ms 可点，这里硬拦住，
+  // 否则能在这段窗口里连续收竿刷钱、并把 state.fishRods 写成大于上限。
+  if (fishing.rods >= FISH_RODS) { closeFishing(); return; }
   const hit = fishing.pos >= fishing.zoneA && fishing.pos <= fishing.zoneB;
   fishing.rods++;
   state.fishRods = fishing.rods;
   if (hit) {
     fishing.caught++;
+    state.fishCaught = (state.fishCaught || 0) + 1;   // 成就累计
     Farm.gold += 12;
     courierProgress("fish", "grove");
     sfx("coin");
@@ -5522,6 +5824,8 @@ function reelFish() {
 function closeFishing() {
   if (!fishing.on) return;
   fishing.on = false;
+  // 归一到上限，防止旧档里已超限的 fishRods 一直卡着当天不能再钓
+  state.fishRods = Math.min(state.fishRods, FISH_RODS);
   cancelAnimationFrame(fishing.raf);
   $("#fishing").classList.remove("show");
 }
@@ -5785,14 +6089,18 @@ function pickFromTable(table) {
   return table[0][0];
 }
 
-async function startEncounter(zoneKey, forceKey) {
+async function startEncounter(zoneKey, forceKey, opts) {
   if (Fight.on || encounterLock) return;
   encounterLock = true;
   const zone = ZONES[zoneKey] || ZONES.meadow;
   const enemyKey = forceKey || pickFromTable(zone.table);
+  // 上限见 GROWTH.enemyLvCap：原封顶 12 会让高等级玩家面对满级怪 3 秒秒杀，挑战归零。
+  // 敌人 atk 与玩家同曲线 28+(lv-3)*3，和 kof.js 的伤害标定一致。
+  // opts.lvBonus：明星挑战用的额外等级加成，让终局仍有一场硬仗可打。
+  const lvBonus = (opts && opts.lvBonus) || 0;
   const enemyLv = forceKey
-    ? clamp(state.lv + 1, 3, 12)
-    : clamp(state.lv + Math.round(rnd(-1, 1.4)), 2, 12);
+    ? clamp(state.lv + 1 + lvBonus, 3, GROWTH.enemyLvCap + lvBonus)
+    : clamp(state.lv + Math.round(rnd(-1, 1.4)), 2, GROWTH.enemyLvCap);
 
   $("#hud").classList.add("hidden");
   document.body.classList.add("infight");
@@ -5802,10 +6110,10 @@ async function startEncounter(zoneKey, forceKey) {
     await Fight.start({
       actorFor: getActor,
       enemyKey,
-      enemyName: (forceKey === "niulai" ? "" : "野生的") + CAST[enemyKey].name,
+      enemyName: (opts && opts.enemyName) || (forceKey === "niulai" ? "" : "野生的") + CAST[enemyKey].name,
       enemyLv,
-      enemyMaxHp: Math.round(34 + enemyLv * 9),
-      enemyAtk: 20 + enemyLv * 4,
+      enemyMaxHp: Math.round(GROWTH.enemyHpBase + enemyLv * GROWTH.enemyHpPerLv),
+      enemyAtk: ATK_BASE + (enemyLv - 3) * GROWTH.atkPerLv,
       hp: Math.max(1, Math.round(state.hp)),
       maxHp: state.maxHp,
       lv: state.lv,
@@ -5816,6 +6124,9 @@ async function startEncounter(zoneKey, forceKey) {
     });
   } catch (err) {
     console.error(err);
+    // 启动失败也要解除封锁，否则之后再也不会遇怪
+    encounterLock = false;
+    Fight.on = false;
     endBattleUi();
   }
 }
@@ -5824,9 +6135,11 @@ function onBattleEnd(res) {
   endBattleUi();
   encounterLock = false;
   if (!res) return;
-  // 擂台标记只对「刚打完的这一场」有效，别带到下一场野怪
+  // 擂台/明星挑战标记只对「刚打完的这一场」有效，别带到下一场野怪
   const wasArena = arenaPending;
   arenaPending = false;
+  const wasStar = starChallengeFight;
+  starChallengeFight = false;
 
   state.balls -= res.ballUsed;
   state.hp = res.playerHp;
@@ -5834,14 +6147,13 @@ function onBattleEnd(res) {
 
   if (res.captured) {
     state.captured[res.enemyKey] = true;
-    state.balls = state.balls;
     blip(880, .2, "sine", .05);
     toast("收服了 " + CAST[res.enemyKey].name + "！");
     buildDex();
-    grantExp(12);
+    grantExp(GROWTH.expCapture);
     questProgress("capture");
   } else if (res.win) {
-    grantExp(8 + Math.round(res.enemyMaxHp * .18));
+    grantExp(GROWTH.expWinBase + Math.round(res.enemyMaxHp * GROWTH.expWinHpRatio));
     toast("打赢了，捡回一点经验");
     if (wasArena) {
       state.arenaWins = (state.arenaWins || 0) + 1;
@@ -5851,8 +6163,17 @@ function onBattleEnd(res) {
       setTimeout(() => toast("守擂赢了一场 · +" + prize + " 金"), 700);
       if (state.arenaWins === 3) setTimeout(() => toast("三连胜，暴暴龙认了"), 1600);
     }
+    if (wasStar) {
+      state.starWins = (state.starWins || 0) + 1;
+      const prize = 150 + state.lv * 4;
+      Farm.gold += prize;
+      state.balls += 2;
+      if (state.starChallenge) { state.starChallenge.day = Farm.day; state.starChallenge.done = true; }
+      Farm.paint(); hudTick();
+      setTimeout(() => toast("明星挑战成功 · +" + prize + " 金 +2 球"), 700);
+    }
   } else {
-    state.hp = Math.max(1, Math.round(state.maxHp * .35));
+    state.hp = Math.max(1, Math.round(state.maxHp * GROWTH.defeatHpRatio));
     // 被打趴的人一律送回村里，别把人留在镇上却看不见村子的场景
     if (roomState.name !== "village") {
       travelTo("village", { x: SPAWN.x, z: SPAWN.z, heading: Math.PI });
@@ -5882,12 +6203,176 @@ function grantExp(n) {
   while (state.exp >= expNeed(state.lv)) {
     state.exp -= expNeed(state.lv);
     state.lv++;
-    state.maxHp += 8; state.atk += 3;
+    state.maxHp += GROWTH.hpPerLv; state.atk += GROWTH.atkPerLv;
     state.hp = state.maxHp;
-    toast("升级！Lv." + state.lv + "　体力上限 +8");
+    toast("升级！Lv." + state.lv + "　体力上限 +" + GROWTH.hpPerLv + "　攻击 +" + GROWTH.atkPerLv);
     blip(760, .2, "sine", .05);
     setTimeout(() => blip(980, .2, "sine", .05), 120);
   }
+}
+
+/* =========================================================
+   今日任务面板 + 成就系统
+   把散在各处的每日目标平铺出来，并让 pouches/steps/arenaWins
+   这些原本只存不用的累计数据成为可兑换的成就。
+   ========================================================= */
+const ACHIEVEMENTS = [
+  { id: "walker1", name: "用脚丈量", desc: "累计走 1000 步", icon: "足",
+    cur: () => Math.round(state.steps), need: 1000, reward: { gold: 60 } },
+  { id: "walker2", name: "村里的飞毛腿", desc: "累计走 5000 步", icon: "疾",
+    cur: () => Math.round(state.steps), need: 5000, reward: { gold: 200, balls: 2 } },
+  { id: "pouch3", name: "跑腿熟手", desc: "累计送回 3 份外卖", icon: "送",
+    cur: () => state.pouches || 0, need: 3, reward: { gold: 60 } },
+  { id: "pouch15", name: "奶家村闪送员", desc: "累计送回 15 份外卖", icon: "递",
+    cur: () => state.pouches || 0, need: 15, reward: { gold: 180, balls: 3 } },
+  { id: "arena3", name: "初露锋芒", desc: "擂台累计赢 3 场", icon: "擂",
+    cur: () => state.arenaWins || 0, need: 3, reward: { gold: 90, balls: 1 } },
+  { id: "arena15", name: "常胜将军", desc: "擂台累计赢 15 场", icon: "冠",
+    cur: () => state.arenaWins || 0, need: 15, reward: { gold: 260, balls: 5 } },
+  { id: "fish20", name: "姜太公", desc: "累计钓上 20 条鱼", icon: "钓",
+    cur: () => state.fishCaught || 0, need: 20, reward: { gold: 120 } },
+  { id: "catch5", name: "收服达人", desc: "收服 5 只野物", icon: "服",
+    cur: () => Object.keys(state.captured || {}).length, need: 5, reward: { balls: 3, gold: 80 } },
+  { id: "lv10", name: "小有名气", desc: "升到 Lv.10", icon: "级",
+    cur: () => state.lv, need: 10, reward: { gold: 150 } },
+  { id: "lv20", name: "奶家村扛把子", desc: "升到 Lv.20", icon: "霸",
+    cur: () => state.lv, need: 20, reward: { gold: 400, balls: 8 } },
+  { id: "dex8", name: "全员到齐", desc: "图鉴集齐 8 位", icon: "鉴",
+    cur: () => dexCount(), need: 8, reward: { gold: 300, balls: 5 } },
+  { id: "star5", name: "挑战明星", desc: "明星挑战累计赢 5 场", icon: "星",
+    cur: () => state.starWins || 0, need: 5, reward: { gold: 300, balls: 5 } }
+];
+
+function achProgress(a) {
+  return { cur: Math.min(a.cur(), a.need), need: a.need, ready: a.cur() >= a.need };
+}
+function achClaimed(id) { return (state.achievements || []).includes(id); }
+function achReadyCount() {
+  return ACHIEVEMENTS.filter(a => !achClaimed(a.id) && achProgress(a).ready).length;
+}
+function claimAchievement(id) {
+  const a = ACHIEVEMENTS.find(x => x.id === id);
+  if (!a || achClaimed(id) || !achProgress(a).ready) return;
+  state.achievements.push(id);
+  const r = a.reward || {};
+  if (r.gold) Farm.gold += r.gold;
+  if (r.balls) state.balls += r.balls;
+  grantExp(20);
+  Farm.paint(); hudTick(); save();
+  sfx("coin");
+  toast("成就达成 · " + a.name);
+  buildToday();
+}
+
+// 生成"今日任务"卡片数据：4 套每日系统，统一给出 目标/进度/状态/领奖入口
+function dailyQuestCards() {
+  const cards = [];
+  // 悬赏 bounty
+  const b = state.bounty;
+  cards.push({
+    key: "bounty", tag: "悬赏", title: b ? b.title : "今天没有悬赏",
+    desc: b ? b.desc : "回奶察局看看有没有新活儿。",
+    cur: b ? b.got : 0, need: b ? b.need : 1, done: !!(b && b.done),
+    reward: b ? ("赏金 " + (b.reward.gold || 0) + " 金") : "—",
+    ready: !!(b && !b.done && b.got >= b.need), where: "奶察局"
+  });
+  // 驿务 courier
+  const c = activeCourier() || courierToday();
+  cards.push({
+    key: "courier", tag: "驿务", title: c.title, desc: c.desc,
+    cur: c.got, need: c.need, done: !!c.done,
+    reward: "佣金 " + (c.reward.gold || 0) + " 金" + (c.reward.balls ? " + " + c.reward.balls + " 球" : ""),
+    ready: !c.done && c.got >= c.need, where: "镇上驿站"
+  });
+  // 戏班 troupe
+  const t = state.troupe || { stage: 0, gotList: [], invited: [] };
+  const gotN = (t.gotList || []).length, invN = (t.invited || []).length;
+  cards.push({
+    key: "troupe", tag: "戏班", title: "帮戏班子张罗行头",
+    desc: "送三封请帖，再捡回铜锣、戏服、头面。",
+    cur: Math.min(3, Math.floor((gotN + invN) / 2)), need: 3, done: t.stage >= 3,
+    reward: "酬劳 150 金 + 2 球", ready: t.stage === 2, where: "镇上戏班"
+  });
+  // 外卖 pouch
+  const pq = pouchQuest;
+  cards.push({
+    key: "pouch", tag: "外卖", title: "帮肥嘟嘟找回外卖",
+    desc: "三份外卖洒在镇上，找齐了拿回去。",
+    cur: pq.got, need: 3, done: pq.active === false && (state.pouchDay === Farm.day),
+    reward: "酬劳 60 金 + 1 球", ready: pq.active && pq.got >= 3, where: "镇上肥嘟嘟"
+  });
+  return cards;
+}
+
+let todayTab = "daily";
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+function buildToday() {
+  // 标签切换态
+  const tD = $("#tabDaily"), tA = $("#tabAch");
+  if (tD && tA) {
+    tD.classList.toggle("active", todayTab === "daily");
+    tA.classList.toggle("active", todayTab === "ach");
+    $("#todayDaily").hidden = todayTab !== "daily";
+    $("#todayAch").hidden = todayTab !== "ach";
+  }
+  if (todayTab === "daily") {
+    const box = $("#todayDaily");
+    if (!box) return;
+    box.className = "quest-list";
+    box.innerHTML = dailyQuestCards().map(q => {
+      const pct = Math.round(Math.min(1, q.cur / q.need) * 100);
+      const tagCls = q.done ? "quest-tag" : (q.ready ? "quest-tag ready" : "quest-tag");
+      const tagTxt = q.done ? "已完成" : (q.ready ? "可领赏" : q.where);
+      return '<div class="quest-card' + (q.done ? ' done' : '') + '">'
+        + '<div class="quest-head"><b>' + esc(q.title) + '</b><span class="' + tagCls + '">' + esc(tagTxt) + '</span></div>'
+        + '<p class="quest-desc">' + esc(q.desc) + '</p>'
+        + '<div class="ach-bar"><i style="width:' + pct + '%"></i></div>'
+        + '<div class="quest-foot"><span>进度 ' + q.cur + '/' + q.need + '</span><span>报酬 <b>' + esc(q.reward) + '</b></span></div>'
+        + '</div>';
+    }).join("");
+  } else {
+    const box = $("#todayAch");
+    if (!box) return;
+    box.className = "ach-list";
+    const got = ACHIEVEMENTS.filter(a => achClaimed(a.id)).length;
+    const achEl = $("#achProgress");
+    if (achEl) achEl.textContent = got + "/" + ACHIEVEMENTS.length;
+    box.innerHTML = ACHIEVEMENTS.map(a => {
+      const p = achProgress(a), claimed = achClaimed(a.id);
+      const cls = claimed ? "ach-card claimed" : (p.ready ? "ach-card" : "ach-card locked");
+      const pct = Math.round(p.cur / p.need * 100);
+      const rew = (a.reward.gold ? a.reward.gold + " 金" : "")
+        + (a.reward.gold && a.reward.balls ? " · " : "")
+        + (a.reward.balls ? a.reward.balls + " 球" : "");
+      const btn = claimed ? '<div class="ach-reward">已领取 · ' + esc(rew) + '</div>'
+        : (p.ready ? '<button class="btn dark" data-ach="' + a.id + '">领取奖励</button>'
+                   : '<div class="ach-reward">目标 ' + esc(rew) + '</div>');
+      return '<div class="' + cls + '">'
+        + '<div class="ach-medal">' + esc(a.icon) + '</div>'
+        + '<div class="ach-body"><b>' + esc(a.name) + '</b><p>' + esc(a.desc) + '</p>'
+        + '<div class="ach-bar"><i style="width:' + pct + '%"></i></div>'
+        + '<div class="ach-reward">' + p.cur + '/' + p.need + '</div>' + btn + '</div></div>';
+    }).join("");
+    box.querySelectorAll("button[data-ach]").forEach(b => {
+      b.onclick = () => claimAchievement(b.dataset.ach);
+    });
+  }
+  refreshTodayBadge();
+}
+let _lastAchReady = -1;
+function refreshTodayBadge() {
+  const n = achReadyCount() + dailyQuestCards().filter(q => q.ready).length;
+  const badge = $("#todayBadge");
+  if (badge) badge.hidden = n === 0;
+  // 新达成成就时提示一次（边沿检测，避免 hudTick 高频重复弹）
+  if (_lastAchReady >= 0 && achReadyCount() > _lastAchReady && state.started) {
+    toast("有成就可领了 · 打开「今日」看看");
+    blip(980, .12, "sine", .03);
+  }
+  _lastAchReady = achReadyCount();
 }
 
 /* =========================================================
@@ -5968,19 +6453,58 @@ function buildDex() {
       b.onclick = () => claimDexTier(Number(b.dataset.tier));
     });
   }
+  // 图鉴集齐 8/8 解锁「明星挑战」：终局也有一场每天可打的硬仗
+  const starBox = $("#dexStarChallenge");
+  if (starBox) {
+    const unlocked = dexCount() >= DEX_ORDER.length;
+    const sc = state.starChallenge || { day: 0, done: false };
+    const doneToday = sc.day === Farm.day && sc.done;
+    if (!unlocked) {
+      starBox.innerHTML = '<div class="dex-tier"><div><b>明星挑战 · 未解锁</b><br>'
+        + '<span>图鉴集齐 8 位后开放，每天一场硬仗。</span></div><button class="btn dark" disabled>未解锁</button></div>';
+    } else {
+      starBox.innerHTML = '<div class="dex-tier"><div><b>明星挑战</b><br>'
+        + '<span>' + (doneToday ? "今天已挑战，明天再来。"
+            : "对手比你还高 8 级 · 赢了得重赏并计入成就。") + '</span></div>'
+        + '<button class="btn" id="btnStarChallenge"' + (doneToday ? " disabled" : "") + '>'
+        + (doneToday ? "今日已完成" : "接受挑战") + '</button></div>';
+      const btn = $("#btnStarChallenge");
+      if (btn && !doneToday) btn.onclick = () => {
+        $("#dex").classList.remove("show");
+        closeOverlays();
+        starChallengeFight = true;
+        const boss = "niulai";
+        startEncounter("hill", boss, { lvBonus: 8, enemyName: "明星挑战 · " + CAST[boss].name });
+      };
+    }
+  }
 }
 
 /* =========================================================
    其它 UI
    ========================================================= */
+function syncSoundBtn() {
+  const b = $("#btnSound");
+  if (!b) return;
+  b.textContent = state.muted ? "🔇" : "🔊";
+  b.setAttribute("aria-pressed", String(!state.muted));
+  b.setAttribute("aria-label", state.muted ? "开启音效" : "关闭音效");
+}
 function toggleSound() {
   state.muted = !state.muted;
-  $("#btnSound").textContent = state.muted ? "🔇" : "🔊";
+  syncSoundBtn();
   if (!state.muted) blip(620, .08, "sine", .04);
   save();
 }
 
 $("#btnDex").onclick = () => { buildDex(); $("#dex").classList.add("show"); };
+// 今日任务 / 成就面板
+if ($("#btnToday")) {
+  $("#btnToday").onclick = () => { buildToday(); $("#today").classList.add("show"); };
+  $("#btnTodayClose").onclick = () => $("#today").classList.remove("show");
+  $("#tabDaily").onclick = () => { todayTab = "daily"; buildToday(); };
+  $("#tabAch").onclick = () => { todayTab = "ach"; buildToday(); };
+}
 /* ---- 2D / 3D 视角切换：同一张地图、同一份存档，只是镜头表现不同 ----
    3D = 第三人称透视跟拍（开放世界）；2D = 正交俯视（房间式的平面感）。
    切的时候人原地不动，位置 / 进度都保留。 */
@@ -6322,7 +6846,7 @@ let radarAcc = 0;      // 小地图重绘节流：24fps 足够，省下每帧一
 function loop() {
   requestAnimationFrame(loop);
   const dt = Math.min(.05, clock.getDelta());
-  if (Fight.on || $("#kof").classList.contains("show")) {
+  if (Fight.on || (KOF_EL && KOF_EL.classList.contains("show"))) {
     Fight.update(dt);
     Fight.render(renderer);
     return;
@@ -6351,8 +6875,13 @@ window.addEventListener("resize", () => {
 let lastLightO = null;
 function setLight(o) {
   lastLightO = o;
-  renderer.toneMappingExposure = o.exposure * (STYLE_STATE.exp || 1);
-  if (o.groundColor) for (const m of groundMats) m.color.copy(o.groundColor);
+  renderer.toneMappingExposure = o.exposure * (STYLE_STATE.exposure || 1);
+  // 地面已是受光材质：明暗交给光照与曝光，这里只对基色做很轻的冷色偏移。
+  // 旧版地面不受光，靠整片乘 groundColor 变暗；若照旧乘会与光照双重压暗，夜里死黑。
+  if (groundColorTint && o.groundColor) {
+    groundColorTint.copy(o.groundColor).lerp(WHITE, .82);
+    for (const m of groundMats) m.color.copy(groundColorTint);
+  }
   // 国风背景是纹理，别用纯色覆盖它；其它风格照旧跟天空色走
   if (!isGuofeng() && scene.background && scene.background.isColor) scene.background.copy(o.sky);
   // 天穹整体乘上当前天空色，昼夜才有交界
@@ -6474,7 +7003,7 @@ async function boot() {
     $("#btnContinue").dataset.has = "1";
     $("#btnStart").textContent = "重新开始";
     $("#btnStart").dataset.label = "重新开始";   // 加载进度条恢复按钮文字时要还原成这个
-    $("#btnSound").textContent = state.muted ? "🔇" : "🔊";
+    syncSoundBtn();
   }
   buildDex();
   hudTick();
@@ -6484,13 +7013,15 @@ async function boot() {
   if (sb) { sb.textContent = sb.dataset.label || "进入村子"; sb.disabled = false; }
 }
 
-$("#btnStart").onclick = () => startGame(!$("#btnContinue").dataset.has);
+// 开始按钮恒为新游戏：有存档时它已改文案为「重新开始」，必须真正开新档。
+// 原写法 startGame(!has) 在 has="1" 时取到 false，导致「重新开始」实际在读档。
+$("#btnStart").onclick = () => startGame(true);
 $("#btnContinue").onclick = () => startGame(false);
 
 function startGame(fresh) {
   if (fresh) {
     Object.assign(state, {
-      lv: 3, exp: 0, maxHp: 62, hp: 62, atk: 28,
+      lv: 3, exp: 0, maxHp: 62, hp: 62, atk: ATK_BASE,
       balls: 8, captured: {}, metNpc: false, steps: 0,
       // 重开就是全新的一天：锚点、外卖、擂台、小游戏的每日计数都得归零，
       // 不然同一个浏览器里「重新开始」会带着上一档的进度进新档
@@ -6499,11 +7030,15 @@ function startGame(fresh) {
       viewMode: "3d", camFollow: true,
       fishDay: 0, fishRods: 0, stageDay: 0, courier: null,
       metChar: {}, dexRewards: [], dexTitle: "",
+      achievements: [], starChallenge: { day: 0, done: false }, fishCaught: 0, starWins: 0,
       troupe: { day: 0, stage: 0, gotList: [], invited: [] },
-      dayFlags: {}, gifts: {}, met: {}, beatQiyet: false
+      dayFlags: {}, gifts: {}, met: {}, beatQiyet: false, visitOn: {}
     });
     pouchQuest.active = false; pouchQuest.got = 0; pouchQuest.pendingList = null;
     pouchQuest.objs.forEach(o => { o.got = false; o.group.visible = false; });
+    // 新档重置竹笋每日进度，由下次进竹林 refreshShoots() 按新的一天重新露
+    shootQuest.day = -1;
+    shootQuest.objs.forEach(o => { o.got = false; o.group.visible = false; });
     player.x = SPAWN.x; player.z = SPAWN.z;
     player.jumping = false; player.jumpY = 0; player.vy = 0;
     Farm.reset();
@@ -6552,6 +7087,7 @@ if (location.search.indexOf("debug") >= 0) {
     refreshShoots, tryShoot, shootQuest, patches, onBattleEnd,
     courierToday, activeCourier, courierProgress, courierBoard, claimCourier, COURIER_JOBS,
     DEX_ORDER, DEX_TIERS, dexCount, dexGot, unlockDexChar, claimDexTier, buildDex,
+    ACHIEVEMENTS, achProgress, achReadyCount, claimAchievement, buildToday, dailyQuestCards,
     troupeBoard, claimTroupe, tryTroupeProp, troupeInvite, activeTroupe, troupeResetIfNewDay,
     refreshTroupeProps, troupeProps, TROUPE_PROPS, TROUPE_INVITEES, troupeProgressText,
     spawnGroveNpcs, spawnHillNpcs, GROVE_NPCS, HILL_NPCS,

@@ -2,9 +2,10 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>奶家村 · 大冒险</title>
-  <link rel="stylesheet" href="css/game.css?v=20">
+  <meta name="description" content="奶家村进村大冒险：在村庄里探索、钓鱼、种田，和村民格斗下棋，收集图鉴里的每一位村民。">
+  <link rel="stylesheet" href="css/game.css?v=21">
   <!-- importmap 必须在任何模块预取之前注册：modulepreload 拉下的 GLTFLoader
        内部有 import "three"（裸说明符），没有 importmap 就地报错整条链挂掉 -->
   <script type="importmap">{"imports":{"three":"./vendor/three/three.module.min.js"}}</script>
@@ -17,15 +18,15 @@
   <link rel="modulepreload" href="vendor/three/GLTFLoader.js">
   <link rel="modulepreload" href="vendor/three/BufferGeometryUtils.js">
   <link rel="modulepreload" href="vendor/meshopt/meshopt_decoder.module.js">
-  <link rel="modulepreload" href="js/game2d.js?v=87">
+  <link rel="modulepreload" href="js/game2d.js?v=91">
   <link rel="modulepreload" href="js/tiles.js?v=6">
-  <link rel="modulepreload" href="js/farm.js">
-  <link rel="modulepreload" href="js/kof.js?v=57">
-  <link rel="modulepreload" href="js/creature.js?v=59">
-  <link rel="modulepreload" href="js/pet-motion.js?v=2">
+  <link rel="modulepreload" href="js/farm.js?v=2">
+  <link rel="modulepreload" href="js/kof.js?v=58">
+  <link rel="modulepreload" href="js/creature.js?v=60">
+  <link rel="modulepreload" href="js/pet-motion.js?v=3">
   <link rel="modulepreload" href="js/pet-laugh.js?v=site-pets-1">
   <link rel="modulepreload" href="js/portraits.js?v=57">
-  <link rel="modulepreload" href="js/villagers.js">
+  <link rel="modulepreload" href="js/villagers.js?v=2">
   <link rel="modulepreload" href="js/gomoku.js">
 </head>
 <body>
@@ -49,9 +50,10 @@
         <button class="btn" id="btnView" title="切换 2D / 3D 视角（V）">🌐 3D</button>
         <button class="btn" id="btnFollow" title="镜头跟随开关（R）">🎥 跟随</button>
         <button class="btn" id="btnDex">图鉴 <span id="dexCount">0</span>/8</button>
+        <button class="btn" id="btnToday" title="今日任务与成就（T 键）">📋 今日<i class="dot-badge" hidden id="todayBadge"></i></button>
         <button class="btn" id="btnStyle" title="切换画面风格">🎨 风格</button>
-        <button class="btn" id="btnSound">🔊</button>
-        <button class="btn" id="btnHelp">?</button>
+        <button class="btn" id="btnSound" aria-label="关闭音效" aria-pressed="false">🔊</button>
+        <button class="btn" id="btnHelp" aria-label="查看玩法帮助">?</button>
       </div>
     </div>
 
@@ -280,6 +282,24 @@
     </div>
   </div>
 
+  <!-- ========== 今日任务 / 成就 ========== -->
+  <div class="overlay" id="today">
+    <div class="veil"></div>
+    <div class="sheet">
+      <div class="sheet-inner">
+        <h2>今日 &amp; 成就</h2>
+        <p class="sub" id="todaySub">每天睡一觉就会刷新。做完的活儿记得回原处领赏。</p>
+        <div class="today-tabs">
+          <button class="btn dark" data-tab="daily" id="tabDaily">今日任务</button>
+          <button class="btn" data-tab="ach" id="tabAch">成就 <span id="achProgress">0/0</span></button>
+        </div>
+        <div id="todayDaily"></div>
+        <div hidden id="todayAch"></div>
+        <div class="closebar"><button class="btn dark" id="btnTodayClose">收起</button></div>
+      </div>
+    </div>
+  </div>
+
   <!-- ========== 图鉴 ========== -->
   <div class="overlay" id="dex">
     <div class="veil"></div>
@@ -290,6 +310,7 @@
           标着「3D」的能用完整模型上场，站着的立绘也能点开看。集齐几位有奖励，往下翻就能领。</p>
         <div class="dexgrid" id="dexGrid"></div>
         <div class="dex-rewards" id="dexRewards"></div>
+        <div class="dex-rewards" id="dexStarChallenge"></div>
         <div class="closebar"><button class="btn dark" id="btnDexClose">收起图鉴</button></div>
       </div>
     </div>
@@ -375,12 +396,12 @@
   </div>
 
   <div id="fade"></div>
-  <div id="toast"></div>
+  <div id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
   <div id="npcHint"></div>
   <script src="js/data.js"></script>
   <script src="js/rain.js?v=1"></script>
   <script src="js/3d-models.js"></script>
   <script src="js/site-pet.js?v=fast-pet-2"></script>
-  <script type="module" src="js/game2d.js?v=87"></script>
+  <script type="module" src="js/game2d.js?v=91"></script>
 </body>
 </html>

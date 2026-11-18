@@ -92,7 +92,7 @@ export const NPCS = [
   {
     id: "patrol",
     name: "奶察",
-    char: "naiwa",
+    char: "naicha",
     cop: true,
     home: { x: 1.6, z: -12 },
     patrol: [
@@ -133,7 +133,7 @@ export const NPCS = [
 export const DESK_OFFICER = {
   id: "deskofficer",
   name: "奶察",
-  char: "naiwa",
+  char: "naicha",
   cop: true,
   tag: "值班",
   greet: [
@@ -160,6 +160,11 @@ export const BOUNTIES = [
     kind: "visit", need: 3, reward: { gold: 50, water: 1 },
     title: "跟三个村民说说话",
     desc: "广场、水塘边、树林边都有人，挨个聊过去。"
+  },
+  {
+    kind: "chess", need: 1, reward: { gold: 70, balls: 1 },
+    title: "陪棋爷下一盘",
+    desc: "去镇上找棋爷下五子棋，赢他一局就算交差。"
   }
 ];
 

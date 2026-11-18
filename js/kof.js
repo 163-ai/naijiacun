@@ -13,6 +13,43 @@ const START_GAP = 2.4;      // 开场双方各离中线多远
 const ROUND_TIME = 60;
 const CY = 2.55;            // 相机高度（固定，俯角约 6°）
 
+/* ---- 攻击力 → 伤害标定 ------------------------------------------
+   atk 是伤害的唯一来源。基准：Lv3 的 atk=28 对应伤害系数 1.0；
+   每级 atk 成长 3，对应原设计的每级 +7% 伤害 → 每点 atk 贡献 .07/3。
+   公式 1+(atk-28)*.07/3 与旧的 1+(lv-3)*.07 在 atk=28+(lv-3)*3 时完全等价，
+   所以现有平衡不变，但升级/装备改 atk 会真实反映到伤害。
+   game2d.js 的敌人 atk 用同一条曲线：28+(enemyLv-3)*3，两处须保持一致。 */
+const ATK_BASE = 28;
+const DMG_PER_ATK = .07 / 3;
+
+/* ---- 对战平衡参数：所有可调节的战斗系数集中于此 ------------------
+   调平衡只改这里，不用翻函数体。数值与抽离前逐一保持等价。 */
+const BALANCE = {
+  meterMax: 100,            // 气槽上限
+  meterOnBlock: .55,        // 受击方获得攻击方气增量的比例
+  meterOnFailCatch: 12,     // 捕捉失败时对手回气
+  block: {
+    dmg: .16,               // 格挡后伤害倍率（减伤 84%）
+    hitstun: .42,           // 格挡后硬直倍率
+    kb: .32,                // 格挡后击退倍率
+    stun: .2,               // 格挡自身僵直时长
+    hitStop: .035           // 格挡命中顿帧
+  },
+  comboWindow: 1.05,        // 连击计数窗口
+  hitStop: { special: .11, heavy: .075, light: .05 },
+  ai: {
+    aggroBase: .34, aggroPerLv: .06, aggroMin: .3, aggroMax: .8,  // 攻击欲望随等级
+    blockChance: .42, blockDist: 2.8,
+    specialMeter: 50, specialChance: .34, specialDist: 2.9,
+    approachDist: 2.35, retreatDist: .95, retreatChance: .3,
+    lightChance: .62        // 出招时轻拳占比
+  },
+  catch: {
+    hpRatioMax: .3,         // 血量高于此值不可捕捉
+    slope: .70, base: .16, min: .16, max: .88  // 残血越少成功率越高
+  }
+};
+
 /* =========================================================
    招式表（时间单位：秒）
    ========================================================= */
@@ -60,6 +97,7 @@ let timeScale = 1;
 let phase = "intro";             // intro | fight | ko | over
 let phaseT = 0;
 let roundEnded = false;
+let catchTimer = null;           // 投球判定延时句柄，切场时需清除
 let vsState = { hp: 0, ballUsed: 0 };
 
 const parts = [];                // 命中火花
@@ -261,10 +299,10 @@ function makeFighter(key, root, o) {
     x: o.x, y: 0, vx: 0, vy: 0,
     facing: o.facing,
     hp: o.hp, maxHp: o.maxHp, hpLag: o.hp,
-    lv: o.lv, atk: o.atk || 1,
+    lv: o.lv, atk: o.atk || ATK_BASE,
     state: "idle", st: 0,
     act: null, actT: 0, hitDone: false, impactDone: false,
-    hitstun: 0, blocking: false, onGround: true,
+    hitstun: 0, blockstun: 0, blocking: false, onGround: true,
     combo: 0, comboT: 0,
     meter: 0, ko: false,
     walkPhase: 0, lunge: 0,
@@ -305,6 +343,7 @@ Fight.start = async function (opts) {
   timer = ROUND_TIME;
   hitStop = 0; shake = 0; timeScale = 1;
   phase = "intro"; phaseT = 0; roundEnded = false;
+  if (catchTimer !== null) { clearTimeout(catchTimer); catchTimer = null; }
   Fight.result = null;
   ball = opts.balls ?? 8;
   vsState = { hp: opts.hp, ballUsed: 0 };
@@ -358,8 +397,8 @@ function syncHud() {
   el("keHpLag").style.width = (clamp(E.hpLag / E.maxHp, 0, 1) * 100) + "%";
   el("kpMeter").style.width = P.meter + "%";
   el("keMeter").style.width = E.meter + "%";
-  el("kpMeter").classList.toggle("full", P.meter >= 50);
-  el("keMeter").classList.toggle("full", E.meter >= 50);
+  el("kpMeter").classList.toggle("full", P.meter >= MOVES.special.cost);
+  el("keMeter").classList.toggle("full", E.meter >= MOVES.special.cost);
   el("kTimer").textContent = Math.ceil(timer);
   el("kTimer").classList.toggle("low", timer <= 10);
 
@@ -434,7 +473,7 @@ function bindKeys() {
    动作
    ========================================================= */
 function canAct(f) {
-  return !f.ko && f.hitstun <= 0 && !f.act && f.onGround;
+  return !f.ko && f.hitstun <= 0 && f.blockstun <= 0 && !f.act && f.onGround;
 }
 
 function startMove(f, mv) {
@@ -552,6 +591,7 @@ function jump(f) {
 function stepFighter(f, dt) {
   f.st += dt;
   if (f.hitstun > 0) f.hitstun -= dt;
+  if (f.blockstun > 0) f.blockstun -= dt;
   if (f.comboT > 0) { f.comboT -= dt; if (f.comboT <= 0) f.combo = 0; }
 
   // 招式推进
@@ -587,32 +627,35 @@ function stepFighter(f, dt) {
   if (Math.abs(f.hpLag - f.hp) < .1) f.hpLag = f.hp;
 }
 
-function walkSpeed(f) {
-  const back = (f.isPlayer ? keys.right : f.aiDir) * f.facing < 0;
+function walkSpeed(f, dir) {
+  // 用实际移动方向判断后退，而不是固定看 right/aiDir，
+  // 否则只有对手在一侧时后退才减速，左右手感不一致。
+  const back = dir * f.facing < 0;
   return back ? 2.4 : 3.3;
 }
 
 function applyHit(a, d, mv) {
   const blocked = d.blocking && d.hitstun <= 0 && !d.ko;
-  let dmg = mv.dmg * (1 + (a.lv - 3) * .07);
-  if (blocked) dmg *= .16;
+  // 伤害由 atk 驱动（原为 lv）；atk=28+(lv-3)*3 时与原公式数值完全等价。
+  let dmg = mv.dmg * (1 + (a.atk - ATK_BASE) * DMG_PER_ATK);
+  if (blocked) dmg *= BALANCE.block.dmg;
 
   d.hp = Math.max(0, d.hp - dmg);
-  d.hitstun = blocked ? mv.hitstun * .42 : mv.hitstun;
+  d.hitstun = blocked ? mv.hitstun * BALANCE.block.hitstun : mv.hitstun;
   d.act = null;
   d.state = "hurt";
   const dir = a.facing;
-  d.vx = dir * (blocked ? mv.kb * .32 : mv.kb);
-  if (blocked) d.blockstun = .2;
+  d.vx = dir * (blocked ? mv.kb * BALANCE.block.kb : mv.kb);
+  if (blocked) d.blockstun = BALANCE.block.stun;
 
-  a.meter = Math.min(100, a.meter + (mv.meter || 0));
-  d.meter = Math.min(100, d.meter + (mv.meter || 0) * .55);
+  a.meter = Math.min(BALANCE.meterMax, a.meter + (mv.meter || 0));
+  d.meter = Math.min(BALANCE.meterMax, d.meter + (mv.meter || 0) * BALANCE.meterOnBlock);
 
   if (!blocked) {
     a.combo = a.comboT > 0 ? a.combo + 1 : 1;
-    a.comboT = 1.05;
+    a.comboT = BALANCE.comboWindow;
     const big = mv.id === "heavy" || mv.id === "special";
-    hitStop = Math.max(hitStop, mv.id === "special" ? .11 : big ? .075 : .05);
+    hitStop = Math.max(hitStop, mv.id === "special" ? BALANCE.hitStop.special : big ? BALANCE.hitStop.heavy : BALANCE.hitStop.light);
     shake = Math.max(shake, mv.shake);
     spark((a.x + d.x) / 2 + dir * .2, 1.0 + (d.y || 0), mv.sparkR);
     if (big) {
@@ -625,7 +668,7 @@ function applyHit(a, d, mv) {
     sfx(mv.id === "special" ? "ultHit" : big ? "hitHeavy" : "hit");
   } else {
     a.combo = 0; a.comboT = 0;
-    hitStop = Math.max(hitStop, .035);
+    hitStop = Math.max(hitStop, BALANCE.block.hitStop);
     shake = Math.max(shake, .12);
     spark((a.x + d.x) / 2 + dir * .2, 1.05, .45);
     sfx("block");
@@ -640,8 +683,13 @@ function checkHit(a, d, mv) {
   if (t < mv.startup || t > mv.startup + mv.active) return;
   const dxs = (d.x - a.x) * a.facing;
   if (dxs <= -.15 || dxs > mv.reach) return;
-  const dy = Math.abs((d.y + .85) - (a.y + .95));
-  if (dy > 1.35) return;
+  // 攻击盒纵向用帧数据里的 [bot, top]（相对攻击者脚底），
+  // 与对手身体区间 [0.1, 1.75] 求交；这样不同招式的攻击高度才真正生效。
+  const atkBot = a.y + mv.bot;
+  const atkTop = a.y + mv.top;
+  const defBot = d.y + 0.1;
+  const defTop = d.y + 1.75;
+  if (atkTop < defBot || atkBot > defTop) return;
   a.hitDone = true;
   applyHit(a, d, mv);
 }
@@ -710,27 +758,28 @@ function aiThink(dt) {
     return;
   }
 
+  const ai = BALANCE.ai;
   const lvl = E.lv;
-  const aggro = clamp(.34 + lvl * .06, .3, .8);
+  const aggro = clamp(ai.aggroBase + lvl * ai.aggroPerLv, ai.aggroMin, ai.aggroMax);
 
   // 对手正在出招 → 有概率防
-  if (p.act && dist < 2.8 && Math.random() < .42) {
+  if (p.act && dist < ai.blockDist && Math.random() < ai.blockChance) {
     e.aiMode = "block"; e.aiT = .34 + Math.random() * .2; e.aiDir = -toward;
     return;
   }
-  if (e.meter >= 50 && dist < 2.9 && Math.random() < .34) {
+  if (e.meter >= ai.specialMeter && dist < ai.specialDist && Math.random() < ai.specialChance) {
     if (startMove(e, MOVES.special)) { e.aiMode = "wait"; e.aiT = .5; return; }
   }
-  if (dist > 2.35) {
+  if (dist > ai.approachDist) {
     e.aiMode = "approach"; e.aiT = .18 + Math.random() * .2; e.aiDir = toward;
     return;
   }
-  if (dist < .95 && Math.random() < .3) {
+  if (dist < ai.retreatDist && Math.random() < ai.retreatChance) {
     e.aiMode = "retreat"; e.aiT = .2; e.aiDir = -toward;
     return;
   }
   if (Math.random() < aggro) {
-    const mv = Math.random() < .62 ? MOVES.light : MOVES.heavy;
+    const mv = Math.random() < ai.lightChance ? MOVES.light : MOVES.heavy;
     if (startMove(e, mv)) { e.aiMode = "wait"; e.aiT = .22; return; }
   }
   e.aiMode = "wait"; e.aiT = .12 + Math.random() * .18; e.aiDir = 0;
@@ -764,7 +813,7 @@ function playerInput(dt) {
     }
 
     if (p.onGround && !p.act && dir !== 0) {
-      const sp = walkSpeed(p);
+      const sp = walkSpeed(p, dir);
       p.x += dir * sp * dt;
       p.x = clamp(p.x, -ARENA, ARENA);
       p.state = "walk";
@@ -780,19 +829,24 @@ function playerInput(dt) {
 function tryCatch() {
   if (!P || !E || E.ko) return;
   const ratio = E.hp / E.maxHp;
-  if (ratio > .3) { flash("血量还太高，球兜不住"); sfx("deny"); return; }
+  const catchCfg = BALANCE.catch;
+  if (ratio > catchCfg.hpRatioMax) { flash("血量还太高，球兜不住"); sfx("deny"); return; }
   if (ball <= 0) { flash("没有捕捉球了"); sfx("deny"); return; }
   ball--;
   vsState.ballUsed++;
-  const chance = clamp((1 - ratio) * .82 + .22, .22, .95);
+  // 捕捉略收紧：30% 血约 65%、10% 血约 79%，保留"残血更好抓"但不再近乎必中。
+  const chance = clamp((1 - ratio) * catchCfg.slope + catchCfg.base, catchCfg.min, catchCfg.max);
   sfx("throw");
-  setTimeout(() => {
-    if (!Fight.on) return;
+  catchTimer = setTimeout(() => {
+    catchTimer = null;
+    // 延时期间可能已被 KO 或切场，只有仍在正常对打中才判定收服，
+    // 否则一次失败会被误判成收服成功并误发奖励。
+    if (!Fight.on || phase !== "fight" || roundEnded || E.ko) return;
     if (Math.random() < chance) {
       endRound("capture");
     } else {
       flash("球晃了两下又弹开了");
-      E.meter = Math.min(100, E.meter + 12);
+      E.meter = Math.min(BALANCE.meterMax, E.meter + BALANCE.meterOnFailCatch);
       syncHud();
     }
   }, 420);
@@ -1130,7 +1184,7 @@ Fight.update = function (dtRaw) {
   if (canAct(E) && E.aiMode && E.aiT > 0) {
     const dir = E.aiDir || 0;
     if (dir !== 0) {
-      E.x += dir * walkSpeed(E) * dt;
+      E.x += dir * walkSpeed(E, dir) * dt;
       E.x = clamp(E.x, -ARENA, ARENA);
       E.state = "walk";
       E.walkPhase += dt * 11;
