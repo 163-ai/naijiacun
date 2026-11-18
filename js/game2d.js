@@ -10,8 +10,9 @@ import { makeAnimator } from "./creature.js?v=59";
 import { Fight } from "./kof.js?v=58";
 import {
   TS, TI, VILLAGE, TOWN, GROVE, HILL, TOWN_LOTS, TOWN_STALLS, HOUSE, SHOP, STATION, ARCHIVE, MAPS,
-  tileAt, setSolid, solidAt, markAt, mapTexture, toTile, toWorld
-} from "./tiles.js?v=6";
+  tileAt, setSolid, solidAt, markAt, toTile, toWorld
+} from "./tiles.js?v=7";
+import { mapTexture } from "./tiles-three.js?v=1";
 import { Farm, CROPS, PLOT } from "./farm.js?v=2";
 import { portrait, moodFilter, speakerKey, PLAYER_KEY } from "./portraits.js?v=57";
 import { NPCS, DESK_OFFICER, bountyOf } from "./villagers.js?v=2";
@@ -376,10 +377,14 @@ function showPerfNotice(html) {
 }
 
 if (SOFT_GL) {
-  showPerfNotice("<b>当前浏览器未启用硬件加速，3D 画面走软件渲染会很卡。</b><br>"
-    + "请在 Chrome / Edge 的「设置 → 系统」里开启 <b>使用图形加速功能</b>，然后重启浏览器；"
-    + "也可以点右上角「⚙ 画质」切到流畅模式。<br><small style='opacity:.7'>检测到渲染器："
-    + _gpuName.replace(/[<>&]/g, "").slice(0, 120) + "</small>");
+  // 软件渲染在这个场景只有个位数帧率（实测 3D≈6fps、2D 俯视≈10fps），降画质也救不回来。
+  // 直接给出「流畅版」入口——纯 Canvas2D 绘制，同存档、点开即玩，才是真正能玩的兜底。
+  const _hardwareLink = "chrome://settings/system";
+  showPerfNotice("<b>检测到浏览器未启用硬件加速，3D 画面会很卡。</b><br>"
+    + "推荐直接玩 <a href='lite.html' style='color:#2f5c3f;font-weight:600;text-decoration:underline'>"
+    + "奶家村 · 流畅版 →</a>（纯 2D，点开即玩，进度互通）。<br>"
+    + "想在支持显卡的设备上玩完整 3D，请在浏览器设置里开启「使用图形加速功能」后重启。<br>"
+    + "<small style='opacity:.7'>渲染器：" + _gpuName.replace(/[<>&]/g, "").slice(0, 120) + "</small>");
 }
 
 Fight.init(renderer);
