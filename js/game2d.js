@@ -552,6 +552,13 @@ function makeHeightFn(map, seed) {
     const cx = map.w / 2, cz = map.h / 2;
     const dc = Math.hypot((tx - cx) * 1, (tz - cz) * 1.2);
     if (map.name === "奶家村" && dc < 10) h *= clamp((dc - 6) / 4, 0, 1);
+    // 农田整片压平：farm.js 的土壤/作物按固定 y 摆放，地形起伏会把它们埋进地里
+    if (map.name === "奶家村") {
+      const fx0 = PLOT.x0 - map.ox - 2, fx1 = PLOT.x0 + PLOT.cols * PLOT.ts - map.ox + 2;
+      const fz0 = PLOT.z0 - map.oz - 2, fz1 = PLOT.z0 + PLOT.rows * PLOT.ts - map.oz + 2;
+      const df = Math.hypot(Math.max(fx0 - tx, 0, tx - fx1), Math.max(fz0 - tz, 0, tz - fz1));
+      if (df < 3.5) h *= clamp(df / 3.5, 0, 1);
+    }
     // 野外也把"路"压平一点，走路不至于像坐过山车
     if (wild && t === TI.PATH) h *= .35;
     return h * amp;
@@ -618,21 +625,54 @@ function buildWaterSurface(map, group) {
   for (const [k, d] of dist) if (d === 0) map.__shallow.add(k);
   const maxD = Math.max(1, ...dist.values());
 
-  // 每格 2x2 细分，波纹才是细密的起伏而不是整块上下跳。
-  // y 取整格中心的水位（水格地面被压平为 0），不用逐顶点采样，免得岸线被邻格地形拽歪。
-  const pos = [], dep = [], idx = [], N = 3;
+  /* 关键改动：整片水共用一套格点顶点（和地形网格同一个格点）。
+     旧版每格自建 3x3 顶点、整格一个高度 —— 相邻格高度差一点就变成
+     一块块错位的玻璃板。现在先给每个格点取邻接水格的地面高度平均，
+     再只对「四邻全是水」的内部格点做几轮向岸平滑：岸边贴着地形不漏缝，
+     水心被岸线拉成平滑的碗面。 */
+  const stride = map.w + 1, VN = (map.w + 1) * (map.h + 1);
+  const vh = new Float32Array(VN).fill(NaN), vd = new Float32Array(VN).fill(NaN);
+  const vc = new Float32Array(VN);
   for (const [tx, tz] of cells) {
-    const base = pos.length / 3;
-    const d = (dist.get(tx + "," + tz) ?? maxD) / maxD;
-    const wy = surfaceY(map, map.ox + tx + .5, map.oz + tz + .5) + WATER_LEVEL;
-    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
-      pos.push(map.ox + tx + i / (N - 1), wy, map.oz + tz + j / (N - 1));
-      dep.push(d);
+    const ch = surfaceY(map, map.ox + tx + .5, map.oz + tz + .5);
+    const cd = (dist.get(tx + "," + tz) ?? maxD) / maxD;
+    for (const [vx, vz] of [[tx, tz], [tx + 1, tz], [tx, tz + 1], [tx + 1, tz + 1]]) {
+      const k = vz * stride + vx;
+      if (!vc[k]) { vh[k] = ch; vd[k] = cd; } else { vh[k] += ch; vd[k] += cd; }
+      vc[k]++;
     }
-    for (let j = 0; j < N - 1; j++) for (let i = 0; i < N - 1; i++) {
-      const a = base + j * N + i, b = a + 1, c = a + N, e = c + 1;
-      idx.push(a, c, b, b, c, e);
+  }
+  for (let k = 0; k < VN; k++) if (vc[k]) { vh[k] /= vc[k]; vd[k] /= vc[k]; }
+  const interior = (vx, vz) => isW(vx - 1, vz - 1) && isW(vx, vz - 1) && isW(vx - 1, vz) && isW(vx, vz);
+  for (let pass = 0; pass < 10; pass++) {
+    const nh = Float32Array.from(vh);
+    for (let vz = 0; vz <= map.h; vz++) for (let vx = 0; vx <= map.w; vx++) {
+      const k = vz * stride + vx;
+      if (!vc[k] || !interior(vx, vz)) continue;
+      let sum = 0, n = 0;
+      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = vx + dx, nz = vz + dz;
+        if (nx < 0 || nz < 0 || nx > map.w || nz > map.h) continue;
+        const kk = nz * stride + nx;
+        if (vc[kk]) { sum += vh[kk]; n++; }
+      }
+      if (n) nh[k] = vh[k] * .35 + (sum / n) * .65;   // 向岸线收敛，不留台阶
     }
+    vh.set(nh);
+  }
+
+  const vidx = new Map(), pos = [], dep = [], idx = [];
+  for (let vz = 0; vz <= map.h; vz++) for (let vx = 0; vx <= map.w; vx++) {
+    const k = vz * stride + vx;
+    if (!vc[k]) continue;
+    vidx.set(k, pos.length / 3);
+    pos.push(map.ox + vx, vh[k] + WATER_LEVEL, map.oz + vz);
+    dep.push(vd[k]);
+  }
+  for (const [tx, tz] of cells) {
+    const a = vidx.get(tz * stride + tx), b = vidx.get(tz * stride + tx + 1);
+    const c = vidx.get((tz + 1) * stride + tx), e = vidx.get((tz + 1) * stride + tx + 1);
+    idx.push(a, c, b, b, c, e);
   }
   const geo = new T.BufferGeometry();
   geo.setAttribute("position", new T.Float32BufferAttribute(pos, 3));
@@ -649,7 +689,9 @@ function buildWaterSurface(map, group) {
       varying float vDepth; varying vec3 vP;
       void main(){
         vec3 p = position;
-        p.y += sin(p.x * 1.9 + uTime * 1.5) * .028 + sin(p.z * 2.3 - uTime * 1.1) * .022;
+        // 波幅随深度变化：岸边几乎不起伏（不漏缝），水心才荡起来
+        float amp = .03 * (.3 + .7 * aDepth);
+        p.y += (sin(p.x * 1.9 + uTime * 1.5) + sin(p.z * 2.3 - uTime * 1.1)) * amp;
         vP = p; vDepth = aDepth;
         gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
       }`,
@@ -657,15 +699,16 @@ function buildWaterSurface(map, group) {
       uniform float uTime;
       varying float vDepth; varying vec3 vP;
       void main(){
-        vec3 shallow = vec3(.44, .78, .73);
-        vec3 deep    = vec3(.09, .34, .52);
-        vec3 col = mix(shallow, deep, vDepth);
-        float rip = sin(vP.x * 2.2 + uTime * 1.2) * sin(vP.z * 1.7 - uTime * 0.9);
-        col += vec3(.05, .09, .10) * smoothstep(.5, 1.0, rip);
-        float glint = pow(max(0.0, sin(vP.x * 3.4 + vP.z * 2.6 + uTime * 1.8)), 24.0);
-        col += vec3(.30, .38, .36) * glint * .38;
-        col += vec3(.10, .12, .10) * (1.0 - vDepth) * .3;
-        gl_FragColor = vec4(col, mix(.56, .88, vDepth));
+        vec3 shallow = vec3(.34, .64, .60);
+        vec3 deep    = vec3(.06, .26, .44);
+        vec3 col = mix(shallow, deep, smoothstep(.0, .75, vDepth));
+        // 岸边一圈淡色水线，像浅滩打湿的沙
+        col = mix(col, vec3(.72, .90, .84), smoothstep(.16, .02, vDepth) * .45);
+        // 高频细碎闪光：两个频率叠起来打散规则感，只留零星亮点
+        float sp = sin(vP.x * 6.1 + uTime * 1.7) * sin(vP.z * 5.3 - uTime * 1.3)
+                 + .6 * sin(vP.x * 11.7 - vP.z * 8.9 + uTime * 2.1);
+        col += vec3(.9, .95, .9) * smoothstep(1.28, 1.52, sp) * .3;
+        gl_FragColor = vec4(col, mix(.55, .86, vDepth));
       }`
   });
   const mesh = new T.Mesh(geo, mat);
@@ -1469,6 +1512,7 @@ const bambooJointMat = new T.MeshStandardMaterial({ color: 0x4f7a3c, roughness: 
 const bambooLeafMat = new T.MeshStandardMaterial({ color: 0x4e8a4a, roughness: .9, side: T.DoubleSide });
 const lanternPaperMat = new T.MeshStandardMaterial({ color: 0xd8433a, roughness: .7, emissive: 0x521814 });
 const lanternCapMat = new T.MeshStandardMaterial({ color: 0xe0b25c, roughness: .7, metalness: .25 });
+const lanternWoodMat = new T.MeshStandardMaterial({ color: 0x6d4c33, roughness: .85 });
 
 function addBamboo(x, z, r) {
   const g = new T.Group();
@@ -1501,27 +1545,47 @@ function addBamboo(x, z, r) {
   guofengGroup.add(g);
 }
 
-function addRedLantern(x, z, hangY = 2.5) {
+function addRedLantern(x, z, hangY = 2.3) {
   const g = new T.Group();
-  const cord = new T.Mesh(new T.CylinderGeometry(.02, .02, .5, 5), lanternCapMat);
-  cord.position.y = hangY + .28;
+  // 灯笼必须挂在实物上：立一根木杆，顶端横臂挑出去，绳从臂尖垂着灯笼。
+  // 之前只有一段悬空的绳，灯笼整个飘在半空，看着像 bug。
+  const wood = lanternWoodMat;
+  const LX = .62;                       // 灯笼离杆轴的水平距离（挂在臂尖）
+  const armY = hangY + .62;             // 横臂高度
+  const pole = new T.Mesh(new T.CylinderGeometry(.05, .08, armY + .3, 8), wood);
+  pole.position.y = (armY + .3) / 2;
+  pole.castShadow = true;
+  g.add(pole);
+  const arm = new T.Mesh(new T.CylinderGeometry(.035, .035, LX + .1, 6), wood);
+  arm.rotation.z = Math.PI / 2;
+  arm.position.set(LX / 2, armY, 0);
+  arm.castShadow = true;
+  g.add(arm);
+  // 斜撑：让横臂看起来吃得住力
+  const brace = new T.Mesh(new T.CylinderGeometry(.025, .025, .55, 5), wood);
+  brace.position.set(.24, armY - .18, 0);
+  brace.rotation.z = .95;
+  g.add(brace);
+  const cord = new T.Mesh(new T.CylinderGeometry(.018, .018, .34, 5), lanternCapMat);
+  cord.position.set(LX, armY - .17, 0);
   g.add(cord);
   const body = new T.Mesh(new T.SphereGeometry(.26, 12, 9), lanternPaperMat);
   body.scale.set(1, 1.18, 1);
-  body.position.y = hangY;
+  body.position.set(LX, hangY, 0);
   body.castShadow = true;
   g.add(body);
   // 上下铜盖
   [hangY + .31, hangY - .31].forEach(y => {
     const cap = new T.Mesh(new T.CylinderGeometry(.12, .12, .09, 8), lanternCapMat);
-    cap.position.y = y;
+    cap.position.set(LX, y, 0);
     g.add(cap);
   });
   // 流苏
   const tassel = new T.Mesh(new T.CylinderGeometry(.02, .05, .26, 6), lanternPaperMat);
-  tassel.position.y = hangY - .48;
+  tassel.position.set(LX, hangY - .48, 0);
   g.add(tassel);
   g.position.set(x, surfaceY(VILLAGE, x, z), z);
+  g.rotation.y = (x * 13.7 + z * 7.1) % 6.283;   // 各朝一个方向，不像复制粘贴
   guofengGroup.add(g);
 }
 
@@ -3075,11 +3139,30 @@ function tryClickNpc(e) {
   const targets = onMap.map(n => n.obj).filter(Boolean);
   if (!targets.length) return;
   const hits = npcRay.intersectObjects(targets, true);
-  if (!hits.length) return;
-  let node = hits[0].object, hitObj = null;
-  while (node && !hitObj) { hitObj = targets.find(o => o === node); node = node.parent; }
-  if (!hitObj) return;
-  const n = onMap.find(v => v.obj === hitObj);
+  let n = null;
+  if (hits.length) {
+    let node = hits[0].object, hitObj = null;
+    while (node && !hitObj) { hitObj = targets.find(o => o === node); node = node.parent; }
+    if (hitObj) n = onMap.find(v => v.obj === hitObj);
+  }
+  if (!n) {
+    // 屏幕空间兜底：projectObj 投的是脚底原点，射线常从两腿之间穿过去打空
+    // （正交相机尤其如此）。点在村民投影点附近就直接算点中，体验更接近"点人"。
+    // 注意投影要内联算：__G.projectObj 是导出对象上的方法，这里裸调会 ReferenceError。
+    // 相机背后的点投影出来是镜像垃圾（z>=1），必须剔除。
+    let best = null, bd = 52;
+    const pv = new T.Vector3();
+    for (const v of onMap) {
+      if (!v.obj) continue;
+      v.obj.getWorldPosition(pv);
+      pv.project(camTP);
+      if (pv.z >= 1) continue;
+      const px = (pv.x + 1) / 2 * dom.clientWidth, py = (1 - pv.y) / 2 * dom.clientHeight;
+      const d = Math.hypot(px - e.clientX, py - e.clientY);
+      if (d < bd) { bd = d; best = v; }
+    }
+    n = best;
+  }
   if (!n) return;
   // 3D 的空间互动：不再局限于面前三格，隔几步也能打个招呼
   if (Math.hypot(player.x - n.x, player.z - n.z) > 7) { toast("离得太远，走近一点再打招呼"); return; }
@@ -3687,37 +3770,43 @@ function addCopCap(g, h = 1.5) {
 }
 
 
-// 奶察的制服：光戴帽子还不够「警」。奶蛙是梨形身材，用一件深蓝小马甲包住
-// 躯干中段，配腰带、胸徽、肩章和一条斜挎反光带 —— 远远看去就是穿制服的奶察。
+// 奶察的制服：模型贴图的下半身自带深色，深蓝配件叠上去只会连成一坨。
+// 所以用对比色配件体现警察身份：棕色皮带 + 金警徽 + 白斜挎带 + 金肩章。
+// 所有尺寸按模型实测轮廓来（腰围半径 .36、肚子最宽 .41、胸口 .35），
+// 偏大就会悬空成呼啦圈/盘子，偏小会被身体吞掉。
 function addCopUniform(g, h = 1.62) {
   const s = h / 1.62;
   const navy = new T.MeshStandardMaterial({ color: 0x2f4a6b, roughness: .82 });
   const gold = new T.MeshStandardMaterial({ color: 0xf2c14e, metalness: .5, roughness: .35 });
-  // 奶蛙腰身实测宽约 1.17：壳必须比身体略大才看得见，小了就整个藏进模型里
-  const vest = new T.Mesh(new T.SphereGeometry(.62 * s, 20, 14), navy);
-  vest.scale.set(1.0, .62, .88);
-  vest.position.y = .52 * s;
-  vest.castShadow = true;
-  g.add(vest);
-  const belt = new T.Mesh(new T.CylinderGeometry(.58 * s, .61 * s, .1 * s, 18),
-    new T.MeshStandardMaterial({ color: 0x1b2b40, roughness: .7 }));
-  belt.position.y = .3 * s;
+  /* 重要发现：奶蛙 GLB 本体的贴图下半身就是深蓝色（钟形）。
+     之前再套深蓝马甲/深蓝腰带，等于往藏蓝裤子上再穿藏蓝衣——
+     从脖子到脚连成一片，看着像一口钟。所以制服改用「对比色配件」：
+     警帽 + 金警徽 + 棕色皮带 + 白斜挎带 + 金肩章，身体保持原样，
+     黄色胸口把上下半身自然隔开，一眼是警察而不是一坨深蓝。 */
+  // 棕色皮带：细管圆环，勒在腰上（模型实测腰围半径约 .36，肚子最宽 .41）。
+  // 圆环半径必须贴着身形，大了就成呼啦圈，用圆柱俯视又是个盘子。
+  const belt = new T.Mesh(new T.TorusGeometry(.385 * s, .04 * s, 8, 26),
+    new T.MeshStandardMaterial({ color: 0x5f3d22, roughness: .75 }));
+  belt.rotation.x = Math.PI / 2;
+  belt.position.y = .62 * s;
   g.add(belt);
-  const buckle = new T.Mesh(new T.BoxGeometry(.13 * s, .1 * s, .03 * s), gold);
-  buckle.position.set(0, .3 * s, .58 * s);
+  const buckle = new T.Mesh(new T.BoxGeometry(.11 * s, .09 * s, .04 * s), gold);
+  buckle.position.set(0, .62 * s, .39 * s);
   g.add(buckle);
-  const star = new T.Mesh(new T.CylinderGeometry(.075 * s, .075 * s, .03 * s, 10), gold);
+  // 胸口的金警徽
+  const star = new T.Mesh(new T.CylinderGeometry(.07 * s, .07 * s, .03 * s, 10), gold);
   star.rotation.x = Math.PI / 2;
-  star.position.set(.17 * s, .72 * s, .55 * s);
+  star.position.set(.1 * s, 1.0 * s, .4 * s);
   g.add(star);
   [-1, 1].forEach(sd => {
-    const ep = new T.Mesh(new T.BoxGeometry(.16 * s, .05 * s, .11 * s), gold);
-    ep.position.set(sd * .4 * s, 1.02 * s, .05 * s);
+    const ep = new T.Mesh(new T.BoxGeometry(.14 * s, .05 * s, .1 * s), gold);
+    ep.position.set(sd * .28 * s, 1.16 * s, .03 * s);
     g.add(ep);
   });
-  const strap = new T.Mesh(new T.BoxGeometry(.08 * s, .5 * s, .02 * s),
+  // 白色斜挎带（在胸口上）
+  const strap = new T.Mesh(new T.BoxGeometry(.07 * s, .34 * s, .02 * s),
     new T.MeshStandardMaterial({ color: 0xe8e3d5, roughness: .6 }));
-  strap.position.set(-.2 * s, .56 * s, .56 * s);
+  strap.position.set(-.12 * s, 1.0 * s, .37 * s);
   strap.rotation.z = .5;
   g.add(strap);
 }
