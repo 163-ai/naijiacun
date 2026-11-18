@@ -1105,18 +1105,30 @@ function buildGround() {
 }
 
 /* 静态小物件合批：一棵树 7 个 mesh、一丛竹 12 个 mesh，几百棵就是几千次
-   draw call。外观完全不变，只是把同材质、同属性布局的几何焊成一张大网格。
-   只对树 / 竹这类永不移动、永不单独变色的容器调用，NPC、锚点、竹笋不动。 */
+   draw call。外观完全不变，只是把同材质、同属性布局的几何焊成网格。
+   只对树 / 竹这类永不移动、永不单独变色的容器调用，NPC、锚点、竹笋不动。
+
+   性能关键：按空间「分块」合批，而不是整图焊成一张大网格。
+   旧版整图一张 → 包围盒覆盖全地图 → Three.js 视锥剔除完全失效，
+   第三人称只看得见玩家周围，却把整图几百棵树的顶点全提交。
+   分块后每块有各自的局部包围盒，视野外的块会被 Three.js 自动跳过渲染，
+   跟随镜头移动 —— 这正是「视野内才渲染」的思路，且画面完全不变。 */
+const BATCH_CHUNK = 16;   // 世界单位；地图约 88×68，切 16 大概 6×5 块
 function batchStatic(container) {
   if (!container || container.userData.batched) return 0;
   container.updateWorldMatrix(true, true);
   const inv = new T.Matrix4().copy(container.matrixWorld).invert();
   const buckets = new Map();
+  const _c = new T.Vector3();
   container.traverse(o => {
     if (!o.isMesh || o.isInstancedMesh || o.isSkinnedMesh) return;
     if (!o.geometry || !o.material || Array.isArray(o.material)) return;
+    // 用几何中心的世界坐标决定它属于哪个空间块（全局统一网格，多次合批也不乱）
+    if (!o.geometry.boundingSphere) o.geometry.computeBoundingSphere();
+    _c.copy(o.geometry.boundingSphere.center).applyMatrix4(o.matrixWorld);
+    const cx = Math.floor(_c.x / BATCH_CHUNK), cz = Math.floor(_c.z / BATCH_CHUNK);
     const attrs = Object.keys(o.geometry.attributes).sort().join(",");
-    const key = o.material.uuid + "|" + attrs + "|" + (o.geometry.index ? "i" : "n");
+    const key = cx + "," + cz + "|" + o.material.uuid + "|" + attrs + "|" + (o.geometry.index ? "i" : "n");
     let b = buckets.get(key);
     if (!b) { b = { mat: o.material, geos: [], objs: [] }; buckets.set(key, b); }
     const g = o.geometry.clone();
@@ -1132,6 +1144,8 @@ function batchStatic(container) {
     const m = new T.Mesh(merged, b.mat);
     m.castShadow = b.objs.some(o => o.castShadow);
     m.receiveShadow = b.objs.some(o => o.receiveShadow);
+    // 确保有包围球，Three.js 才能做视锥剔除（视野外整块跳过）
+    if (!merged.boundingSphere) merged.computeBoundingSphere();
     container.add(m);
     for (const o of b.objs) o.parent.remove(o);
     b.geos.forEach(g => g.dispose());
@@ -1965,7 +1979,10 @@ function buildGrassTufts(map, group, count, seed) {
     color: map.name === "南高草坡" ? 0x9dbd5f : 0x7fae5c, roughness: 1, side: T.DoubleSide,
     vertexColors: true
   });
-  const inst = new T.InstancedMesh(makeGrassTuftGeo(), mat, count);
+  // 按空间分块收集实例：一张覆盖全图的大草 mesh 包围盒太大，视锥剔除永远命中，
+  // 视野外的草也照常烧填充率（软件渲染的大头）。拆成小块后视野外整块跳过。
+  const geo = makeGrassTuftGeo();
+  const chunks = new Map();          // "cx,cz" -> [Matrix4, ...]
   const dummy = new T.Object3D();
   let placed = 0;
   for (let tries = 0; tries < count * 12 && placed < count; tries++) {
@@ -1981,14 +1998,21 @@ function buildGrassTufts(map, group, count, seed) {
     const sc = .7 + r() * .8;
     dummy.scale.set(sc, sc * (.8 + r() * .6), sc);
     dummy.updateMatrix();
-    inst.setMatrixAt(placed, dummy.matrix);
+    const key = Math.floor(x / BATCH_CHUNK) + "," + Math.floor(z / BATCH_CHUNK);
+    let arr = chunks.get(key);
+    if (!arr) { arr = []; chunks.set(key, arr); }
+    arr.push(dummy.matrix.clone());
     placed++;
   }
-  inst.count = placed;
-  inst.instanceMatrix.needsUpdate = true;
-  inst.castShadow = false;
-  inst.receiveShadow = true;
-  group.add(inst);
+  for (const arr of chunks.values()) {
+    const inst = new T.InstancedMesh(geo, mat, arr.length);
+    for (let i = 0; i < arr.length; i++) inst.setMatrixAt(i, arr[i]);
+    inst.instanceMatrix.needsUpdate = true;
+    inst.computeBoundingSphere();   // 关键：每块算自己的包围球，视锥剔除才生效
+    inst.castShadow = false;
+    inst.receiveShadow = true;
+    group.add(inst);
+  }
 }
 
 function addWildFlowers(x, z, r, parent = world) {
@@ -4700,11 +4724,18 @@ function npcNear(limit = 1.8) {
 // 走近了就停下、转头看你；站定了才好说话
 const NPC_STOP = 2.3;
 
+// 高精度 GLB 角色（3~5 万三角）：超出视距就整组不渲染、不更新动画，
+// 走近再恢复。视野内的角色一个不少，视野外的顶点和骨骼计算全省掉。
+const NPC_CULL_DIST = 46;   // 略大于雾 far(145 的一半)，走到跟前必定已恢复
 function npcUpdate(dt) {
   const now = performance.now() / 1000;
   for (const n of npcOnMap()) {
     const def = n.def;
     const d = Math.hypot(player.x - n.x, player.z - n.z);
+    // 距离剔除：带滞回，避免临界点反复开关
+    if (d > NPC_CULL_DIST + 4) n.obj.visible = false;
+    else if (d < NPC_CULL_DIST) n.obj.visible = true;
+    if (!n.obj.visible) continue;   // 视野外：不更新动画/位置，纯省
     n.walking = false;
     if (d < NPC_STOP) {
       const want = Math.atan2(player.x - n.x, player.z - n.z);
@@ -7194,7 +7225,9 @@ async function boot() {
 window.__naijiaQuality = () => ({
   tier: qTier, auto: qAuto, pixelRatio: renderer.getPixelRatio(),
   shadows: renderer.shadowMap.enabled, gpu: _gpuName,
-  software: SOFT_GL, dprCap: QUALITY_DPR[qTier], fpsWindowSeconds: fpsWin.t
+  software: SOFT_GL, dprCap: QUALITY_DPR[qTier], fpsWindowSeconds: fpsWin.t,
+  // 本帧实际提交量：视锥剔除后，视野外的块/草/角色都不计入
+  drawCalls: renderer.info.render.calls, triangles: renderer.info.render.triangles
 });
 
 // 开始按钮恒为新游戏：有存档时它已改文案为「重新开始」，必须真正开新档。
