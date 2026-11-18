@@ -6017,6 +6017,280 @@ $("#shop").addEventListener("click", e => { if (e.target.id === "shop") { $("#sh
 $("#kResultBtn").onclick = () => Fight.finish();
 
 /* =========================================================
+   环境生命感（v86）：水车 / 栈桥码头 / 蝴蝶 / 萤火虫 / 飞鸟 / 炊烟
+   全部程序化几何 + canvas 免费方案，不依赖任何生图接口。
+   动的东西都放在独立 ambient 组里，不参与 batchStatic 合批。
+   ========================================================= */
+const ambientLife = { grp: null, wheel: null, butterflies: [], fireflies: null, fireBase: null, birds: [], puffs: [] };
+const isNightNow = () => document.body.classList.contains("night");
+
+function ambWood(hex) {
+  return new T.MeshStandardMaterial({ color: hex, roughness: .92, flatShading: true });
+}
+
+/* ---- 水车：村塘南岸，半浸在水里慢慢转 ---- */
+function buildWaterWheel(grp) {
+  const x = -26.5, z = 3.35;
+  const gy = surfaceY(VILLAGE, x, z + .9);
+  const g = new T.Group();
+  g.position.set(x, gy, z);
+  const woodM = ambWood(0x8a6238), darkM = ambWood(0x5e4226);
+  const R = 1.45, halfW = .36, axleY = 1.15;
+  // 轮体单独装组（绕 x 轴转），支架不动
+  const rotor = new T.Group();
+  rotor.position.y = axleY;
+  g.add(rotor);
+  const put = (mesh, spin) => {
+    mesh.castShadow = true;
+    if (spin) rotor.add(mesh); else g.add(mesh);
+    return mesh;
+  };
+  // 两侧轮圈
+  [-halfW, halfW].forEach(sx => {
+    const ring = put(new T.Mesh(new T.TorusGeometry(R, .06, 6, 22), darkM), true);
+    ring.rotation.y = Math.PI / 2;
+    ring.position.x = sx;
+  });
+  // 桨叶 8 片（辐条略：轮圈 + 桨叶已经有足够结构感，省 16 个 mesh）
+  for (let i = 0; i < 8; i++) {
+    const a = i / 8 * Math.PI * 2;
+    const p = put(new T.Mesh(new T.BoxGeometry(halfW * 2 + .12, .5, .07), woodM), true);
+    p.position.set(0, Math.sin(a) * (R - .16), Math.cos(a) * (R - .16));
+    p.rotation.x = Math.PI / 2 - a;
+  }
+  // 轮毂 + 轴（局部 y 以轮毂为原点）
+  const hub = put(new T.Mesh(new T.CylinderGeometry(.14, .14, halfW * 2 + .22, 8), darkM), true);
+  hub.rotation.z = Math.PI / 2;
+  const axle = put(new T.Mesh(new T.CylinderGeometry(.07, .07, halfW * 2 + 1.0, 6), darkM), true);
+  axle.rotation.z = Math.PI / 2;
+  // 支架：两副 A 形架立在岸上
+  [-.55, .55].forEach(sx => {
+    [-1, 1].forEach(s => {
+      const leg = put(new T.Mesh(new T.BoxGeometry(.09, 1.5, .09), woodM), false);
+      leg.position.set(sx, axleY / 2 + .05, s * .42);
+      leg.rotation.x = s * .36;
+    });
+    const bar = put(new T.Mesh(new T.BoxGeometry(.08, .08, 1.0), woodM), false);
+    bar.position.set(sx, .42, 0);
+  });
+  // 岸边小水槽：像水是从这里引过来的
+  const trough = put(new T.Mesh(new T.BoxGeometry(.5, .18, 1.3), woodM), false);
+  trough.position.set(0, .28, 1.05);
+  ambientLife.wheel = rotor;
+  grp.add(g);
+  markRect(x, z + .9, 1.6, 1.4, 1);   // 支架占地不可穿行
+}
+
+/* ---- 栈桥码头：村塘东岸，村路走到头接着它 ---- */
+function buildDock(grp) {
+  const z = 1.5, deckY = WATER_LEVEL + .30;
+  const woodM = ambWood(0x9a7346), darkM = ambWood(0x5e4226);
+  const g = new T.Group();
+  for (let i = 0; i < 5; i++) {
+    const px = -19.9 - i * .78;
+    const plank = new T.Mesh(new T.BoxGeometry(.7, .07, 1.15), woodM);
+    plank.position.set(px, deckY - (i >= 4 ? (i - 3) * .04 : 0), z);
+    plank.castShadow = true; plank.receiveShadow = true;
+    g.add(plank);
+  }
+  // 木桩：打进水里
+  [[-20.1, .45], [-20.1, -.45], [-23.3, .45], [-23.3, -.45]].forEach(([px, pz]) => {
+    const pile = new T.Mesh(new T.CylinderGeometry(.07, .08, 1.7, 6), darkM);
+    pile.position.set(px, deckY - .82, z + pz);
+    g.add(pile);
+  });
+  // 码头头的系船柱 + 缆绳感的横木
+  [[-24.0, .42], [-24.0, -.42]].forEach(([px, pz]) => {
+    const post = new T.Mesh(new T.CylinderGeometry(.06, .07, .62, 6), darkM);
+    post.position.set(px, deckY + .28, z + pz);
+    post.castShadow = true;
+    g.add(post);
+  });
+  const rail = new T.Mesh(new T.CylinderGeometry(.035, .035, .9, 5), darkM);
+  rail.rotation.x = Math.PI / 2;
+  rail.position.set(-24.0, deckY + .5, z);
+  g.add(rail);
+  // 桥头小货筐（空着也像个码头）
+  const crate = new T.Mesh(new T.BoxGeometry(.4, .3, .4), woodM);
+  crate.position.set(-19.7, deckY + .18, z + .3);
+  crate.castShadow = true;
+  g.add(crate);
+  grp.add(g);
+  markRect(-22.2, z, 4.6, 1.15, 1);   // 桥面不可穿行（下面是水）
+  addLamp(-18.9, z + 1.1, grp);       // 桥头灯，晚上会亮
+}
+
+/* ---- 蝴蝶：花田上空扑棱，天黑就收工 ---- */
+function buildButterflies(grp) {
+  const spots = [[-13.5, 18.5, 4.2], [24, 20, 5.2], [14.5, 8.5, 3.6], [-26, 7, 2.8]];
+  const cols = [0xfff3f3, 0xffe08a, 0xf7c6d9, 0xcfe8ff];
+  const geoL = new T.PlaneGeometry(.17, .26); geoL.rotateX(-Math.PI / 2); geoL.translate(0, 0, .115);
+  const geoR = new T.PlaneGeometry(.17, .26); geoR.rotateX(-Math.PI / 2); geoR.translate(0, 0, -.115);
+  let ci = 0;
+  spots.forEach(([cx, cz, rr], si) => {
+    for (let i = 0; i < 2; i++) {
+      const mat = new T.MeshBasicMaterial({ color: cols[ci++ % cols.length], side: T.DoubleSide });
+      const b = new T.Group();
+      const body = new T.Mesh(new T.BoxGeometry(.2, .04, .05),
+        new T.MeshBasicMaterial({ color: 0x6b5b4a }));
+      b.add(body);
+      const wl = new T.Mesh(geoL, mat), wr = new T.Mesh(geoR, mat);
+      b.add(wl); b.add(wr);
+      grp.add(b);
+      ambientLife.butterflies.push({
+        g: b, wl, wr, cx, cz, r: rr * (.55 + (si + i) % 3 * .22),
+        sp: .5 + ((si * 3 + i) % 4) * .14, ph: (si * 2.3 + i * 1.7) % 6.28,
+        baseY: surfaceY(VILLAGE, cx, cz)
+      });
+    }
+  });
+}
+
+/* ---- 萤火虫：夜里在草地上亮起来的一点一点 ---- */
+function buildFireflies(grp) {
+  const N = 96, pos = [], R = mulberry(20261118);
+  // 村里 66 只
+  let placed = 0, guard = 0;
+  while (placed < 66 && guard++ < 800) {
+    const x = -42 + R() * 84, z = -32 + R() * 64;
+    const tx = Math.floor(x - VILLAGE.ox), tz = Math.floor(z - VILLAGE.oz);
+    if (tileAt(VILLAGE, tx, tz) === TI.WATER) continue;
+    pos.push(x, surfaceY(VILLAGE, x, z) + .35 + R() * 1.0, z);
+    placed++;
+  }
+  // 竹林水塘边上再撒 30 只（视觉坐标 = 本地 + REGION_OFF.grove）
+  guard = 0; placed = 0;
+  while (placed < 30 && guard++ < 400) {
+    const lx = -32 + R() * 64, lz = -32 + R() * 64;
+    const tx = Math.floor(lx - GROVE.ox), tz = Math.floor(lz - GROVE.oz);
+    if (tileAt(GROVE, tx, tz) === TI.WATER) continue;
+    pos.push(lx + REGION_OFF.grove.x, surfaceY(GROVE, lx, lz) + .35 + R() * 1.0, lz + REGION_OFF.grove.z);
+    placed++;
+  }
+  const geo = new T.BufferGeometry();
+  ambientLife.fireBase = new Float32Array(pos);
+  geo.setAttribute("position", new T.Float32BufferAttribute(pos, 3));
+  const mat = new T.PointsMaterial({
+    color: 0xe9ffc0, size: .21, transparent: true, opacity: 0,
+    blending: T.AdditiveBlending, depthWrite: false, sizeAttenuation: true
+  });
+  const pts = new T.Points(geo, mat);
+  pts.frustumCulled = false;
+  grp.add(pts);
+  ambientLife.fireflies = pts;
+}
+
+/* ---- 飞鸟：天上绕圈的双瓣小 V ---- */
+function buildBirds(grp) {
+  const defs = [
+    { c: [-26, -2], r: 9.5, y: 9.5, sp: .30, ph: 0 },
+    { c: [110, 2], r: 12, y: 11.5, sp: .22, ph: 2.1 },
+    { c: [18, 74], r: 11, y: 12.5, sp: .26, ph: 4.2 }
+  ];
+  const mat = new T.MeshBasicMaterial({ color: 0x4a4440, side: T.DoubleSide });
+  const geoL = new T.PlaneGeometry(.42, .16); geoL.rotateX(-Math.PI / 2); geoL.translate(0, 0, .19);
+  const geoR = new T.PlaneGeometry(.42, .16); geoR.rotateX(-Math.PI / 2); geoR.translate(0, 0, -.19);
+  defs.forEach(d => {
+    const b = new T.Group();
+    b.add(new T.Mesh(new T.BoxGeometry(.34, .06, .08), mat));
+    const wl = new T.Mesh(geoL, mat), wr = new T.Mesh(geoR, mat);
+    b.add(wl); b.add(wr);
+    grp.add(b);
+    ambientLife.birds.push({ g: b, wl, wr, ...d });
+  });
+}
+
+/* ---- 炊烟：自家和杂货铺的烟囱飘淡淡一缕 ---- */
+function buildSmoke(grp) {
+  const mk = (hx, hz, w, d) => {
+    const topY = surfaceY(VILLAGE, hx, hz) + 3.3;
+    const cx = hx - w * .26, cz = hz - d * .16;
+    for (let i = 0; i < 2; i++) {
+      const p = new T.Mesh(new T.SphereGeometry(.13, 6, 5),
+        new T.MeshBasicMaterial({ color: 0xece8e2, transparent: true, opacity: 0, depthWrite: false }));
+      p.position.set(cx, topY, cz);
+      grp.add(p);
+      ambientLife.puffs.push({ m: p, cx, cz, topY, off: i / 2 });
+    }
+  };
+  mk(-7.5, 20, 5, 4);    // 自家
+  mk(15.5, 18, 5, 4);    // 小七杂货铺
+}
+
+function buildAmbientLife() {
+  if (ambientLife.grp) return;
+  const grp = new T.Group();
+  grp.name = "ambientLife";
+  scene.add(grp);
+  ambientLife.grp = grp;
+  // 这些坐标都是村图本地坐标；addLamp 贴地用的是 buildMap，这里临时指回村图
+  const savedMap = buildMap;
+  buildMap = VILLAGE;
+  try {
+    buildWaterWheel(grp);
+    buildDock(grp);
+    buildButterflies(grp);
+    buildFireflies(grp);
+    buildBirds(grp);
+    buildSmoke(grp);
+  } catch (e) { console.error("[game] 环境动效搭建出错", e); }
+  buildMap = savedMap;
+}
+
+function tickAmbient(dt, t) {
+  const A = ambientLife;
+  if (!A.grp) return;
+  A.grp.visible = !!activeMap;   // 进屋收起，跟户外一起
+  if (!A.grp.visible) return;
+  const night = isNightNow();
+  // 水车
+  if (A.wheel) A.wheel.rotation.x += dt * .8;
+  // 蝴蝶：白天飞，夜里藏
+  for (const b of A.butterflies) {
+    b.g.visible = !night;
+    if (night) continue;
+    const a = t * b.sp + b.ph;
+    const x = b.cx + Math.cos(a) * b.r * .85;
+    const z = b.cz + Math.sin(a * .77 + 1.2) * b.r;
+    const dx = -Math.sin(a) * b.sp * b.r * .85, dz = Math.cos(a * .77 + 1.2) * .77 * b.sp * b.r;
+    b.g.position.set(x, b.baseY + .78 + Math.sin(t * 2.1 + b.ph) * .22, z);
+    if (dx || dz) b.g.rotation.y = Math.atan2(-dz, dx) - Math.PI / 2;
+    b.g.rotation.z = Math.sin(t * 2.1 + b.ph) * .12;   // 机身跟着上下轻摆
+    const f = .85 + Math.sin(t * 15 + b.ph) * .5;   // 翅膀永远张着些，别拍到全平
+    b.wl.rotation.x = f; b.wr.rotation.x = -f;
+  }
+  // 萤火虫：夜里亮、忽明忽暗、轻轻飘
+  if (A.fireflies) {
+    A.fireflies.material.opacity = night ? .75 + Math.sin(t * 2.2) * .2 : 0;
+    if (night) {
+      const pa = A.fireflies.geometry.attributes.position;
+      for (let i = 0; i < pa.count; i++) {
+        pa.setY(i, A.fireBase[i * 3 + 1] + Math.sin(t * 1.3 + i * 1.7) * .16);
+      }
+      pa.needsUpdate = true;
+    }
+  }
+  // 飞鸟：白天绕圈，夜里歇
+  for (const b of A.birds) {
+    b.g.visible = !night;
+    if (night) continue;
+    const a = t * b.sp + b.ph;
+    b.g.position.set(b.c[0] + Math.cos(a) * b.r, b.y + Math.sin(t * .8 + b.ph) * .5, b.c[1] + Math.sin(a) * b.r);
+    b.g.rotation.y = Math.atan2(-Math.cos(a) * b.sp, -Math.sin(a) * b.sp);
+    const f = Math.sin(t * 9 + b.ph) * .5;
+    b.wl.rotation.x = f; b.wr.rotation.x = -f;
+  }
+  // 炊烟
+  for (const p of A.puffs) {
+    const k = (t * .22 + p.off) % 1;
+    p.m.position.set(p.cx + k * .55, p.topY + k * 1.9, p.cz + k * .12);
+    const s = .7 + k * 1.7;
+    p.m.scale.set(s, s * .8, s);
+    p.m.material.opacity = .3 * Math.min(1, k * 5) * (1 - k);
+  }
+}
+
+/* =========================================================
    主循环
    ========================================================= */
 const clock = new T.Clock();
@@ -6034,6 +6308,7 @@ function loop() {
   const wt = performance.now() / 1000;
   for (const wm of waterSurfaces) wm.uniforms.uTime.value = wt;
   updateWaterRipple(wt);
+  tickAmbient(dt, wt);
   radarAcc += dt;
   if (state.started && radarAcc >= 1 / 24) { radarAcc = 0; drawRadar(); }
   renderer.render(scene, currentCam());
@@ -6093,6 +6368,7 @@ async function boot() {
     troupeResetIfNewDay();
     batchOutdoors();   // 静态摆件统一合批：四图同时可见也不涨 draw call
     applyStyle();   // 场景搭好后统一套用主题（国风染色 / 飞檐 / 背景）
+    buildAmbientLife();   // v86：水车 / 栈桥 / 蝴蝶 / 萤火虫 / 飞鸟 / 炊烟（要贴已建好的地形）
   } catch (e) { console.error("[game] 场景搭建出错", e); }
 
   Farm.init({
