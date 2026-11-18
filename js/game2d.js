@@ -6,7 +6,7 @@ import { mergeGeometries } from "../vendor/three/BufferGeometryUtils.js";
 import { GLTFLoader } from "../vendor/three/GLTFLoader.js";
 import { MeshoptDecoder } from "../vendor/meshopt/meshopt_decoder.module.js";
 import { createPetMotion } from "./pet-motion.js?v=2";
-import { makeAnimator } from "./creature.js?v=58";
+import { makeAnimator } from "./creature.js?v=59";
 import { Fight } from "./kof.js?v=57";
 import {
   TS, TI, VILLAGE, TOWN, GROVE, HILL, TOWN_LOTS, TOWN_STALLS, HOUSE, SHOP, STATION, ARCHIVE, MAPS,
@@ -67,7 +67,7 @@ const CAST = {
   feidudu: {
     name: "肥嘟嘟袋鼠", h: 1.55, model: true,
     img: "assets/characters/feidudu.png",
-    desc: "圆肚子的小袋鼠，肚皮上的口袋老是漏东西，一走路就掉一地。"
+    desc: "圆肚子的小袋鼠，送外卖总爱把汤洒一路。"
   }
 };
 
@@ -95,9 +95,9 @@ const state = {
   gifts: {},               // 一次性送礼
   bounty: null,            // 奶察局的悬赏
   bountyDay: 0,
-  // 大世界：点亮过的锚点、肥嘟嘟的口袋、暴暴龙的擂台连胜
+  // 大世界：点亮过的锚点、肥嘟嘟的外卖、暴暴龙的擂台连胜
   anchors: {},             // "village" / "town" → true（花过钱点亮）
-  pouchDay: 0,             // 口袋任务今天做没做
+  pouchDay: 0,             // 外卖任务今天做没做
   pouches: 0,
   arenaWins: 0,
   // 小游戏：钓鱼当天抛了几竿、唱戏当天唱没唱
@@ -116,7 +116,11 @@ const SPAWN = { x: .5, z: 27 };
 let player = { x: SPAWN.x, z: SPAWN.z, heading: Math.PI, moving: false, run: false, phase: 0, ready: false,
   jumpY: 0, vy: 0, jumping: false };
 
+let loadDone = false;   // 读档阶段结束之前，禁止任何启动期 save() 覆盖已有存档
 function save() {
+  // boot 里 troupeResetIfNewDay() 早于 load()，若不拦住，它会拿初始 state
+  // 把刚存的进度整份冲掉，玩家点「继续」就等于从头开始。
+  if (!state.started && !loadDone) return;
   try {
     localStorage.setItem(SAVE_KEY, JSON.stringify({
       lv: state.lv, exp: state.exp, maxHp: state.maxHp, hp: state.hp, atk: state.atk,
@@ -127,6 +131,8 @@ function save() {
       bounty: state.bounty, bountyDay: state.bountyDay,
       beatQiyet: !!state.beatQiyet, seenRoom: state.seenRoom,
       anchors: state.anchors, pouchDay: state.pouchDay, pouches: state.pouches,
+      pouchActive: pouchQuest.active, pouchGot: pouchQuest.got,
+      pouchList: pouchQuest.objs.map(o => !!o.got),
       arenaWins: state.arenaWins,
       fishDay: state.fishDay, fishRods: state.fishRods, stageDay: state.stageDay,
       courier: state.courier,
@@ -140,6 +146,7 @@ function save() {
   } catch (e) { /* 存不了就算了 */ }
 }
 function load() {
+  loadDone = true;   // 无论有没有存档、读没读成，启动期写档保护到此为止
   try {
     localStorage.removeItem("naijiacun_game_v1");
     const raw = localStorage.getItem(SAVE_KEY);
@@ -160,6 +167,14 @@ function load() {
       metChar: d.metChar || {}, dexRewards: d.dexRewards || [], dexTitle: d.dexTitle || "",
       troupe: d.troupe || { day: 0, stage: 0, gotList: [], invited: [] }
     });
+    // 外卖任务进度也入档：捡了几份、哪几份捡过，刷新页面不能从头再来
+    if (d.pouchActive) {
+      pouchQuest.active = true;
+      pouchQuest.got = clamp(d.pouchGot | 0, 0, 3);
+      pouchQuest.pendingList = Array.isArray(d.pouchList) ? d.pouchList : null;
+      // 三份外卖的 mesh 等玩家回镇时再补建（travelTo 的 town 分支负责），
+      // 这里只记进度；读档阶段不碰场景，免得异常把整份存档带崩。
+    }
     player.x = d.px ?? SPAWN.x;
     player.z = d.pz ?? SPAWN.z;
     // 存档点落在墙里就地复位，别再让人一开局就卡在树上
@@ -568,6 +583,121 @@ function makeHeightFn(map, seed) {
   };
 }
 
+
+/* =========================================================
+   水体：不再是一张贴在地面上的蓝色贴图
+   每个水格上方铺一层半透明、会起伏的水面网格：水面高于水底（有厚度），
+   离岸越远颜色越深，表面有流动波纹与高光。塘边一圈浅水允许涉进去。
+   ========================================================= */
+const WATER_LEVEL = .17;
+const waterSurfaces = [];
+let waterRipple = null;
+
+function buildWaterSurface(map, group) {
+  if (map.indoor) return;
+  const isW = (tx, tz) => tx >= 0 && tz >= 0 && tx < map.w && tz < map.h && tileAt(map, tx, tz) === TI.WATER;
+  const cells = [];
+  for (let tz = 0; tz < map.h; tz++) for (let tx = 0; tx < map.w; tx++) if (isW(tx, tz)) cells.push([tx, tz]);
+  if (!cells.length) return;
+
+  // BFS：每格离最近岸的距离 -> 深浅渐变；贴岸那一圈标成可涉水的浅滩
+  const dist = new Map(), q = [];
+  for (const [tx, tz] of cells) {
+    let shore = false;
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if (!isW(tx + dx, tz + dz)) shore = true;
+    if (shore) { dist.set(tx + "," + tz, 0); q.push([tx, tz, 0]); }
+  }
+  for (let head = 0; head < q.length; head++) {
+    const [tx, tz, d] = q[head];
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = tx + dx, nz = tz + dz, k = nx + "," + nz;
+      if (isW(nx, nz) && !dist.has(k)) { dist.set(k, d + 1); q.push([nx, nz, d + 1]); }
+    }
+  }
+  map.__shallow = new Set();
+  for (const [k, d] of dist) if (d === 0) map.__shallow.add(k);
+  const maxD = Math.max(1, ...dist.values());
+
+  // 每格 2x2 细分，波纹才是细密的起伏而不是整块上下跳。
+  // y 取整格中心的水位（水格地面被压平为 0），不用逐顶点采样，免得岸线被邻格地形拽歪。
+  const pos = [], dep = [], idx = [], N = 3;
+  for (const [tx, tz] of cells) {
+    const base = pos.length / 3;
+    const d = (dist.get(tx + "," + tz) ?? maxD) / maxD;
+    const wy = surfaceY(map, map.ox + tx + .5, map.oz + tz + .5) + WATER_LEVEL;
+    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+      pos.push(map.ox + tx + i / (N - 1), wy, map.oz + tz + j / (N - 1));
+      dep.push(d);
+    }
+    for (let j = 0; j < N - 1; j++) for (let i = 0; i < N - 1; i++) {
+      const a = base + j * N + i, b = a + 1, c = a + N, e = c + 1;
+      idx.push(a, c, b, b, c, e);
+    }
+  }
+  const geo = new T.BufferGeometry();
+  geo.setAttribute("position", new T.Float32BufferAttribute(pos, 3));
+  geo.setAttribute("aDepth", new T.Float32BufferAttribute(dep, 1));
+  geo.setIndex(idx);
+  geo.computeVertexNormals();
+
+  const mat = new T.ShaderMaterial({
+    uniforms: { uTime: { value: 0 } },
+    transparent: true, depthWrite: false, side: T.DoubleSide,
+    vertexShader: `
+      uniform float uTime;
+      attribute float aDepth;
+      varying float vDepth; varying vec3 vP;
+      void main(){
+        vec3 p = position;
+        p.y += sin(p.x * 1.9 + uTime * 1.5) * .028 + sin(p.z * 2.3 - uTime * 1.1) * .022;
+        vP = p; vDepth = aDepth;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+      }`,
+    fragmentShader: `
+      uniform float uTime;
+      varying float vDepth; varying vec3 vP;
+      void main(){
+        vec3 shallow = vec3(.44, .78, .73);
+        vec3 deep    = vec3(.09, .34, .52);
+        vec3 col = mix(shallow, deep, vDepth);
+        float rip = sin(vP.x * 2.2 + uTime * 1.2) * sin(vP.z * 1.7 - uTime * 0.9);
+        col += vec3(.05, .09, .10) * smoothstep(.5, 1.0, rip);
+        float glint = pow(max(0.0, sin(vP.x * 3.4 + vP.z * 2.6 + uTime * 1.8)), 24.0);
+        col += vec3(.30, .38, .36) * glint * .38;
+        col += vec3(.10, .12, .10) * (1.0 - vDepth) * .3;
+        gl_FragColor = vec4(col, mix(.56, .88, vDepth));
+      }`
+  });
+  const mesh = new T.Mesh(geo, mat);
+  mesh.frustumCulled = false;
+  group.add(mesh);
+  waterSurfaces.push(mat);
+}
+
+// 涉水时脚下一圈涟漪，随时间轻轻放大、忽明忽暗
+function updateWaterRipple(t) {
+  const m = activeMap;
+  let shallow = false;
+  if (m && m.__shallow) {
+    const cx = Math.floor(player.x - m.ox), cz = Math.floor(player.z - m.oz);
+    shallow = m.__shallow.has(cx + "," + cz);
+  }
+  if (!shallow) { if (waterRipple) waterRipple.visible = false; return; }
+  if (!waterRipple) {
+    waterRipple = new T.Mesh(new T.RingGeometry(.26, .4, 24),
+      new T.MeshBasicMaterial({ color: 0xe6fbf4, transparent: true, opacity: .5,
+        side: T.DoubleSide, depthWrite: false }));
+    waterRipple.rotation.x = -Math.PI / 2;
+    waterRipple.renderOrder = 3;
+    scene.add(waterRipple);
+  }
+  waterRipple.visible = true;
+  const sc = 1 + Math.sin(t * 4) * .18;
+  waterRipple.scale.set(sc, sc, 1);
+  waterRipple.material.opacity = .38 + Math.sin(t * 4) * .12;
+  waterRipple.position.set(visX(), surfaceY(m, player.x, player.z) + WATER_LEVEL + .015, visZ());
+}
+
 function buildGroundFor(map, group) {
   const tex = mapTexture(map, renderer);
   const mat = new T.MeshBasicMaterial({ map: tex });
@@ -632,6 +762,7 @@ function buildGroundFor(map, group) {
   sh.receiveShadow = true;
   group.add(sh);
 
+  buildWaterSurface(map, group);
   groundMats.push(mat);
   return mat;
 }
@@ -883,31 +1014,46 @@ function treeTooClose(x, z, d = 2.1) {
 function addTree(x, z, scale = 1, parent = treeGroup) {
   const r = mulberry(Math.round((x + 100) * 37 + (z + 100) * 91));
   const g = new T.Group();
-  // 树干：略带锥度、八面、稍微倾斜，比笔直圆柱自然
+  // 树干：略带锥度、八面、稍微倾斜，比笔直圆柱自然；再补两根分叉枝，别再是光杆
   const trunk = new T.Mesh(new T.CylinderGeometry(.16, .28, 1.05, 8), trunkMat);
   trunk.position.y = .52; trunk.rotation.z = (r() - .5) * .09; trunk.castShadow = true;
   g.add(trunk);
+  for (let b = 0; b < 2; b++) {
+    const ang = r() * 6.283, tilt = .5 + r() * .4;
+    const branch = new T.Mesh(new T.CylinderGeometry(.045, .09, .72, 5), trunkMat);
+    branch.position.set(Math.cos(ang) * .14, .95 + r() * .18, Math.sin(ang) * .14);
+    branch.rotation.set(Math.sin(ang) * tilt, 0, -Math.cos(ang) * tilt);
+    branch.castShadow = true;
+    g.add(branch);
+    const tip = new T.Mesh(CANOPY_GEOS[2], [leafMatA, leafMatB, leafDark][Math.floor(r() * 3)]);
+    tip.position.set(Math.cos(ang) * .32, 1.22 + r() * .2, Math.sin(ang) * .32);
+    tip.scale.setScalar(.42 + r() * .15);
+    g.add(tip);
+  }
 
   const species = [
     [leafMatA, leafMatB, leafMatC],  // 明亮阔叶
     [leafMatB, leafDark, leafMatA],  // 深绿
     [leafMatC, leafMatA, leafMatB]   // 嫩绿
   ][Math.floor(r() * 3)];
-  // 内层暗团垫底，外层几团明暗交错 → 有体积而不是几个纯色球
+  // 内层暗团垫底，外层明暗交错 + 纵向随机拉伸 → 树冠是参差的团簇，不是几颗圆球
   const inner = new T.Mesh(CANOPY_GEOS[0], leafDark);
-  inner.position.set(0, 1.42, 0); inner.scale.setScalar(.82); inner.castShadow = true;
+  inner.position.set(0, 1.42, 0); inner.scale.set(.82, .92, .82); inner.castShadow = true;
   g.add(inner);
   const lobes = [
     [0, 1.72, 0, 1.0, 0],
     [-.52, 1.48, .18, .68, 1],
     [.5, 1.55, -.14, .72, 2],
     [.12, 2.16, .1, .62, 2],
-    [-.2, 1.85, -.5, .6, 1]
+    [-.2, 1.85, -.5, .6, 1],
+    [.38, 1.32, .42, .52, 2],
+    [-.42, 2.05, .32, .5, 1],
+    [.1, 1.62, -.55, .55, 2]
   ];
   lobes.forEach(([lx, ly, lz, s, gi]) => {
     const m = new T.Mesh(CANOPY_GEOS[gi], species[Math.floor(r() * 3)]);
     m.position.set(lx, ly, lz);
-    m.scale.setScalar(s * (.85 + r() * .3));
+    m.scale.set(s * (.8 + r() * .3), s * (.9 + r() * .55), s * (.8 + r() * .3));
     m.rotation.set(r() * 4, r() * 4, r() * 4);
     m.castShadow = true;
     g.add(m);
@@ -930,6 +1076,7 @@ function addRock(x, z, parent = world) {
   m.castShadow = true; m.receiveShadow = true;
   parent.add(m);
   markWorld(x, z, .42, 1);
+  markJumpable(x, z, .42, .5);     // 石头也不高，跳一下就能过去（半径与 markWorld 一致）
 }
 
 function addFence(x, z, len, horiz) {
@@ -941,6 +1088,7 @@ function addFence(x, z, len, horiz) {
     p.castShadow = true;
     g.add(p);
     markWorld(x + (horiz ? i * TILE : 0), z + (horiz ? 0 : i * TILE), .12, 1);
+    markJumpable(x + (horiz ? i * TILE : 0), z + (horiz ? 0 : i * TILE), .4, .85);
   }
   const rail = new T.Mesh(new T.BoxGeometry(horiz ? len * TILE : .09, .1, horiz ? .09 : len * TILE), mat);
   rail.position.set(horiz ? (len - 1) * TILE / 2 : 0, .55, horiz ? 0 : (len - 1) * TILE / 2);
@@ -992,7 +1140,7 @@ const houseMats = {
   sill: new T.MeshStandardMaterial({ color: 0xe4d7b8, roughness: .95 })
 };
 
-function addHouse(x, z, w, d, bodyColor, roofColor, rot = 0, parent = world) {
+function addHouse(x, z, w, d, bodyColor, roofColor, rot = 0, parent = world, style = "") {
   const g = new T.Group();
   const H = 2.0;                       // 墙高：俯视时刚好能露出正面
   const M = houseMats;
@@ -1121,6 +1269,59 @@ function addHouse(x, z, w, d, bodyColor, roofColor, rot = 0, parent = world) {
   // 门前台阶：一格宽
   box(new T.BoxGeometry(1.1, .12, .7), M.step, 0, .06, d / 2 + .42, true);
 
+  // 遵循真实比例：墙高 2.0 原本只比人高一截，整栋纵向放大 1.6，
+  // 檐口到地约 4.5，是村民个头的两倍半 —— 房子终于压得住人。
+  g.scale.y = 1.6;
+
+  // ---- 著名建筑的辨识度：奶察局 / 村史馆各有各的门面，不再千人一面 ----
+  if (style === "police") {
+    // 奶察局：门两侧白柱 + 蓝色檐带 + 金色警徽 + 两盏会发光的警灯
+    const blue = new T.MeshStandardMaterial({ color: 0x3c5a80, roughness: .8 });
+    [-1, 1].forEach(sd => {
+      const col = new T.Mesh(new T.CylinderGeometry(.13, .15, 1.72, 8), M.frame);
+      col.position.set(sd * (w / 2 - .5), .86, d / 2 + .3);
+      col.castShadow = true;
+      g.add(col);
+      const lamp = new T.Mesh(new T.SphereGeometry(.1, 10, 8),
+        new T.MeshStandardMaterial({ color: 0x7fb4ff, emissive: 0x2c62c9, emissiveIntensity: .9, roughness: .4 }));
+      lamp.position.set(sd * (w / 2 - .5), 1.84, d / 2 + .3);
+      g.add(lamp);
+    });
+    const band = new T.Mesh(new T.BoxGeometry(w + .06, .2, .07), blue);
+    band.position.set(0, 1.6, d / 2 + .05);
+    g.add(band);
+    const badge = new T.Mesh(new T.CylinderGeometry(.2, .2, .05, 14),
+      new T.MeshStandardMaterial({ color: 0xf2c14e, metalness: .55, roughness: .3 }));
+    badge.rotation.x = Math.PI / 2;
+    badge.position.set(0, 1.6, d / 2 + .11);
+    g.add(badge);
+  } else if (style === "museum") {
+    // 村史馆：门楣深底金字匾额 + 门口石碑 + 一对红灯笼
+    const plaque = new T.Mesh(new T.BoxGeometry(1.5, .42, .08),
+      new T.MeshStandardMaterial({ color: 0x35434a, roughness: .6 }));
+    plaque.position.set(0, 1.6, d / 2 + .12);
+    plaque.castShadow = true;
+    g.add(plaque);
+    const gold = new T.MeshStandardMaterial({ color: 0xf2c14e, metalness: .5, roughness: .3 });
+    const glyph = new T.Mesh(new T.BoxGeometry(1.24, .2, .02), gold);
+    glyph.position.set(0, 1.6, d / 2 + .17);
+    g.add(glyph);
+    const stele = new T.Mesh(new T.BoxGeometry(.5, 1.1, .18),
+      new T.MeshStandardMaterial({ color: 0x9b9c94, roughness: .95, flatShading: true }));
+    stele.position.set(w / 2 - .35, .55, d / 2 + .52);
+    stele.castShadow = true;
+    g.add(stele);
+    [-1, 1].forEach(sd => {
+      const lantern = new T.Mesh(new T.SphereGeometry(.16, 10, 8), lanternPaperMat);
+      lantern.scale.y = 1.25;
+      lantern.position.set(sd * (w / 2 - .18), 1.5, d / 2 + .32);
+      g.add(lantern);
+      const cap = new T.Mesh(new T.CylinderGeometry(.1, .12, .07, 8), lanternCapMat);
+      cap.position.set(sd * (w / 2 - .18), 1.74, d / 2 + .32);
+      g.add(cap);
+    });
+  }
+
   g.position.set(x, groundAtBuild(x, z), z);
   g.rotation.y = rot;
   parent.add(g);
@@ -1187,6 +1388,7 @@ function addBench(x, z, rot = 0, parent = world) {
     leg.castShadow = true;
     g.add(leg);
   });
+  markJumpable(x, z, 1.15, .82, "rect", 2, 1);  // 长椅占 2x1 格，整块都能跳过去
   g.position.set(x, groundAtBuild(x, z), z);
   g.rotation.y = rot;
   parent.add(g);
@@ -1195,26 +1397,40 @@ function addBench(x, z, rot = 0, parent = world) {
 
 function addLamp(x, z, parent = world) {
   const g = new T.Group();
-  const post = new T.Mesh(new T.CylinderGeometry(.08, .12, 2.3, 6), darkWood);
-  post.position.y = 1.15; post.castShadow = true;
+  // 石底座 + 灯杆 + 两道装饰环，别再是一根光杆立在那儿
+  const base = new T.Mesh(new T.CylinderGeometry(.22, .3, .22, 8),
+    new T.MeshStandardMaterial({ color: 0x8f8a80, roughness: .95, flatShading: true }));
+  base.position.y = .11; base.castShadow = true;
+  g.add(base);
+  const post = new T.Mesh(new T.CylinderGeometry(.07, .1, 2.3, 6), darkWood);
+  post.position.y = 1.26; post.castShadow = true;
   g.add(post);
+  [1.66, 1.96].forEach(hy => {
+    const ring = new T.Mesh(new T.CylinderGeometry(.1, .1, .05, 8), darkWood);
+    ring.position.y = hy;
+    g.add(ring);
+  });
   // 横臂
   const arm = new T.Mesh(new T.BoxGeometry(.42, .07, .07), darkWood);
-  arm.position.set(.16, 2.28, 0);
+  arm.position.set(.16, 2.39, 0);
   g.add(arm);
-  // 灯罩（晚上真的会亮）
+  // 六棱玻璃灯罩（晚上真的会亮）+ 里面一颗暖光小灯泡
   const glass = new T.MeshStandardMaterial({
-    color: 0xffe9b0, emissive: 0x000000, roughness: .35, transparent: true, opacity: .92
+    color: 0xffe9b0, emissive: 0x000000, roughness: .35, transparent: true, opacity: .9
   });
-  const head = new T.Mesh(new T.BoxGeometry(.3, .34, .3), glass);
-  head.position.set(.34, 2.06, 0);
+  const head = new T.Mesh(new T.CylinderGeometry(.19, .25, .34, 6), glass);
+  head.position.set(.34, 2.2, 0);
   head.castShadow = true;
   g.add(head);
   lampGlasses.push(glass);
-  const cap = new T.Mesh(new T.ConeGeometry(.28, .2, 4),
+  const bulb = new T.Mesh(new T.SphereGeometry(.08, 8, 6),
+    new T.MeshStandardMaterial({ color: 0xffd98a, emissive: 0xffb648, emissiveIntensity: .55 }));
+  bulb.position.set(.34, 2.2, 0);
+  g.add(bulb);
+  const cap = new T.Mesh(new T.ConeGeometry(.3, .22, 6),
     new T.MeshStandardMaterial({ color: 0x6f665a, roughness: .9, flatShading: true }));
-  cap.rotation.y = Math.PI / 4;
-  cap.position.set(.34, 2.31, 0);
+  cap.rotation.y = Math.PI / 6;
+  cap.position.set(.34, 2.48, 0);
   g.add(cap);
   g.position.set(x, groundAtBuild(x, z), z);
   parent.add(g);
@@ -1332,21 +1548,33 @@ let grassTuftGeo = null;
 function makeGrassTuftGeo() {
   if (grassTuftGeo) return grassTuftGeo;
   const g = new T.BufferGeometry();
-  const pos = [], nor = [];
-  const blade = (cx, cz, ang, h, w) => {
+  const pos = [], nor = [], col = [];
+  const root = [.7, .85, .5], tip = [1.05, 1.1, .7];   // 根深尖浅，叶尖泛一点暖光
+  // 一片弯折的草叶：底边 -> 中段折点 -> 尖端，两段三角形，比直板三角柔得多
+  const blade = (cx, cz, ang, h, w, bend) => {
     const dx = Math.cos(ang) * w / 2, dz = Math.sin(ang) * w / 2;
-    // 一片三角草叶：底两点 + 尖（略向侧面倾）
-    const bx = cx + Math.cos(ang + Math.PI / 2) * h * .18;
-    const bz = cz + Math.sin(ang + Math.PI / 2) * h * .18;
-    pos.push(cx - dx, 0, cz - dz, cx + dx, 0, cz + dz, bx, h, bz);
-    for (let k = 0; k < 3; k++) nor.push(0, 1, 0);
+    const px = Math.cos(ang + Math.PI / 2), pz = Math.sin(ang + Math.PI / 2);
+    const mx = cx + px * h * .1 + Math.cos(ang) * bend * .5;
+    const mz = cz + pz * h * .1 + Math.sin(ang) * bend * .5;
+    const tx = cx + px * h * .16 + Math.cos(ang) * bend;
+    const tz = cz + pz * h * .16 + Math.sin(ang) * bend;
+    pos.push(cx - dx, 0, cz - dz,  cx + dx, 0, cz + dz,  mx, h * .55, mz);
+    pos.push(mx - dx * .5, h * .55, mz - dz * .5,  mx + dx * .5, h * .55, mz + dz * .5,  tx, h, tz);
+    for (const t of [0, 0, .5, .5, .5, 1]) {
+      col.push(root[0] + (tip[0] - root[0]) * t, root[1] + (tip[1] - root[1]) * t, root[2] + (tip[2] - root[2]) * t);
+    }
+    for (let k = 0; k < 6; k++) nor.push(0, 1, 0);
   };
-  blade(0, 0, .0, .5, .16);
-  blade(0, 0, 1.05, .42, .15);
-  blade(0, 0, 2.1, .46, .14);
-  blade(.08, -.05, 2.8, .34, .12);
+  blade(0, 0, .0, .56, .17, .10);
+  blade(0, 0, .95, .48, .15, -.08);
+  blade(0, 0, 1.9, .52, .15, .12);
+  blade(.07, -.04, 2.75, .40, .13, -.06);
+  blade(-.06, .05, 4.0, .44, .13, .08);
+  blade(.03, .06, 5.1, .34, .11, -.10);
+  blade(-.04, -.03, 3.5, .38, .12, .06);
   g.setAttribute("position", new T.Float32BufferAttribute(pos, 3));
   g.setAttribute("normal", new T.Float32BufferAttribute(nor, 3));
+  g.setAttribute("color", new T.Float32BufferAttribute(col, 3));
   grassTuftGeo = g;
   return g;
 }
@@ -1355,7 +1583,8 @@ function buildGrassTufts(map, group, count, seed) {
   if (!hfn) return;
   const r = mulberry(seed || 991);
   const mat = new T.MeshStandardMaterial({
-    color: map.name === "南高草坡" ? 0x9dbd5f : 0x7fae5c, roughness: 1, side: T.DoubleSide
+    color: map.name === "南高草坡" ? 0x9dbd5f : 0x7fae5c, roughness: 1, side: T.DoubleSide,
+    vertexColors: true
   });
   const inst = new T.InstancedMesh(makeGrassTuftGeo(), mat, count);
   const dummy = new T.Object3D();
@@ -1707,8 +1936,8 @@ function buildProps() {
   // 坐标必须和瓦片里的 rect(...) 对齐，差半格门就踩不进去了
   addHouse(-7.5, 20, 5, 4, 0xf0e3c8, 0xc4795f);       // 自己家
   addHouse(15.5, 18, 5, 4, 0xf6ead2, 0xb8694f);       // 小七杂货铺
-  addHouse(-19.5, -14, 5, 4, 0xe9dcc2, 0xb46b52);     // 村史馆
-  addHouse(19.5, -14, 5, 4, 0xe6edf3, 0x4e6f8f);      // 奶察局（蓝顶）
+  addHouse(-19.5, -14, 5, 4, 0xe9dcc2, 0xb46b52, 0, world, "museum");  // 村史馆：匾额 + 石碑 + 灯笼
+  addHouse(19.5, -14, 5, 4, 0xe6edf3, 0x4e6f8f, 0, world, "police");   // 奶察局：白柱 + 警徽 + 警灯
 
   // ---- 农场栅栏：三面围起来，南边留个口 ----
   addFence(PLOT.x0 - .5, PLOT.z0 - .5, PLOT.rows + 2, false);
@@ -1782,10 +2011,11 @@ function buildProps() {
   // ---- 地名标注 ----
   // 房子用屋顶上的名牌（永远朝镜头，不会被屋檐挡住）；
   // 空地和区域用贴地字牌，像地图上直接写在那一块地上。
-  addRoofLabel(-7.5, 3.05, 20, "我的家", 1.9);
-  addRoofLabel(15.5, 3.05, 18, "小七杂货铺", 2.4);
-  addRoofLabel(-19.5, 3.05, -14, "村史馆", 1.9);
-  addRoofLabel(19.5, 3.05, -14, "奶察局", 1.9);
+  // 房子纵向放大后，屋顶标签也跟着升到新檐口之上
+  addRoofLabel(-7.5, 5.3, 20, "我的家", 1.9);
+  addRoofLabel(15.5, 5.3, 18, "小七杂货铺", 2.4);
+  addRoofLabel(-19.5, 5.3, -14, "村史馆", 1.9);
+  addRoofLabel(19.5, 5.3, -14, "奶察局", 1.9);
 
   // 广场不放牌子：人一开局就站在那儿，脚底下压着字反而挡路
   addPlaceLabel(14.5, 10.9, "棋爷的公园", 2.9);
@@ -2644,17 +2874,60 @@ function isSolid(cx, cz) {
     const vz = MAP.oz + cz + .5 + off.z;
     if (inPortalBand(vx, vz)) return false;
   }
+  // 塘边一圈是浅水，可以涉进去；深水仍然是走不进去的
+  if (!MAP.indoor && MAP.__shallow && MAP.__shallow.has(cx + "," + cz)) return false;
   return solidAt(MAP, cx, cz);
 }
 
+// 矮障碍（长椅 / 石头 / 矮栅栏）登记：跳起来离地后就能从它们上方越过。
+// 房子、树、灯杆这些不进表 —— 它们太高，跳起来也照旧挡住，这就是「按建模高度判断」。
+//
+// 这里登记的是摆件「实际占掉的 solid 格」，和 markRect / markWorld 用同一套算法，
+// 而不是拿一个圆去套：长椅是 2x1 的矩形，圆半径 1.15 会漏掉角上的格子
+// (12.5,10.5) 距中心 1.204，看起来就像「明明跳起来了还是过不去」。
+const JUMPABLE = [];
+function markJumpable(x, z, r, h, shape = "circle", w = 0, d = 0) {
+  const tiles = new Set();
+  if (shape === "rect") {
+    const tx0 = cellX(x - w / 2), tx1 = cellX(x + w / 2 - .001);
+    const tz0 = cellZ(z - d / 2), tz1 = cellZ(z + d / 2 - .001);
+    for (let cz = tz0; cz <= tz1; cz++) for (let cx = tx0; cx <= tx1; cx++) tiles.add(cx + "," + cz);
+  } else {
+    const x0 = cellX(x - r), x1 = cellX(x + r), z0 = cellZ(z - r), z1 = cellZ(z + r);
+    for (let cz = z0; cz <= z1; cz++) for (let cx = x0; cx <= x1; cx++) {
+      if (Math.hypot(cx2x(cx) - x, cz2z(cz) - z) <= r + .35) tiles.add(cx + "," + cz);
+    }
+  }
+  // 只要离地就算在空中：跳跃滞空约 .73 秒、水平能走 3 格多，刚好够跨过两格宽的
+  // 长椅。若要求抬升到椅背高度才放行，可通行窗口只剩 0.16 秒，一步都迈不过去。
+  // 障碍「够不够矮能不能跳」由是否登记进 JUMPABLE 决定，不再和当前帧的跳高硬比。
+  const need = Math.min(.03, h * .2);
+  JUMPABLE.push({ map: MAP.name, x, z, r, h, tiles, need });
+}
+function canJumpOver(wx, wz, jumpY) {
+  if (jumpY <= 0) return false;
+  const key = cellX(wx) + "," + cellZ(wz);
+  for (const o of JUMPABLE) {
+    if (o.map !== MAP.name) continue;
+    if (!o.tiles.has(key)) continue;
+    if (jumpY > o.need) return true;
+  }
+  return false;
+}
+
 // 一格一格地挡：玩家是个半径 .34 格的小圆，一格宽的门刚好能过
-function blocked(x, z, r = .34) {
+function blocked(x, z, r = .34, jumpY = 0) {
   const cx = cellX(x), cz = cellZ(z);
   for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
     if (!isSolid(cx + dx, cz + dz)) continue;
     const bx = MAP.ox + (cx + dx), bz = MAP.oz + (cz + dz);
     const nx = clamp(x, bx, bx + 1), nz = clamp(z, bz, bz + 1);
-    if (Math.hypot(x - nx, z - nz) < r) return true;
+    if (Math.hypot(x - nx, z - nz) < r) {
+      // 空中且这一格属于登记过的矮障碍：放行，人能真正「跳过去」。
+      // 树 / 房子 / 灯杆的格子不在表里，跳再高也照旧挡住。
+      if (canJumpOver(bx + .5, bz + .5, jumpY)) continue;
+      return true;
+    }
   }
   return false;
 }
@@ -2762,7 +3035,38 @@ dom.addEventListener("pointermove", e => {
   TP.pitch = clamp(TP.pitch - dy * .0035, .10, 1.15);
   moveSig = -1; camFollowPause = 2.2;   // 手动拖镜头后暂停自动跟随
 });
-const camDragEnd = e => { if (camDrag && e.pointerId === camDrag.id) camDrag = null; };
+
+/* ---- 3D 下点一下村民就能搭话：射线拾取，看得见、够得着就能互动 ----
+   2D 俯视仍走栅格那套（E / 面前一格），不启用鼠标点选。 */
+const npcRay = new T.Raycaster();
+function tryClickNpc(e) {
+  if (!state.started || dlg.open || Fight.on || overlayOpen() || topDown()) return;
+  const r = dom.getBoundingClientRect();
+  const nx = ((e.clientX - r.left) / r.width) * 2 - 1;
+  const ny = -((e.clientY - r.top) / r.height) * 2 + 1;
+  npcRay.setFromCamera({ x: nx, y: ny }, camTP);
+  const onMap = npcOnMap();
+  const targets = onMap.map(n => n.obj).filter(Boolean);
+  if (!targets.length) return;
+  const hits = npcRay.intersectObjects(targets, true);
+  if (!hits.length) return;
+  let node = hits[0].object, hitObj = null;
+  while (node && !hitObj) { hitObj = targets.find(o => o === node); node = node.parent; }
+  if (!hitObj) return;
+  const n = onMap.find(v => v.obj === hitObj);
+  if (!n) return;
+  // 3D 的空间互动：不再局限于面前三格，隔几步也能打个招呼
+  if (Math.hypot(player.x - n.x, player.z - n.z) > 7) { toast("离得太远，走近一点再打招呼"); return; }
+  talk(n);
+}
+
+const camDragEnd = e => {
+  if (camDrag && e.pointerId === camDrag.id) {
+    const dragDist = Math.abs(e.clientX - camDrag.x) + Math.abs(e.clientY - camDrag.y);
+    camDrag = null;
+    if (dragDist <= 8) tryClickNpc(e);   // 原地一下是「点选」，不是拖镜头
+  }
+};
 dom.addEventListener("pointerup", camDragEnd);
 dom.addEventListener("pointercancel", camDragEnd);
 dom.addEventListener("wheel", e => {
@@ -2775,6 +3079,7 @@ dom.addEventListener("wheel", e => {
    更新
    ========================================================= */
 let grassDist = 0, hudAcc = 0, grace = 0, battleGrace = 0, encounterLock = false;
+let waveTimer = 0;   // 打招呼的挥手动画剩余时长
 
 function update(dt) {
   // 躺在床上时锁输入：不然人保持躺姿在地图上滑（睡姿泄漏）
@@ -2790,6 +3095,13 @@ function update(dt) {
   Farm.update(dt, locked);
   if (locked) {
     player.moving = false;
+    // 对话开着也要把「打招呼」的挥手播完：交互动作不能被输入锁吞掉
+    if (waveTimer > 0 && !sleepPose.on && !player.jumping && !playerObj.userData.isBillboard) {
+      waveTimer -= dt;
+      const pActor = playerObj.children[0];
+      const anim = pActor && pActor.userData.anim;
+      if (anim) anim.update("wave", { t: performance.now() / 1000 });
+    }
     updateCamera();
     return;
   }
@@ -2841,9 +3153,9 @@ function update(dt) {
     const nz = player.z + dz * sp;
     // 万一被塞进了实体（坐下、传送、摆件挪位置都可能），别把人锁死在里面：
     // 起点本身已经在碰撞圈里时，这一帧不做阻挡，让人能自己退出来。
-    const wedged = blocked(player.x, player.z);
-    if (wedged || !blocked(nx, player.z)) { player.x = nx; moved += Math.abs(dx * sp); }
-    if (wedged || !blocked(player.x, nz)) { player.z = nz; moved += Math.abs(dz * sp); }
+    const wedged = blocked(player.x, player.z, .34, player.jumpY);
+    if (wedged || !blocked(nx, player.z, .34, player.jumpY)) { player.x = nx; moved += Math.abs(dx * sp); }
+    if (wedged || !blocked(player.x, nz, .34, player.jumpY)) { player.z = nz; moved += Math.abs(dz * sp); }
 
     player.moving = moved > 0;
     player.phase += moved * 3.4;
@@ -2908,6 +3220,14 @@ function update(dt) {
     if (anim) anim.update("jump", { k, t });
     playerObj.position.y = footY;
     playerObj.rotation.z = 0;
+  } else if (waveTimer > 0 && !playerObj.userData.isBillboard) {
+    // 打招呼的挥手动作：播完这一小段再回到走路 / 站立
+    waveTimer -= dt;
+    const t = performance.now() / 1000;
+    const pActor = playerObj.children[0];
+    const anim = pActor && pActor.userData.anim;
+    if (anim) anim.update("wave", { t });
+    playerObj.position.y = footY + Math.sin(t * 6) * .02;
   } else if (!playerObj.userData.isBillboard) {
     const t = performance.now() / 1000;
     const pActor = playerObj.children[0];
@@ -3340,6 +3660,42 @@ function addCopCap(g, h = 1.5) {
   return cap;
 }
 
+
+// 奶察的制服：光戴帽子还不够「警」。奶蛙是梨形身材，用一件深蓝小马甲包住
+// 躯干中段，配腰带、胸徽、肩章和一条斜挎反光带 —— 远远看去就是穿制服的奶察。
+function addCopUniform(g, h = 1.62) {
+  const s = h / 1.62;
+  const navy = new T.MeshStandardMaterial({ color: 0x2f4a6b, roughness: .82 });
+  const gold = new T.MeshStandardMaterial({ color: 0xf2c14e, metalness: .5, roughness: .35 });
+  // 奶蛙腰身实测宽约 1.17：壳必须比身体略大才看得见，小了就整个藏进模型里
+  const vest = new T.Mesh(new T.SphereGeometry(.62 * s, 20, 14), navy);
+  vest.scale.set(1.0, .62, .88);
+  vest.position.y = .52 * s;
+  vest.castShadow = true;
+  g.add(vest);
+  const belt = new T.Mesh(new T.CylinderGeometry(.58 * s, .61 * s, .1 * s, 18),
+    new T.MeshStandardMaterial({ color: 0x1b2b40, roughness: .7 }));
+  belt.position.y = .3 * s;
+  g.add(belt);
+  const buckle = new T.Mesh(new T.BoxGeometry(.13 * s, .1 * s, .03 * s), gold);
+  buckle.position.set(0, .3 * s, .58 * s);
+  g.add(buckle);
+  const star = new T.Mesh(new T.CylinderGeometry(.075 * s, .075 * s, .03 * s, 10), gold);
+  star.rotation.x = Math.PI / 2;
+  star.position.set(.17 * s, .72 * s, .55 * s);
+  g.add(star);
+  [-1, 1].forEach(sd => {
+    const ep = new T.Mesh(new T.BoxGeometry(.16 * s, .05 * s, .11 * s), gold);
+    ep.position.set(sd * .4 * s, 1.02 * s, .05 * s);
+    g.add(ep);
+  });
+  const strap = new T.Mesh(new T.BoxGeometry(.08 * s, .5 * s, .02 * s),
+    new T.MeshStandardMaterial({ color: 0xe8e3d5, roughness: .6 }));
+  strap.position.set(-.2 * s, .56 * s, .56 * s);
+  strap.rotation.z = .5;
+  g.add(strap);
+}
+
 function npcDefObj(def, mapKey, x, z) {
   return {
     def, map: mapKey, x, z, hx: x, hz: z,
@@ -3355,7 +3711,7 @@ async function spawnVillageNpcs() {
       if (!obj) continue;
       const g = new T.Group();
       g.add(obj);
-      if (def.cop) addCopCap(g, (CAST[def.char] || {}).h || 1.5);
+      if (def.cop) { const ch = (CAST[def.char] || {}).h || 1.5; addCopCap(g, ch); addCopUniform(g, ch); }
       g.position.set(def.home.x, surfaceY(VILLAGE, def.home.x, def.home.z), def.home.z);
       g.rotation.y = def.face || 0;
       world.add(g);
@@ -3377,7 +3733,7 @@ async function spawnRoomNpcs(map, mapKey) {
       if (!obj) continue;
       const g = new T.Group();
       g.add(obj);
-      if (DESK_OFFICER.cop) addCopCap(g, (CAST[DESK_OFFICER.char] || {}).h || 1.5);
+      if (DESK_OFFICER.cop) { const ch = (CAST[DESK_OFFICER.char] || {}).h || 1.5; addCopCap(g, ch); addCopUniform(g, ch); }
       const x = map.ox + spec.tx + .5, z = map.oz + spec.tz + .5;
       g.position.set(x, 0, z);
       g.rotation.y = spec.face || 0;
@@ -3391,7 +3747,7 @@ async function spawnRoomNpcs(map, mapKey) {
 }
 
 /* =========================================================
-   奶家镇的两位：暴暴龙摆擂、肥嘟嘟丢口袋
+   奶家镇的两位：暴暴龙摆擂、肥嘟嘟洒外卖
    ========================================================= */
 const TOWN_NPCS = [
   {
@@ -3429,13 +3785,13 @@ const TOWN_NPCS = [
     char: "feidudu",
     home: { x: -4.5, z: 1.5 },
     face: -1.2,
-    tag: "口袋又漏了",
+    tag: "外卖洒了一路",
     greet: [
-      "（它捂着肚皮上的口袋，一脸发愁）",
-      "我一路走过来，口袋里的东西掉光了。三只，三只都没了。"
+      "（它拎着空空的保温袋，一脸发愁）",
+      "我一路送过来，三份外卖全洒了。客人还等着呢。"
     ],
     act: "pouch",
-    actLabel: "帮它找口袋"
+    actLabel: "帮它找外卖"
   }
 ];
 
@@ -3675,7 +4031,7 @@ const HILL_NPCS = [
   }
 ];
 
-// 肥嘟嘟掉的三个口袋：戏台边、驿站院子、南街尽头
+// 肥嘟嘟洒的三份外卖：戏台边、驿站院子、南街尽头
 const POUCH_SPOTS = [
   { tx: 19.2, tz: 28.4 },
   { tx: 56.6, tz: 31.4 },
@@ -3692,20 +4048,36 @@ function buildPouches() {
     const g = new T.Group();
     const bx = TOWN.ox + sp.tx, bz = TOWN.oz + sp.tz;
     g.position.set(bx, surfaceY(TOWN, bx, bz), bz);
-    const sack = new T.Mesh(new T.SphereGeometry(.26, 10, 8),
-      new T.MeshStandardMaterial({ color: 0xc9a877, roughness: .95 }));
-    sack.scale.set(1, 1.15, 1);
-    sack.position.y = .28;
-    sack.castShadow = true;
-    g.add(sack);
-    const tie = new T.Mesh(new T.ConeGeometry(.1, .18, 6),
-      new T.MeshStandardMaterial({ color: 0x8a6540, roughness: .95 }));
-    tie.position.y = .58;
-    g.add(tie);
+    // 一份洒出来的外卖：白纸盒 + 红盖 + 封条 + 提手，不再是圆麻袋
+    const paper = new T.Mesh(new T.BoxGeometry(.44, .34, .4),
+      new T.MeshStandardMaterial({ color: 0xf6f1e2, roughness: .92 }));
+    paper.position.y = .19; paper.castShadow = true;
+    g.add(paper);
+    const lid = new T.Mesh(new T.BoxGeometry(.48, .07, .44),
+      new T.MeshStandardMaterial({ color: 0xd85a3c, roughness: .85 }));
+    lid.position.y = .39; lid.castShadow = true;
+    g.add(lid);
+    const band = new T.Mesh(new T.BoxGeometry(.1, .35, .42),
+      new T.MeshStandardMaterial({ color: 0xe8b94b, roughness: .8 }));
+    band.position.y = .2;
+    g.add(band);
+    const handle = new T.Mesh(new T.TorusGeometry(.13, .025, 6, 12, Math.PI),
+      new T.MeshStandardMaterial({ color: 0x8a6540, roughness: .9 }));
+    handle.position.y = .43; handle.rotation.x = Math.PI / 2;
+    g.add(handle);
     g.visible = false;
     town.add(g);
     pouchQuest.objs.push({ group: g, got: false, i });
   });
+  // 读档恢复：把已经捡过的那几份按存档盖掉，别让人刷新后重捡
+  if (pouchQuest.pendingList && pouchQuest.pendingList.length === pouchQuest.objs.length) {
+    pouchQuest.objs.forEach((o, i) => {
+      o.got = !!pouchQuest.pendingList[i];
+      o.group.visible = pouchQuest.active && !o.got;
+    });
+    pouchQuest.got = pouchQuest.objs.filter(o => o.got).length;
+  }
+  pouchQuest.pendingList = null;
 }
 
 function startPouchQuest() {
@@ -3713,7 +4085,8 @@ function startPouchQuest() {
   pouchQuest.active = true;
   pouchQuest.got = 0;
   pouchQuest.objs.forEach(o => { o.got = false; o.group.visible = true; });
-  toast("三只口袋掉在镇上了 · 戏台边、驿站院子、南街尽头");
+  save();
+  toast("三份外卖掉在镇上了 · 戏台边、驿站院子、南街尽头");
 }
 
 function tryPouch() {
@@ -3726,8 +4099,9 @@ function tryPouch() {
     pouchQuest.got++;
     sfx("coin");
     blip(760, .12, "sine", .04);
-    toast("捡到一只口袋（" + pouchQuest.got + "/3）");
-    if (pouchQuest.got >= 3) setTimeout(() => toast("三只都找回来了 · 拿回去给肥嘟嘟"), 900);
+    save();
+    toast("捡到一份外卖（" + pouchQuest.got + "/3）");
+    if (pouchQuest.got >= 3) setTimeout(() => toast("三份都找回来了 · 拿回去给肥嘟嘟"), 900);
     return true;
   }
   return false;
@@ -4416,7 +4790,8 @@ function travelTo(key, spawn) {
     placePlayer(x, z, h, !!(spawn && spawn.seamless));
     if (key === "town") {
       spawnTownNpcs().catch(e => console.warn("[game] 镇上的没来", e));
-      // 口袋任务进行中时，没捡的那些要重新露出来
+      // 外卖任务进行中时，没捡的那些要重新露出来（读档恢复的场景也补建一次）
+      if (pouchQuest.active && !pouchQuest.objs.length) buildPouches();
       pouchQuest.objs.forEach(o => { o.group.visible = pouchQuest.active && !o.got; });
       buildTroupeProps();
       refreshTroupeProps();
@@ -4757,9 +5132,10 @@ function closeWorldMap() {
 
 function interact() {
   const a = aimCell();
-  const npc = npcNear(2.2);
+  // 3D 开放世界下不再死守面前三格：看得见、站得近就能互动；2D 仍是栅格那一套
+  const npc = npcNear(state.viewMode === "3d" ? 3.6 : 2.2);
 
-  // ⓪ 肥嘟嘟掉的口袋：站在旁边按 E 就捡
+  // ⓪ 肥嘟嘟洒的外卖：站在旁边按 E 就捡
   if (tryPouch()) return;
 
   // ⓪½ 竹林里的竹笋：每天长几根，站边上按 E 掰走换钱
@@ -4808,6 +5184,9 @@ function interact() {
 /* ---- 跟村民说话 ---- */
 function talk(n) {
   const def = n.def;
+  // 面向对方、挥个手再开口：交互要有动作，不是干站着念台词
+  player.heading = Math.atan2(n.x - player.x, n.z - player.z);
+  waveTimer = 1.0;
   state.met[def.id] = true;
   state.metNpc = true;
   // 图鉴：第一次跟这位角色说话就亮卡
@@ -4821,6 +5200,10 @@ function talk(n) {
   // 镇内任务：请帖顺手就递了（班主自己不算收信人）
   troupeInvite(def.id);
   save();
+
+  // 任务型 NPC（肥嘟嘟）的台词必须跟着进度走：捡完再回来，不能还念那句
+  // 「三份全洒了」的固定开场白，否则看着像任务永远没推进。
+  if (def.act === "pouch") { runAct(def, n); return; }
 
   // 棋爷有自己的流程：先被你叫板，再骗你下一盘
   if (def.id === "qiyet") { qiyetTalk(n); return; }
@@ -5225,25 +5608,25 @@ function runAct(def, n) {
         Farm.paint(); hudTick(); save();
         sfx("coin");
         say(def.name, [
-          "（它把三只口袋一只一只塞回肚皮，拍了拍）",
+          "（它把三份外卖一份份码进保温袋，长舒一口气）",
           "钱不多，是我攒的。球也给你一个 —— 你比我用得着。"
-        ], () => toast("口袋全找回来了 · +60 金 · 捕捉球 +1"), null, "happy");
+        ], () => toast("外卖全找回来了 · +60 金 · 捕捉球 +1"), null, "happy");
         break;
       }
       if (pouchQuest.active) {
         say(def.name, [
-          "还有 " + (3 - pouchQuest.got) + " 只在外头。",
-          "戏台边上、驿站院子里、南街尽头 —— 我是一路走一路掉的。"
+          "还有 " + (3 - pouchQuest.got) + " 份在外头。",
+          "戏台边上、驿站院子里、南街尽头 —— 我是一路走一路洒的。"
         ]);
         break;
       }
       if (state.pouchDay === Farm.day) {
-        say(def.name, ["今天找回来的那些，我收好了。", "明天……明天它还会漏。"], null, null, "happy");
+        say(def.name, ["今天找回来的那些，我送到了。", "明天……明天再接几单。"], null, null, "happy");
         break;
       }
       say(def.name, [
         "你帮我找找？我不乱跑，就在这儿等你。",
-        "三只，都装着路上捡的碎东西，不值钱，但我不想丢。"
+        "三份，都是客人等着的热乎饭，凉了就不好交代了。"
       ], () => startPouchQuest(), null, "worry");
       break;
     }
@@ -5533,6 +5916,9 @@ function loop() {
   }
   update(dt);
   animateAnchors(dt);
+  const wt = performance.now() / 1000;
+  for (const wm of waterSurfaces) wm.uniforms.uTime.value = wt;
+  updateWaterRipple(wt);
   radarAcc += dt;
   if (state.started && radarAcc >= 1 / 24) { radarAcc = 0; drawRadar(); }
   renderer.render(scene, currentCam());
@@ -5654,7 +6040,7 @@ function startGame(fresh) {
     Object.assign(state, {
       lv: 3, exp: 0, maxHp: 62, hp: 62, atk: 28,
       balls: 8, captured: {}, metNpc: false, steps: 0,
-      // 重开就是全新的一天：锚点、口袋、擂台、小游戏的每日计数都得归零，
+      // 重开就是全新的一天：锚点、外卖、擂台、小游戏的每日计数都得归零，
       // 不然同一个浏览器里「重新开始」会带着上一档的进度进新档
       anchors: {}, pouchDay: 0, pouches: 0, arenaWins: 0,
       fishDay: 0, fishRods: 0, stageDay: 0, courier: null,
@@ -5662,6 +6048,8 @@ function startGame(fresh) {
       troupe: { day: 0, stage: 0, gotList: [], invited: [] },
       dayFlags: {}, gifts: {}, met: {}, beatQiyet: false
     });
+    pouchQuest.active = false; pouchQuest.got = 0; pouchQuest.pendingList = null;
+    pouchQuest.objs.forEach(o => { o.got = false; o.group.visible = false; });
     player.x = SPAWN.x; player.z = SPAWN.z;
     player.jumping = false; player.jumpY = 0; player.vy = 0;
     Farm.reset();
@@ -5733,7 +6121,9 @@ if (location.search.indexOf("debug") >= 0) {
     teleport(x, z) { player.x = x; player.z = z; player.jumping = false; player.jumpY = 0; player.vy = 0; playerObj.position.set(visX(), terrainY(x, z), visZ()); updateCamera(true); },
     face(h) { player.heading = h; },
     jump, jumpState: () => ({ jumping: player.jumping, jumpY: player.jumpY, vy: player.vy }),
+    JUMPABLE, canJumpOver,
     surfaceY, groundAt: (x, z) => terrainY(x, z),
+    projectObj(obj) { const v = new T.Vector3(); obj.getWorldPosition(v); v.project(camTP); return { x: Math.round((v.x + 1) / 2 * dom.clientWidth), y: Math.round((1 - v.y) / 2 * dom.clientHeight), z: +v.z.toFixed(3) }; },
     visPosition: () => ({ x: visX(), z: visZ() }),
     regionOff, portalTarget, inPortalBand
   };

@@ -152,6 +152,28 @@ export function makeAnimator(root) {
     }
   }
 
+
+  /* ---- 打招呼：举一只手来回挥，身子微微侧倾，像老朋友碰面 ---- */
+  function wavePose(t = 0) {
+    const w = Math.sin(t * 9) * .45;
+    if (kind === "biped") {
+      bones.armRight.rotation.x = -2.5;
+      bones.armRight.rotation.z = -.25 + w * .4;
+      bones.armLeft.rotation.x = .2;
+      bones.armLeft.rotation.z = -.06;
+      bones.body.rotation.y = -.1;
+      bones.head.rotation.z = .08;
+    } else if (bones.pawRight) {
+      bones.pawRight.rotation.x = -1.9 + w * .35;
+      bones.head.rotation.z = .12;
+    } else if (bones.armRight) {
+      bones.armRight.rotation.x = -2.3 + w * .35;
+      bones.head.rotation.z = .1;
+    } else if (bones.head) {
+      bones.head.rotation.z = .1 + w * .1;   // 没手臂的家伙就歪头示意
+    }
+  }
+
   return {
     kind, bones,
     update(motion, opt = {}) {
@@ -165,6 +187,7 @@ export function makeAnimator(root) {
           case "hurt": hurt(opt.k ?? 0); break;
           case "sleep": sleepPose(); break;
           case "jump": jumpPose(opt.k ?? 0); break;
+          case "wave": wavePose(opt.t ?? 0); break;
           default: idle(t);
         }
       } catch (e) { /* 某个关节缺失就少动一下，不能把游戏循环带崩 */ }
