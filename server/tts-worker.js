@@ -230,13 +230,29 @@ async function handleChat(request, env, origin) {
     return json({ ok: false, code: "BAD_METHOD", detail: "请用 POST" }, 405, origin);
   }
 
-  const key = request.headers.get("x-llm-key") || (env && env.LLM_KEY) || "";
+  const visitorKey = request.headers.get("x-llm-key") || "";
+  const key = visitorKey || (env && env.LLM_KEY) || "";
   if (!key) {
     return json({
       ok: false,
       code: "NO_KEY",
       detail: "缺少 x-llm-key，且 Worker 没有配置 LLM_KEY 环境变量"
     }, 401, origin);
+  }
+
+  // 访客自带 Key 不占站点额度；只有借用站长 LLM_KEY 时才按 IP 限流，
+  // 否则这个开放代理会被人无限制白嫖站长的模型额度。
+  if (!visitorKey) {
+    const limit = Number((env && env.LLM_DAILY_LIMIT) || 30);
+    const ip = request.headers.get("cf-connecting-ip") || "unknown";
+    const ok = await bumpQuota(env, ip, Number.isFinite(limit) && limit >= 0 ? limit : 30, "llm");
+    if (!ok) {
+      return json({
+        ok: false,
+        code: "QUOTA",
+        detail: "站点免费聊天额度今天用完了，明天再来，或在设置里填自己的模型 Key"
+      }, 429, origin);
+    }
   }
 
   let body;
@@ -304,9 +320,10 @@ async function handleChat(request, env, origin) {
 // 访客自带 x-sf-key 就用访客的（不计数）；没带就用站长 Key，按 IP 计数。
 const memQuota = new Map();
 
-async function bumpQuota(env, ip, limit) {
+async function bumpQuota(env, ip, limit, ns) {
   const day = new Date().toISOString().slice(0, 10);
-  const key = "q:" + ip + ":" + day;
+  // ns 区分不同接口的额度，避免聊天与语音互相挤占同一计数
+  const key = "q:" + (ns || "sf") + ":" + ip + ":" + day;
 
   if (env && env.RATE) {
     const used = Number((await env.RATE.get(key)) || 0);
