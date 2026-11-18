@@ -869,13 +869,16 @@ function buildFar() {
   // 关键：这张板必须低于所有地形最低点（野外 amp 1.85，最低约 -2.1）。
   // 原来放 -0.08，结果角色站进负高度洼地时，被这张平板从腰部「截断」，
   // 看着就像脚插进地里。降到 -2.8 后，板永远在真实地形之下，只填地图外虚空。
+  const landMat = new T.MeshStandardMaterial({ color: 0x8fac6e, roughness: 1 });
   const land = new T.Mesh(
     new T.PlaneGeometry(900, 900),
-    new T.MeshStandardMaterial({ color: 0x8fac6e, roughness: 1 })
+    landMat
   );
   land.rotation.x = -Math.PI / 2;
   land.position.y = -2.8;
   farGroup.add(land);
+  // 地图外的远草地也铺手绘草皮：贴图自带绿色，color 提白避免双重染色
+  texMap("grass.png", landMat, 60, 60);
 
   const r = mulberry(20261117);
 
@@ -989,7 +992,24 @@ scene.add(cursor);
 /* =========================================================
    道具：树 / 房 / 石 / 篱笆
    ========================================================= */
+/* ---- 手绘贴图（AI 生成、镜像平铺免接缝）：加载成功才挂到材质上，
+        失败就保持原纯色，绝不会白屏 ---- */
+const matTexLoader = new T.TextureLoader();
+function texMap(file, mat, rx = 1, ry = 1, keepTint = false) {
+  matTexLoader.load("img/tex/" + file, t => {
+    t.wrapS = t.wrapT = T.MirroredRepeatWrapping;   // 镜像平铺：任何图都自动无缝
+    t.repeat.set(rx, ry);
+    t.colorSpace = T.SRGBColorSpace;
+    t.anisotropy = 4;
+    mat.map = t;
+    // 彩色贴图自带颜色，再叠材质 color 会双重染色变暗；灰度贴图（墙/瓦）才靠 color 出各色房子
+    if (!keepTint) mat.color.set(0xffffff);
+    mat.needsUpdate = true;
+  }, undefined, () => {});
+}
+
 const trunkMat = new T.MeshStandardMaterial({ color: 0x7d5a3c, roughness: 1 });
+texMap("bark.png", trunkMat, 1, 2);     // 树皮纹理：贴图自带棕色，color 提白
 // 明暗两套叶色交错堆叠，低多边形也能有星露谷那种蓬松的层次感
 const leafMatA = new T.MeshStandardMaterial({ color: 0x6fae66, roughness: .92, flatShading: true });
 const leafMatB = new T.MeshStandardMaterial({ color: 0x4e8f57, roughness: .94, flatShading: true });
@@ -1082,6 +1102,7 @@ function addRock(x, z, parent = world) {
 function addFence(x, z, len, horiz) {
   const g = new T.Group();
   const mat = new T.MeshStandardMaterial({ color: 0xd8c39c, roughness: .9 });
+  texMap("wood.png", mat, 1, 1, true);   // 栅栏也披上木板纹理（保留浅木 tint）
   for (let i = 0; i < len; i++) {
     const p = new T.Mesh(new T.BoxGeometry(.12, .8, .12), mat);
     p.position.set(horiz ? i * TILE : 0, .4, horiz ? 0 : i * TILE);
@@ -1153,6 +1174,7 @@ function addHouse(x, z, w, d, bodyColor, roofColor, rot = 0, parent = world, sty
 
   // 主墙体（国风时转粉墙）
   const bodyMat = new T.MeshStandardMaterial({ color: bodyColor, roughness: .92 });
+  texMap("wall.png", bodyMat, 1.6, 1.2, true);   // 灰度抹灰墙纹理，靠 bodyColor tint 出各色房子
   themeTints.push({ mat: bodyMat, base: new T.Color(bodyColor), guofeng: new T.Color(0xf3efe2) });
   box(new T.BoxGeometry(w, H, d), bodyMat, 0, H / 2, 0, true);
 
@@ -1174,6 +1196,7 @@ function addHouse(x, z, w, d, bodyColor, roofColor, rot = 0, parent = world, sty
   const slopeLen = Math.hypot(d / 2 + overhang, roofH); // 斜板长度（沿 d 方向倾斜）
   const tilt = Math.atan2(roofH, d / 2 + overhang);      // 倾角
   const roofMat = new T.MeshStandardMaterial({ color: roofColor, roughness: .9, flatShading: true });
+  texMap("roof.png", roofMat, 3, 2, true);       // 灰度鱼鳞瓦纹理，靠 roofColor tint
   // 黛瓦：国风时屋顶转青灰瓦色（保留瓦纹贴图）
   const tileColor = new T.Color(roofColor);
   const tileGuo = new T.Color(0x4a5c5b);
@@ -1333,8 +1356,11 @@ function addHouse(x, z, w, d, bodyColor, roofColor, rot = 0, parent = world, sty
 
 /* ---------- 村里的零碎 ---------- */
 const lampGlasses = [];      // 晚上要点亮的灯罩
-const woodMat = new T.MeshStandardMaterial({ color: 0xb08a5c, roughness: .95 });
+const woodMat = new T.MeshStandardMaterial({ color: 0xd8b58c, roughness: .95 });
 const darkWood = new T.MeshStandardMaterial({ color: 0x8a6540, roughness: .95 });
+// 木板纹理 tint 到浅/深两种木色：贴图提底色、材质 color 出深浅对比
+texMap("wood.png", woodMat, 1.4, 1, true);
+texMap("wood.png", darkWood, 1, 1, true);
 const stoneMat = new T.MeshStandardMaterial({ color: 0x9d9b90, roughness: 1, flatShading: true });
 
 function addWell(x, z, parent = world) {
