@@ -295,7 +295,12 @@ function sfx(kind) {
    ========================================================= */
 const canvas = $("#gl");
 const renderer = new T.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));   // 高 DPI 下 2x 填充开销大，1.5x 肉眼几乎无差
+// 性能自适应：高 DPI 手机按 2x 渲染会让填充量翻 4 倍（实测 1920×1200 一帧 65 万三角形时
+// 掉到 3.5fps）。桌面保留 1.5x 画质，触屏/窄屏按 1.25x 封顶；?hq=1 可强制满画质。
+const _hq = /(?:^|[?&])hq=1(?:&|$)/.test(location.search);
+const _touch = (navigator.maxTouchPoints > 1) || matchMedia("(pointer:coarse)").matches;
+const _pixelCap = _hq ? 2 : (_touch ? 1.25 : 1.5);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, _pixelCap));
 renderer.outputColorSpace = T.SRGBColorSpace;
 renderer.toneMapping = T.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.04;
@@ -2990,9 +2995,13 @@ function buildRig(key, c, entry) {
   const rig = createPetMotion(root, entry.rigId || key);
   rig.root.scale.setScalar(c.h / 2);
   if (entry.yaw) rig.root.rotation.y += entry.yaw;
+  // 性能：这些是展台级高精度 GLB（单个 3~5 万三角、MeshPhysicalMaterial）。地图里同时
+  // 站 10 个，若投/收实时阴影，阴影 pass 要再画 20 万+三角形，手机上就是卡顿主因。
+  // 角色脚下已有 makeContactShadow() 贴地软阴影，视觉上照样"踩在地上"，故这里关掉
+  // 高面数模型的实时阴影；场景里的树/房子等低模仍投影，立体感不受影响。?hq=1 可恢复。
   rig.root.traverse(o => {
     if (o.isMesh) {
-      o.castShadow = true; o.receiveShadow = true;
+      o.castShadow = _hq; o.receiveShadow = _hq;
       if (o.material && "envMapIntensity" in o.material) o.material.envMapIntensity = 1;
     }
   });
