@@ -295,17 +295,92 @@ function sfx(kind) {
    ========================================================= */
 const canvas = $("#gl");
 const renderer = new T.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
-// 性能自适应：高 DPI 手机按 2x 渲染会让填充量翻 4 倍（实测 1920×1200 一帧 65 万三角形时
-// 掉到 3.5fps）。桌面保留 1.5x 画质，触屏/窄屏按 1.25x 封顶；?hq=1 可强制满画质。
+
+/* ---------------------------------------------------------------
+   自适应画质（v92）
+   目标：打开即玩。先用设备信息挑一个保守档位，进游戏后再按实测帧率
+   自动降档 / 回升——卡的用户不用手动设置，强的用户也不会被永久降级。
+   高 DPI 手机按 2x 渲染填充量翻 4 倍（实测 1920×1200 一帧 65 万三角形
+   掉到 3.5fps），所以 DPR 是低配上最有效的一档开关。
+   --------------------------------------------------------------- */
 const _hq = /(?:^|[?&])hq=1(?:&|$)/.test(location.search);
 const _touch = (navigator.maxTouchPoints > 1) || matchMedia("(pointer:coarse)").matches;
-const _pixelCap = _hq ? 2 : (_touch ? 1.25 : 1.5);
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, _pixelCap));
+
+// 软件渲染识别：SwiftShader / llvmpipe 全靠 CPU 画 3D，任何画质参数都救不回来，
+// 只能降到最低档并明确告诉用户去开硬件加速，而不是让他对着 0fps 的页面发呆。
+let _gpuName = "";
+try {
+  const _gl = renderer.getContext();
+  const _ext = _gl.getExtension("WEBGL_debug_renderer_info");
+  _gpuName = String(_ext ? _gl.getParameter(_ext.UNMASKED_RENDERER_WEBGL) : (_gl.getParameter(_gl.RENDERER) || ""));
+} catch (e) {}
+const SOFT_GL = /swiftshader|llvmpipe|softpipe|software|basic render|microsoft basic/i.test(_gpuName);
+
+const QUALITY_KEY   = "naijiacun_game_quality_v1";
+const QUALITY_NAMES = { low: "流畅", std: "标准", high: "高画质" };
+const QUALITY_ORDER = ["low", "std", "high"];
+const QUALITY_DPR   = { low: 0.8, std: _touch ? 1.25 : 1.5, high: 2 };
+const QUALITY_CYCLE = ["auto", "low", "std", "high"];
+const _lowMem = !!(navigator.deviceMemory && navigator.deviceMemory <= 4);
+const _fewCores = !!(navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4);
+// 软件渲染直接最低档；低内存触屏 / 双低设备也先保守起步，帧率宽裕再自动回升。
+const _suggest = SOFT_GL ? "low" : ((_touch && _lowMem) || (_lowMem && _fewCores) ? "low" : "std");
+// 自动模式最高只回到「标准」；高画质（含 GLB 实时阴影）留给用户手动选。
+const _ceiling = SOFT_GL ? "low" : "std";
+
+let qTier = _suggest;
+let qAuto = true;
+try {
+  const _urlQ = new URLSearchParams(location.search).get("q");
+  const _saved = localStorage.getItem(QUALITY_KEY);
+  const _pick = _urlQ || (_hq ? "high" : null) || _saved;
+  if (QUALITY_ORDER.includes(_pick)) {
+    qTier = _pick;
+    qAuto = false;   // 用户手动选过就尊重，不再自动改；点「自动」可交还控制权
+    if (_urlQ) localStorage.setItem(QUALITY_KEY, _urlQ);
+  }
+} catch (e) {}
+
+let actorShadows = qTier === "high";   // 高精度 GLB 只在显式高画质档投影
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, QUALITY_DPR[qTier]));
 renderer.outputColorSpace = T.SRGBColorSpace;
 renderer.toneMapping = T.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.04;
-renderer.shadowMap.enabled = true;
+renderer.shadowMap.enabled = qTier !== "low";
 renderer.shadowMap.type = T.PCFShadowMap;   // PCFSoft 每像素多采样，1024 图上差距很小但快不少
+
+const glbRigs = new Set();   // 已生成的 GLB 角色根节点，切档时统一刷新阴影标记
+
+// 一条可复用的提示条（软件渲染 / 已降到最低档仍卡时显示）
+let perfNoticeEl = null;
+function showPerfNotice(html) {
+  if (!perfNoticeEl) {
+    const n = document.createElement("div");
+    n.id = "perfNotice";
+    n.setAttribute("role", "status");
+    n.style.cssText = "position:fixed;left:50%;top:12px;transform:translateX(-50%);z-index:9999;width:max-content;max-width:calc(100vw - 24px);display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border-radius:12px;background:#fff8e6;color:#4a3a12;border:1px solid #e8c86a;box-shadow:0 6px 24px rgba(0,0,0,.18);font:13px/1.6 system-ui,sans-serif";
+    const body = document.createElement("div");
+    body.className = "pn-body";
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.textContent = "×";
+    btn.setAttribute("aria-label", "关闭提示");
+    btn.style.cssText = "background:none;border:0;color:#7a6228;font-size:20px;line-height:1;cursor:pointer;padding:0 2px";
+    btn.onclick = () => { n.style.display = "none"; };
+    n.appendChild(body); n.appendChild(btn);
+    document.body.appendChild(n);
+    perfNoticeEl = n;
+  }
+  perfNoticeEl.querySelector(".pn-body").innerHTML = html;
+  perfNoticeEl.style.display = "flex";
+}
+
+if (SOFT_GL) {
+  showPerfNotice("<b>当前浏览器未启用硬件加速，3D 画面走软件渲染会很卡。</b><br>"
+    + "请在 Chrome / Edge 的「设置 → 系统」里开启 <b>使用图形加速功能</b>，然后重启浏览器；"
+    + "也可以点右上角「⚙ 画质」切到流畅模式。<br><small style='opacity:.7'>检测到渲染器："
+    + _gpuName.replace(/[<>&]/g, "").slice(0, 120) + "</small>");
+}
 
 Fight.init(renderer);
 
@@ -2997,14 +3072,16 @@ function buildRig(key, c, entry) {
   if (entry.yaw) rig.root.rotation.y += entry.yaw;
   // 性能：这些是展台级高精度 GLB（单个 3~5 万三角、MeshPhysicalMaterial）。地图里同时
   // 站 10 个，若投/收实时阴影，阴影 pass 要再画 20 万+三角形，手机上就是卡顿主因。
-  // 角色脚下已有 makeContactShadow() 贴地软阴影，视觉上照样"踩在地上"，故这里关掉
-  // 高面数模型的实时阴影；场景里的树/房子等低模仍投影，立体感不受影响。?hq=1 可恢复。
+  // 角色脚下已有 makeContactShadow() 贴地软阴影，视觉上照样"踩在地上"，故默认关掉
+  // 高面数模型的实时阴影；场景里的树/房子等低模仍投影，立体感不受影响。
+  // actorShadows 跟随当前画质档位：只有手动选「高画质」才恢复，切档时会统一刷新。
   rig.root.traverse(o => {
     if (o.isMesh) {
-      o.castShadow = _hq; o.receiveShadow = _hq;
+      o.castShadow = actorShadows; o.receiveShadow = actorShadows;
       if (o.material && "envMapIntensity" in o.material) o.material.envMapIntensity = 1;
     }
   });
+  glbRigs.add(rig.root);   // 登记：切画质档位时统一刷新阴影标记
   const pivot = new T.Group();
   pivot.add(rig.root);
   pivot.userData.holder = pivot.children[0];
@@ -3116,6 +3193,49 @@ function resize() {
   camTP.aspect = aspect;
   camTP.updateProjectionMatrix();
   Fight.resize();
+}
+
+/* ---- 画质档位应用：切档只改渲染参数，不动场景/玩法 ---- */
+function applyQuality() {
+  const dprCap = QUALITY_DPR[qTier];
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, dprCap));
+  renderer.shadowMap.enabled = qTier !== "low";
+  // three.js 切换 shadowMap.enabled 后需要重编材质着色器（needsUpdate），否则旧材质仍在采样阴影
+  scene.traverse(o => {
+    if (!o.isMesh) return;
+    if (o.material) {
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      for (const m of mats) if (m) m.needsUpdate = true;
+    }
+  });
+  // GLB 角色阴影随档位切换（新生成的 rig 已在 buildRig 里按 actorShadows 设置）
+  actorShadows = qTier === "high";
+  for (const root of glbRigs) root.traverse(o => {
+    if (o.isMesh) { o.castShadow = actorShadows; o.receiveShadow = actorShadows; }
+  });
+  resize();
+  const b = $("#btnQuality");
+  if (b) {
+    b.textContent = "⚙ " + (qAuto ? "自动" : QUALITY_NAMES[qTier]);
+    b.dataset.mode = qAuto ? "auto" : qTier;
+    b.title = "画质：" + (qAuto ? "自动" : QUALITY_NAMES[qTier]) + "（点击切换 自动/流畅/标准/高画质）";
+  }
+  try { if (!qAuto) localStorage.setItem(QUALITY_KEY, qTier); } catch (e) {}
+}
+
+function setQuality(mode, fromUser) {
+  if (!QUALITY_CYCLE.includes(mode)) return;
+  if (mode === "auto") {
+    qAuto = true;
+    qTier = SOFT_GL ? "low" : "std";
+    try { localStorage.removeItem(QUALITY_KEY); } catch (e) {}
+  } else {
+    qAuto = false;
+    qTier = mode;
+    if (fromUser) try { localStorage.setItem(QUALITY_KEY, mode); } catch (e) {}
+  }
+  applyQuality();
+  if (fromUser) toast("画质：" + (mode === "auto" ? "自动" : QUALITY_NAMES[mode]));
 }
 
 // 屏幕抖一下（棋爷掀桌子这种事用得上）
@@ -6852,9 +6972,44 @@ function tickAmbient(dt, t) {
    ========================================================= */
 const clock = new T.Clock();
 let radarAcc = 0;      // 小地图重绘节流：24fps 足够，省下每帧一次大 canvas drawImage
+
+/* 运行时帧率自适应：每 2 秒一个窗口，低于 26fps 降档，高于 52fps 且未到天花板升档。
+   双阈值 + 连续窗口确认 + 4 秒冷却，避免在阈值附近来回跳（flapping）。
+   只在真正游玩（state.started）、无弹窗、标签页可见时采样，标题页/后台不计。 */
+const fpsWin = { t: 0, n: 0, low: 0, high: 0, cool: 0 };
+function monitorFps(rawDt) {
+  if (!qAuto || !state.started || document.hidden || overlayOpen()) { fpsWin.t = 0; fpsWin.n = 0; return; }
+  if (fpsWin.cool > 0) { fpsWin.cool -= rawDt; return; }
+  fpsWin.t += rawDt; fpsWin.n++;
+  if (fpsWin.t < 2) return;
+  const fps = fpsWin.n / fpsWin.t;
+  fpsWin.t = 0; fpsWin.n = 0;
+  if (fps < 26) { fpsWin.low++; fpsWin.high = 0; }
+  else if (fps > 52) { fpsWin.high++; fpsWin.low = 0; }
+  else { fpsWin.low = 0; fpsWin.high = 0; }
+  if (fpsWin.low >= 2 && qTier !== "low") {         // 连续两个窗口（约 4 秒）偏低 → 降一档
+    const next = QUALITY_ORDER[QUALITY_ORDER.indexOf(qTier) - 1];
+    qTier = next; applyQuality();
+    fpsWin.low = 0; fpsWin.cool = 4;
+    toast("画面有点卡，已自动切到「" + QUALITY_NAMES[next] + "」画质");
+  } else if (fpsWin.high >= 3 && QUALITY_ORDER.indexOf(qTier) < QUALITY_ORDER.indexOf(_ceiling)) {
+    const next = QUALITY_ORDER[QUALITY_ORDER.indexOf(qTier) + 1];  // 连续三个窗口宽裕 → 升一档
+    qTier = next; applyQuality();
+    fpsWin.high = 0; fpsWin.cool = 6;
+    toast("设备运行流畅，已自动切到「" + QUALITY_NAMES[next] + "」画质");
+  } else if (fpsWin.low >= 2 && qTier === "low") {
+    fpsWin.low = 0; fpsWin.cool = 8;   // 最低档仍卡：只提示一次硬件加速，不再反复降
+    if (!SOFT_GL && !perfNoticeEl) showPerfNotice(
+      "检测到设备运行 3D 比较吃力，已切到「流畅」画质。<br>"
+      + "若仍然卡顿，建议在浏览器设置里开启 <b>使用图形加速功能</b>，或关闭其它占 GPU 的页面。"
+    );
+  }
+}
 function loop() {
   requestAnimationFrame(loop);
-  const dt = Math.min(.05, clock.getDelta());
+  const rawDt = clock.getDelta();          // 未截断的真实帧间隔，用于帧率统计
+  monitorFps(rawDt);
+  const dt = Math.min(.05, rawDt);
   if (Fight.on || (KOF_EL && KOF_EL.classList.contains("show"))) {
     Fight.update(dt);
     Fight.render(renderer);
@@ -7021,6 +7176,26 @@ async function boot() {
   const sb = $("#btnStart");
   if (sb) { sb.textContent = sb.dataset.label || "进入村子"; sb.disabled = false; }
 }
+
+// 画质按钮：自动 → 流畅 → 标准 → 高画质 → 自动，循环。手动选择存本地并关掉自动。
+(function bindQuality() {
+  const b = $("#btnQuality");
+  if (!b) return;
+  const cur = () => qAuto ? "auto" : qTier;
+  b.onclick = () => {
+    const i = QUALITY_CYCLE.indexOf(cur());
+    setQuality(QUALITY_CYCLE[(i + 1) % QUALITY_CYCLE.length], true);
+  };
+  setQuality(qAuto ? "auto" : qTier, false);   // 初始化按钮文案（不写本地存储）
+})();
+
+// 只读诊断钩子：用户在浏览器控制台执行 __naijiaQuality() 即可看到当前画质与 GPU，
+// 排查"卡顿/没开硬件加速"问题时可直接读它，不必改代码。
+window.__naijiaQuality = () => ({
+  tier: qTier, auto: qAuto, pixelRatio: renderer.getPixelRatio(),
+  shadows: renderer.shadowMap.enabled, gpu: _gpuName,
+  software: SOFT_GL, dprCap: QUALITY_DPR[qTier], fpsWindowSeconds: fpsWin.t
+});
 
 // 开始按钮恒为新游戏：有存档时它已改文案为「重新开始」，必须真正开新档。
 // 原写法 startGame(!has) 在 has="1" 时取到 false，导致「重新开始」实际在读档。
