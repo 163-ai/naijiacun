@@ -1,9 +1,8 @@
-// 奶家村 · 大冒险 —— 瓦片世界（纯数据 + Canvas2D，零 Three.js 依赖）
+// 奶家村 · 大冒险 —— 瓦片世界
 // 一格 = 1 个世界单位。每格单独画、单独判定：
 // 能不能走（solid）、是什么地面（tiles）、门在哪（marks）都记在这里。
 // 这样「每一个方格都能互动」才有落点：脚边那格是水就能打水，是田就能锄，是门就能进。
-// 依赖 three 的 mapTexture 已拆到 tiles-three.js，仅供 WebGL 版使用；
-// 本文件因此可被纯 Canvas2D 的轻量版直接复用。
+import * as T from "three";
 
 export const TS = 1;        // 一格多大（世界单位）
 export const PX = 48;       // 一格画多少像素（第三人称低机位下 32 会糊，48 才经得起凑近看）
@@ -1385,4 +1384,17 @@ export const ARCHIVE = (() => {
 
 export const MAPS = { village: VILLAGE, town: TOWN, grove: GROVE, hill: HILL, house: HOUSE, shop: SHOP, station: STATION, archive: ARCHIVE };
 
-// mapTexture（three 贴图）已移至 tiles-three.js —— 见文件头说明。
+/* =========================================================
+   把地图画成 three 的贴图
+   ========================================================= */
+export function mapTexture(m, renderer) {
+  const c = paintMap(m);
+  const t = new T.CanvasTexture(c);
+  t.userData = { canvas: c };
+  t.colorSpace = T.SRGBColorSpace;
+  t.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+  t.magFilter = T.LinearFilter;
+  t.minFilter = T.LinearMipmapLinearFilter;
+  t.generateMipmaps = true;
+  return t;
+}
