@@ -5,8 +5,9 @@ import * as T from "three";
 import { mergeGeometries } from "../vendor/three/BufferGeometryUtils.js";
 import { GLTFLoader } from "../vendor/three/GLTFLoader.js";
 import { MeshoptDecoder } from "../vendor/meshopt/meshopt_decoder.module.js";
-import { createPetMotion } from "./pet-motion.js?v=pm-5";
+import { createPetMotion } from "./pet-motion.js?v=pm-6";
 import { makeAnimator } from "./creature.js?v=59";
+import { makeNativeAnimator } from "./pet-skeleton-anim.js?v=skel-2";
 import { attachGearVisuals } from "./gear-visuals.js?v=1";
 import { Fight } from "./kof.js?v=60";
 import {
@@ -3133,7 +3134,14 @@ function normalize(obj, targetH) {
 // 克隆出的角色挂上骨骼动画驱动（没绑上骨骼就返回原样，走整体颠簸的老路）
 function withAnim(actor) {
   try {
-    const anim = makeAnimator(actor);
+    // native rig：骨骼 rest 与 mixer 生效机制都不同，用 pet-skeleton-anim 的
+    // 同接口适配层（update/reset/pose 全兼容 kof 与地图行走）；
+    // 程序化绑骨继续走 creature.makeAnimator。
+    const holder = actor.userData && actor.userData.holder;
+    const rig = holder && holder.userData && holder.userData.rig;
+    const anim = (rig && rig.kind === 'native' && rig.skeletonMeta)
+      ? makeNativeAnimator(rig)
+      : makeAnimator(actor);
     if (anim) actor.userData.anim = anim;
   } catch (e) { /* 动画是锦上添花，失败不影响显示 */ }
   return actor;
@@ -3275,11 +3283,15 @@ function prewarmModels(defs) {
 // 角色 rig 每次都用 createPetMotion 现建——跟展台/桌宠同一条管线。
 // 之前走 cloneSkinned 克隆蒙皮骨架，boneInverses 对不上克隆的世界矩阵，
 // 骨骼动画整体失效，网格还被拧翻（角色一直倒置渲染，躺下才露馅）。
+// v88：改用官方 SkeletonUtils.clone（pet-motion 内部做，重建 skeleton 绑定），
+// 十个角色各有独立骨骼，战斗画面与展台同一条真骨骼管线。
 const srcScenes = new Map();        // key -> gltf.scene
 const srcLoading = new Map();       // key -> Promise：下载进行中，保证同一文件只拉一次
 function ensureSrc(key, entry) {
   if (!srcLoading.has(key)) {
     srcLoading.set(key, gltfLoader.loadAsync(entry.file).then(g => {
+      // GLTFLoader 不自动把动画挂到 scene 上；native rig 靠 userData.clips 找自带 idle
+      g.scene.userData.clips = g.animations || [];
       srcScenes.set(key, g.scene);
     }).catch(err => {
       srcLoading.delete(key);   // 失败允许下次重试
@@ -3298,13 +3310,14 @@ function buildRig(key, c, entry) {
   }
   // rigId：同一模型文件在不同场合可用不同绑骨（游戏主角用站立版奶龙的垂手绑骨，
   // 图鉴/桌宠的挥手版走 nailong 原参数，互不影响）
-  // mode 强制 procedural：游戏里十个角色共用 srcScenes 里的同一份 scene，而原生模式
-  // 会把 scene 挂进自己的根节点（只能给一个 rig 用），地图里再出场一个就抢走了。
-  // 游戏要的逐骨动作（走/跑/出拳）也只有程序化绑骨能给，所以这里明确要求程序化。
+  // v88：不再强制 procedural。模型注册表声明 native 就走真骨骼：nativeClone 让
+  // createPetMotion 内部用 SkeletonUtils.clone 从共享源场景克隆独立骨骼，十人同屏
+  // 互不干扰；模型没有 skin 或注册表没声明 native 时自动退回程序化绑骨（原路径不变）。
   const rig = createPetMotion(root, entry.rigId || key, {
     ...entry,
-    rig: { ...(entry.rig || {}), mode: 'procedural' }
+    nativeClone: true
   });
+  rig.root.userData.rig = rig;   // withAnim 按这个标记选 native / 程序化动画器
   rig.root.scale.setScalar(c.h / 2);
   if (entry.yaw) rig.root.rotation.y += entry.yaw;
   // 性能：这些是展台级高精度 GLB（单个 3~5 万三角、MeshPhysicalMaterial）。地图里同时

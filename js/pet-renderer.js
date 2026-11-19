@@ -5,7 +5,7 @@ function load3D() {
   modules3D ||= Promise.all([
     import('../vendor/three/three.module.min.js'),
     import('../vendor/three/GLTFLoader.js'),
-    import('./pet-motion.js?v=pm-5')
+    import('./pet-motion.js?v=pm-6')
   ]).then(([T, loader, motion]) => ({ T, GLTFLoader: loader.GLTFLoader, createPetMotion: motion.createPetMotion }))
     .catch(error => { modules3D = null; throw error; });
   return modules3D;
@@ -67,7 +67,10 @@ export class PetRenderer {
   }
 
   playAction(name) {
-    if (name !== 'laugh' || this._destroyed || (!this._rig && !this._image)) return false;
+    if (this._destroyed || (!this._rig && !this._image)) return false;
+    /* 3D 骨骼 rig 会报出它实际生成的动作；2D / 老程序化绑骨只支持 laugh。 */
+    const supported = this._rig?.actions?.length ? this._rig.actions : ['laugh'];
+    if (!supported.includes(name)) return false;
     this._action = { name, time: 0 }; this.update(0); return true;
   }
 
@@ -208,7 +211,7 @@ export class PetRenderer {
     if (this.mode === '3d' && this._rig && this._renderer) {
       this._pivot.rotation.y = this._facing * .38;
       if (this._action) {
-        this._rig.laugh(this._action.time); this._pivot.updateMatrixWorld(true);
+        this._rig.laugh(this._action.time, this._action.name); this._pivot.updateMatrixWorld(true);
         this._fitCamera(this._actionBox.copy(this._rig.bounds).applyMatrix4(this._rig.root.matrixWorld));
       } else this._rig.update(dt, this._motion);
       this._renderer.render(this._scene, this._camera);

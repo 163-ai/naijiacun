@@ -35,6 +35,7 @@ export function createSitePet({ catalog, onChange }) {
     element('label', { for: 'sitePetSize' }, ['形象大小']), size,
     element('label', { class: 'check' }, [activity, ' 自由活动']),
     element('div', { class: 'row' }, [button('laugh', '笑一个'), button('run', '跑一跑')]),
+    element('div', { class: 'row' }, [button('wave', '挥挥手'), button('jump', '跳一跳'), button('nod', '点个头')]),
     button('return', '回桌宠小院'),
     notice, button('close', '收回村民')
   ]);
@@ -93,6 +94,12 @@ export function createSitePet({ catalog, onChange }) {
     if (action === 'menu-close') closeMenu();
     if (action === 'run') { void onChange({ motion: 'run', activity: true }); closeMenu(); }
     if (action === 'laugh') { laugh(); closeMenu(); }
+    /* 骨骼动作：3D 模式下由 19 根骨驱动，2D 模式渲染器会拒绝（playAction 返回 false） */
+    if (action === 'wave' || action === 'jump' || action === 'nod' || action === 'sleep' || action === 'angry') {
+      const played = renderer.playAction(action);
+      if (!played) notice.textContent = '切到「真实 3D」模式才能看到骨骼动作哦';
+      closeMenu();
+    }
     if (action === 'return') location.href = new URL('pet.html', document.baseURI).href;
   }, { signal });
   panel.addEventListener('keydown', event => { event.stopPropagation(); if (event.key === 'Escape') { closeMenu(); menuButton.focus(); } }, { signal });
@@ -147,7 +154,7 @@ export function createSitePet({ catalog, onChange }) {
       if (state.motion === 'auto') { phaseTime += dt; if (phaseTime > phases[phase][1]) { phaseTime = 0; phase = (phase + 1) % phases.length; } motion = phases[phase][0]; }
       else motion = state.motion;
     }
-    if (renderer.action === 'laugh') motion = 'idle';
+    if (renderer.action) motion = 'idle';
     if (!drag && ['walk', 'run'].includes(motion)) {
       const b = bounds(), next = left + facing * state.size * (motion === 'run' ? .7 : .28) * dt;
       if (next < 12 || next > 12 + b.x) facing *= -1;

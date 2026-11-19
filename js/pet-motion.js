@@ -1,5 +1,7 @@
 import * as T from '../vendor/three/three.module.min.js';
+import * as SkeletonUtils from '../vendor/three/SkeletonUtils.js?v=skel-1';
 import { getLaughPose } from './pet-laugh.js?v=site-pets-1';
+import { buildSkeletonClips, ACTION_NAMES } from './pet-skeleton-anim.js?v=skel-2';
 import {
   mapBones, anatomyFromBones, validAnatomy, mergeAnatomy, defaultHumanoidAnatomy,
   humanoidScore, HUMAN_RIG_THRESHOLD, isRigKind
@@ -187,10 +189,32 @@ function resolveRig(source, id, def) {
 /** Bake all node transforms before binding, so every joint uses one coordinate space. */
 export function createPetMotion(source, id, defIn) {
   source.updateMatrixWorld(true);
+  /* native + nativeClone：先从共享源场景克隆出独立骨骼再解析。场景共享时（游戏地图
+     十个角色同一份 gltf.scene），native 模式会把 scene 挂进自己的根节点、还直接改
+     source.position 归一化——第二个角色再进来就互相抢。SkeletonUtils.clone 专为蒙皮
+     模型设计：克隆骨节点后重建 skeleton 绑定（boneInverses 复用 + bindMatrix 重算），
+     自写 cloneSkinned 就死在 boneInverses 对不上世界矩阵这一步。
+     注意顺序：必须先克隆、后 resolveRig——mapped.bones 是骨骼对象引用，指错了
+     克隆体动画就不生效。另外 three 的 Object3D.copy 会把 userData JSON 深拷贝，
+     AnimationClip 对象会被炸成普通对象，所以克隆后要把原始 clips 重新挂回去。 */
+  let src = source;
+  const wantClone = !!(defIn && defIn.nativeClone
+    && defIn.rig && defIn.rig.mode === 'native'
+    && typeof SkeletonUtils.clone === 'function');
+  if (wantClone) {
+    try {
+      const clips = src.userData && src.userData.clips;
+      const copy = SkeletonUtils.clone(src);
+      if (clips) copy.userData.clips = clips;
+      src = copy;
+    } catch (error) {
+      console.warn('[pet-motion] SkeletonUtils.clone 失败，退回共享源场景', error);
+    }
+  }
   const pack = typeof window !== 'undefined' ? window.N3D_MODELS : null;
   const def = defIn || (pack && pack[id]) || null;
-  const resolved = resolveRig(source, id, def);
-  if (resolved.rigDef && resolved.rigDef.mode === 'native') return createNativeMotion(source, id, resolved);
+  const resolved = resolveRig(src, id, def);
+  if (resolved.rigDef && resolved.rigDef.mode === 'native') return createNativeMotion(src, id, resolved);
   const config = resolved.anatomy, kind = resolved.kind;
   const { bones, named } = makeBones(config, kind), root = new T.Group();
   root.name = 'pet-' + id; root.add(bones[0]); root.updateMatrixWorld(true);
@@ -320,35 +344,29 @@ export function createPetMotion(source, id, defIn) {
 }
 
 /* ---------------- 原生骨骼模式 ----------------
- * 适用：entry.rig.mode === 'native' —— forge 入库时明确声明的角色，模型自带一套
- * 真实骨骼（本地几何绑骨 / Meshy），通常还带一段 idle 动画。
+ * 适用：entry.rig.mode === 'native' —— 模型自带 19 根真实骨骼 + 一段 idle。
  *
  * 为什么不走程序化绑骨：程序化绑骨会把顶点按世界坐标重新烤一遍、丢掉原骨架，
  * 模型自带的骨骼和动画就全废了——这正是「绑过骨但站上展台还是不动」的根因。
  *
- * 代价（必须知道）：原生骨骼的静止朝向由导出器决定，直接写 rotation.x 没有意义，
- * 所以这里不接管四肢的逐骨姿势，只播模型自带的 clip，外加根节点层面的大动作。
- * 需要逐骨程序化姿势（走/跑/出拳）的场合仍然走程序化绑骨，由调用方决定。
+ * 2026-11-20 升级：GLB 只带 idle，以前走/跑/挥手/大笑全靠根节点整体平移旋转，
+ * 看上去是「整块模型在晃」。现在 pet-skeleton-anim.js 按骨骼名运行时生成
+ * walk/run/wave/laugh/jump/sleep/nod/angry/dragged 多套 clip，全部由 19 根骨的
+ * local quaternion 驱动，AnimationMixer 做 crossFade。根节点不再承担动作。
  *
  * 另一个前提：原生模式会「接管」传入的 gltf.scene（把它挂进自己的根节点），
  * 因此同一个 scene 只能喂给一个 rig。调用方若共享源场景，请显式声明 procedural。
  */
-function pickClip(source, rigDef) {
-  const clips = (source.userData && source.userData.clips) || [];
-  const usable = clips.filter((clip) => {
-    const tracks = (clip.tracks || []).filter((track) => /\.quaternion$/.test(track.name) || /morphTargetInfluences$/.test(track.name));
-    /* 只留旋转/表情轨道：.position 轨道多半是根位移（走一段再瞬移回原点），
-       在站内定点的角色身上直接播会漂走。 */
-    clip.tracks = tracks;
-    return tracks.length > 0;
-  });
-  if (!usable.length) return null;
-  const prefer = rigDef && rigDef.idleClip;
-  if (prefer) {
-    const hit = usable.find((clip) => clip.name === prefer);
-    if (hit) return hit;
-  }
-  return usable.find((clip) => /idle|breath|stand|loop|rest/i.test(clip.name)) || usable[0];
+function sanitizeBuiltinClip(clip) {
+  if (!clip || !clip.tracks) return null;
+  /* 只留旋转/表情轨道：.position 多半是根位移（走一段再瞬移回原点），
+     在站内定点的角色身上直接播会漂走。 */
+  const tracks = clip.tracks.filter((t) => /\.quaternion$/.test(t.name) || /morphTargetInfluences$/.test(t.name));
+  if (!tracks.length) return null;
+  if (tracks.length === clip.tracks.length) return clip;
+  const copy = clip.clone();
+  copy.tracks = tracks;
+  return copy;
 }
 
 function createNativeMotion(source, id, resolved) {
@@ -389,9 +407,8 @@ function createNativeMotion(source, id, resolved) {
   const sw = size.x * tf.scale, sd = size.z * tf.scale;
   const bounds = new T.Box3(new T.Vector3(-sw / 2, 0, -sd / 2), new T.Vector3(sw / 2, 2, sd / 2));
 
-  /* 对外暴露的骨骼字典：把这套原生骨骼翻译成程序化绑骨那套键名
-     （body / head / armLeft / hipLeft…）。两套绑骨对外同一个形状，
-     动作系统和装备挂点就不用分情况判断。 */
+  /* 对外暴露的骨骼字典：把原生骨骼翻译成程序化绑骨那套键名
+     （body / head / armLeft / hipLeft…），装备挂点不用分情况判断。 */
   const canon = resolved.mapped.bones;
   const bones = {};
   const put = (key, ...names) => {
@@ -407,48 +424,83 @@ function createNativeMotion(source, id, resolved) {
   put('footRight', 'RightFoot', 'RightLeg');
   put('armLeft', 'LeftArm', 'LeftForeArm', 'LeftShoulder');
   put('armRight', 'RightArm', 'RightForeArm', 'RightShoulder');
-  /* 程序化绑骨的骨骼建在「身高 2 单位」的空间里，原生骨骼还在模型自己的单位里，
-     两者差一个 tf.scale。挂件用它对偏移和大小做换算，才不会有十倍的尺寸差。 */
   const boneSpace = 1 / tf.scale;
 
-  const clip = pickClip(source, resolved.rigDef);
-  const mixer = clip ? new T.AnimationMixer(source) : null;
-  const action = mixer ? mixer.clipAction(clip) : null;
-  if (action) { action.setLoop(T.LoopRepeat, Infinity); action.play(); mixer.update(0); }
+  /* ---- clip 集合：GLB 自带 idle + 运行时按骨骼生成的动作 ---- */
+  const builtin = ((source.userData && source.userData.clips) || [])
+    .map(sanitizeBuiltinClip).filter(Boolean);
+  let built = { clips: [], restClip: null, boneNames: [], count: 0 };
+  try { built = buildSkeletonClips(source); }
+  catch (error) { /* 骨架不标准时退回「只有自带 idle」，不至于整体挂掉 */ }
+  const clips = [...builtin, ...built.clips];
+  const byName = new Map(clips.map((c) => [c.name, c]));
+  const prefer = resolved.rigDef && resolved.rigDef.idleClip;
+  const idleClip = (prefer && builtin.find((c) => c.name === prefer))
+    || builtin.find((c) => /idle|breath|stand|loop|rest/i.test(c.name))
+    || builtin[0] || built.restClip || null;
+
+  const mixer = idleClip ? new T.AnimationMixer(source) : null;
+  const actions = new Map();
+  const actionFor = (clip) => {
+    if (!actions.has(clip)) actions.set(clip, mixer.clipAction(clip));
+    return actions.get(clip);
+  };
+  let base = null, baseClip = null;
+  function playBase(clip, fade = 0.18) {
+    if (!clip || !mixer) return;
+    const next = actionFor(clip);
+    next.reset();
+    next.setLoop(T.LoopRepeat, Infinity);
+    next.clampWhenFinished = false;
+    next.setEffectiveTimeScale(1);
+    next.setEffectiveWeight(1);
+    next.play();
+    if (base && base !== next) {
+      if (fade > 0) next.crossFadeFrom(base, fade, false);
+      else base.stop();
+    }
+    base = next; baseClip = clip;
+  }
+  if (idleClip) playBase(idleClip, 0);
+
+  const pickMotion = (motion) => {
+    if (motion === 'walk') return byName.get('walk');
+    if (motion === 'run') return byName.get('run');
+    if (motion === 'dragged') return byName.get('dragged');
+    return null;
+  };
 
   const rest = { position: root.position.clone(), rotation: root.rotation.clone(), scale: root.scale.clone() };
   let time = 0;
 
-  function reset() {
+  function resetTransforms() {
     root.position.copy(rest.position);
     root.rotation.copy(rest.rotation);
     root.scale.copy(rest.scale);
-    if (mixer) mixer.timeScale = 1;
     root.updateMatrixWorld(true);
+  }
+  function reset() {
+    resetTransforms();
+    if (idleClip) playBase(idleClip, 0);
   }
 
   function update(dt, motion = 'idle') {
     const step = Math.max(0, Math.min(Number.isFinite(dt) ? dt : 0, .1));
     time += step;
-    /* 先复位整体变换：上一帧可能是 laugh() 留下的后仰姿态，不复位就会一直躺着 */
-    reset();
-    const walking = motion === 'walk' || motion === 'run';
+    /* 只清整体变换（上一帧可能走过根节点演法的 fallback），不动骨骼 local 姿势 */
+    resetTransforms();
     if (mixer) {
-      mixer.timeScale = motion === 'run' ? 1.9 : motion === 'walk' ? 1.35 : 1;
+      const want = pickMotion(motion) || idleClip;
+      if (want && want !== baseClip) playBase(want, 0.18);
       mixer.update(step);
     }
-    /* 自带 clip 里没有走/跑时，只给根节点一点颠簸与侧摆：看得出在移动，
-       也不假装有腿部动作（假装出来的姿势会把原生骨骼扭成麻花）。 */
-    root.position.y = walking ? Math.abs(Math.sin(time * (motion === 'run' ? 13 : 9))) * (motion === 'run' ? .035 : .018) : 0;
-    root.rotation.z = walking ? Math.sin(time * (motion === 'run' ? 6.5 : 4.5)) * .012 : 0;
     root.updateMatrixWorld(true);
   }
 
-  /* 「笑到躺下」与程序化绑骨完全同一套演法，只是把整体旋转作用在根节点上 */
+  /* 笑到躺下的旧演法：仅在骨骼动作库没生成出来时兜底 */
   const halfSize = bounds.getSize(new T.Vector3()).multiplyScalar(.5), bodyCenter = bounds.getCenter(new T.Vector3());
   const rotation = new T.Matrix4(), transformedCenter = new T.Vector3();
-  function laugh(t) {
-    reset();
+  function legacyLaugh(t) {
     const pose = getLaughPose(t), angle = Math.max(0, pose.lean);
     root.rotation.set(-angle + pose.shake, pose.turn, pose.roll);
     root.scale.set(1 + pose.squash * .7, 1 - pose.squash, 1 + pose.squash * .7);
@@ -459,19 +511,52 @@ function createNativeMotion(source, id, resolved) {
     root.updateMatrixWorld(true);
   }
 
+  /** 展台动作：直接把对应骨骼 clip 设成 base，按渲染器的绝对时间轴取帧。
+   *  name 可以是 laugh / wave / jump / sleep / nod / angry，缺省 laugh。 */
+  function laugh(t, name = 'laugh') {
+    resetTransforms();
+    const clip = (name && byName.get(name)) || byName.get('laugh');
+    if (!clip || !mixer) { legacyLaugh(t); return true; }
+    if (clip !== baseClip) playBase(clip, 0.12);
+    const action = actionFor(clip);
+    action.time = t % (clip.duration || 1);
+    mixer.update(0);
+    root.updateMatrixWorld(true);
+    return true;
+  }
+
+  /** 临时切一段骨骼动作；调用方（渲染器的 action 计时）负责结束后回 idle */
+  function gesture(name, opt = {}) {
+    const clip = byName.get(name);
+    if (!clip || !mixer) return false;
+    playBase(clip, opt.fade == null ? 0.15 : opt.fade);
+    return true;
+  }
+  function stopGesture() { if (idleClip) playBase(idleClip, 0.2); }
+
   function stats() {
     return {
       kind: 'native',
       anatomyFrom: 'native-skeleton',
-      clips: clip ? [clip.name] : [],
-      bones: Object.keys(resolved.mapped.bones),
+      clip: idleClip ? idleClip.name : null,
+      clips: clips.map((c) => c.name),
+      generated: built.clips.map((c) => c.name),
+      bones: built.count ? built.boneNames : Object.keys(resolved.mapped.bones),
+      boneCount: built.count,
       bindBounds: { min: [-sw / 2, 0, -sd / 2], max: [sw / 2, 2, sd / 2] }
     };
   }
 
   return {
     root, bones, skeleton: null, meshes: [], bounds, kind: 'native',
-    native: true, mixer, boneSpace, clip: clip ? clip.name : null, armLimit: 2.6, armSwing: 1,
-    reset, update, laugh, stats, get time() { return time; }
+    native: true, mixer, boneSpace, clip: idleClip ? idleClip.name : null,
+    armLimit: 2.6, armSwing: 1,
+    actions: ACTION_NAMES.filter((n) => byName.has(n)),
+    clips,   /* 动画适配层按名取 clip 用 */
+    /* 游戏动画适配层（makeNativeAnimator）需要 mixer 生效前的 rest 快照 */
+    skeletonMeta: built.meta || null, restClip: built.restClip || null,
+    reset, update, laugh, gesture, stopGesture, stats,
+    dispose() { if (mixer) { mixer.stopAllAction(); mixer.uncacheRoot(source); } },
+    get time() { return time; }
   };
 }
