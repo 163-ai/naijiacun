@@ -9,6 +9,11 @@
 <link rel="stylesheet" href="css/style.css?v=village-1">
 <link rel="stylesheet" href="css/village.css?v=village-1">
 <style>
+  /* 内容比屏幕短时，页脚贴底，别在中间留一条空带 */
+  body.wb-page { display: flex; flex-direction: column; min-height: 100vh; }
+  body.wb-page .wb-wrap { flex: 1 0 auto; width: 100%; }
+  body.wb-page .village-footer { flex: 0 0 auto; width: 100%; }
+
   .wb-wrap { max-width: 1000px; margin: 0 auto; padding: 40px 22px 70px; }
   .wb-head { margin-bottom: 30px; }
   .wb-kicker {
