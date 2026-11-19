@@ -6828,14 +6828,17 @@ function ambWood(hex) {
   return new T.MeshStandardMaterial({ color: hex, roughness: .92, flatShading: true });
 }
 
-/* ---- 水车：村塘南岸，半浸在水里慢慢转 ---- */
+/* ---- 水车：村塘南岸，半浸在水里慢慢转 ----
+   v101：之前按「岸上格点高度」整体抬高，结果轮圈下缘压在草地上、支架插进土里。
+   实测水塘南岸草坡比水面还低（groundAt≈-0.1，WATER_LEVEL=-0.06），所以轮体
+   必须架在水面之上、支架放到更南的岸上；下缘只没入水面 0.04，不插进沙床。 */
 function buildWaterWheel(grp) {
-  const x = -26.5, z = 3.35;
-  const gy = surfaceY(VILLAGE, x, z + .9);
+  const x = -26.5, z = 2.5;           // 轮心贴着南岸水线：轮体前缘在水里，支架全在岸上
   const g = new T.Group();
-  g.position.set(x, gy, z);
+  g.position.set(x, 0, z);            // 全部零件用世界高度，不再被单点地面高度整体抬升
   const woodM = ambWood(0x8a6238), darkM = ambWood(0x5e4226);
-  const R = 1.45, halfW = .36, axleY = 1.15;
+  const R = 1.45, halfW = .36;
+  const axleY = WATER_LEVEL + R - .04; // 轮圈最低点 = WATER_LEVEL - 0.04，浅浅入水不碰沙床
   // 轮体单独装组（绕 x 轴转），支架不动
   const rotor = new T.Group();
   rotor.position.y = axleY;
@@ -6844,6 +6847,17 @@ function buildWaterWheel(grp) {
     mesh.castShadow = true;
     if (spin) rotor.add(mesh); else g.add(mesh);
     return mesh;
+  };
+  // 世界坐标转组内局部：x/z 减组原点，y 直接用世界高度
+  const at = (wx, wy, wz) => new T.Vector3(wx - x, wy, wz - z);
+  // 从 a 拉一根木梁到 b（自动算长度和朝向），用于贴地支架
+  const beam = (a, b, mat, thick = .09) => {
+    const dir = new T.Vector3().subVectors(b, a);
+    const len = dir.length();
+    const m = new T.Mesh(new T.BoxGeometry(thick, len, thick), mat);
+    m.position.copy(a).addScaledVector(dir, .5);
+    m.quaternion.setFromUnitVectors(new T.Vector3(0, 1, 0), dir.normalize());
+    return put(m, false);
   };
   // 两侧轮圈
   [-halfW, halfW].forEach(sx => {
@@ -6863,43 +6877,51 @@ function buildWaterWheel(grp) {
   hub.rotation.z = Math.PI / 2;
   const axle = put(new T.Mesh(new T.CylinderGeometry(.07, .07, halfW * 2 + 1.0, 6), darkM), true);
   axle.rotation.z = Math.PI / 2;
-  // 支架：两副 A 形架立在岸上
+  // 两副 A 形架：顶点在轮轴，四只脚都落在岸上（+Z 方向），不站在水里
   [-.55, .55].forEach(sx => {
-    [-1, 1].forEach(s => {
-      const leg = put(new T.Mesh(new T.BoxGeometry(.09, 1.5, .09), woodM), false);
-      leg.position.set(sx, axleY / 2 + .05, s * .42);
-      leg.rotation.x = s * .36;
-    });
-    const bar = put(new T.Mesh(new T.BoxGeometry(.08, .08, 1.0), woodM), false);
-    bar.position.set(sx, .42, 0);
+    const top = at(x + sx, axleY, z);
+    const footZ = [.55, 1.15];
+    const feet = footZ.map(dz => at(x + sx, groundAtBuild(x + sx, z + dz) + .04, z + dz));
+    feet.forEach(foot => beam(top, foot, woodM, .09));
+    // 离地一点点的横撑，连接两只脚
+    beam(at(x + sx, groundAtBuild(x + sx, z + footZ[0]) + .26, z + footZ[0]),
+         at(x + sx, groundAtBuild(x + sx, z + footZ[1]) + .26, z + footZ[1]), woodM, .07);
+    const bearing = put(new T.Mesh(new T.BoxGeometry(.14, .14, .14), darkM), false);
+    bearing.position.copy(top);
   });
-  // 岸边小水槽：像水是从这里引过来的
-  const trough = put(new T.Mesh(new T.BoxGeometry(.5, .18, 1.3), woodM), false);
-  trough.position.set(0, .28, 1.05);
+  // 引水槽挪到轮体侧面（原位置在轮圈正下方，和桨叶明显穿模），落在岸上
+  const tx = x + .92, tz = z + 1.8;
+  const trough = put(new T.Mesh(new T.BoxGeometry(.42, .18, 1.2), woodM), false);
+  trough.position.set(tx - x, groundAtBuild(tx, tz) + .10, tz - z);
   ambientLife.wheel = rotor;
   grp.add(g);
-  markRect(x, z + .9, 1.6, 1.4, 1);   // 支架占地不可穿行
+  markRect(x, z + 1.0, 1.8, 2.6, 1);  // 支架 + 水槽占地不可穿行
 }
 
-/* ---- 栈桥码头：村塘东岸，村路走到头接着它 ---- */
+/* ---- 栈桥码头：村塘东岸，村路走到头接着它 ----
+   v101：以前只有 5 块板（-19.9 ~ -23.0），系船柱却放在 x=-24.0，
+   于是截图里那根柱子悬在水面上、下面没有板。现在把桥板补到柱子脚下，
+   并沿桥多加两对打进水里的木桩，整座栈桥不再有浮空件。 */
 function buildDock(grp) {
   const z = 1.5, deckY = WATER_LEVEL + .30;
   const woodM = ambWood(0x9a7346), darkM = ambWood(0x5e4226);
   const g = new T.Group();
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < 7; i++) {          // -19.9 → -24.58，盖住系船柱所在的 -24.0
     const px = -19.9 - i * .78;
     const plank = new T.Mesh(new T.BoxGeometry(.7, .07, 1.15), woodM);
     plank.position.set(px, deckY - (i >= 4 ? (i - 3) * .04 : 0), z);
     plank.castShadow = true; plank.receiveShadow = true;
     g.add(plank);
   }
-  // 木桩：打进水里
-  [[-20.1, .45], [-20.1, -.45], [-23.3, .45], [-23.3, -.45]].forEach(([px, pz]) => {
-    const pile = new T.Mesh(new T.CylinderGeometry(.07, .08, 1.7, 6), darkM);
-    pile.position.set(px, deckY - .82, z + pz);
-    g.add(pile);
+  // 木桩：四对，全部打进水里（原来中间 3 米完全靠悬挑，看着像浮着）
+  [-20.1, -21.7, -23.3, -24.3].forEach(px => {
+    [.45, -.45].forEach(pz => {
+      const pile = new T.Mesh(new T.CylinderGeometry(.07, .08, 1.7, 6), darkM);
+      pile.position.set(px, deckY - .82, z + pz);
+      g.add(pile);
+    });
   });
-  // 码头头的系船柱 + 缆绳感的横木
+  // 码头头的系船柱 + 缆绳感的横木（脚下已经有桥板）
   [[-24.0, .42], [-24.0, -.42]].forEach(([px, pz]) => {
     const post = new T.Mesh(new T.CylinderGeometry(.06, .07, .62, 6), darkM);
     post.position.set(px, deckY + .28, z + pz);
@@ -6916,7 +6938,7 @@ function buildDock(grp) {
   crate.castShadow = true;
   g.add(crate);
   grp.add(g);
-  markRect(-22.2, z, 4.6, 1.15, 1);   // 桥面不可穿行（下面是水）
+  markRect(-22.4, z, 5.2, 1.15, 1);   // 桥面不可穿行（下面是水）
   addLamp(-18.9, z + 1.1, grp);       // 桥头灯，晚上会亮
 }
 
