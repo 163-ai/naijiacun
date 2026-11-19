@@ -36,8 +36,16 @@
   var MIN_GAP = (D.push && D.push.minGapMs) || 30000;
 
   /* ---------- 排片：按推荐分排序 ---------- */
+  /* 官方番剧 / 需要登录 VIP 的正片（B 站 embed:false）一律不进排片池：
+     游客点开小窗也看不了，体验就是「点了个寂寞」。 */
+  function isPlayable(v) {
+    if (!v) return false;
+    if (v.platform === "bilibili" && v.embed === false) return false;
+    return true;
+  }
   function rankAll() {
-    var ranked = D.rank ? D.rank(D.videos || []) : (D.videos || []).map(function (v) {
+    var pool = (D.videos || []).filter(isPlayable);
+    var ranked = D.rank ? D.rank(pool) : pool.map(function (v) {
       return { video: v, score: 0, tags: [], mode: "inline" };
     });
     return ranked.map(function (r) {
@@ -889,6 +897,7 @@
     var added = [];
     incoming.forEach(function (v) {
       if (!v || !v.id) return;
+      if (!isPlayable(v)) return;
       if (v.platform !== "bilibili") return;
       if (!/^BV[0-9A-Za-z]+$/.test(v.id)) return;
       if (!/^https:\/\/www\.bilibili\.com\/video\/[0-9A-Za-z]+$/.test(String(v.url || ""))) return;

@@ -7,7 +7,8 @@
 //   id       : B站视频的 BV 号（embed 为 false 时也需要，用于小窗兜底）
 //   url      : 原视频完整链接
 //   embed    : 仅B站需要。true/缺省 = 普通 UP 主投稿，本页内嵌官方播放器直接看；
-//              false = 官方番剧等需要登录的内容，点击后弹出小窗在 B 站页面播放。
+//              false = 官方番剧等需要登录/VIP 的内容 —— 这类一律不收录（见
+//              group.js 的排片过滤），收录了游客也看不了。
 //              抖音一律走小窗 / 唤起 App（抖音不开放第三方网页嵌入）。
 //   heat     : 热度数值（播放量，纯数字）。用于排序，仅作参考快照。
 //   kind     : "ugc" 二创 / 搬运 / 二次剪辑 | "official" 官方正片、官方账号
@@ -153,28 +154,6 @@ window.NAIJIA_GROUP = {
       lead: [
         "哼，本龙和奶龙的日常被人剪成合集了。",
         "就……勉为其难发一下。"
-      ]
-    },
-    {
-      sender: "nailong", platform: "bilibili", status: "ok", embed: false,
-      id: "BV1ya4y1a74W",
-      url: "https://www.bilibili.com/video/BV1ya4y1a74W/",
-      title: "《奶龙》官方动画 · 第128集",
-      author: "第七印象", stat: "B站番剧 · 全150话",
-      heat: 2060000000, kind: "official",
-      lead: [
-        "正片放到后头。官方番剧得在 B 站页面上播，本节点开自动开个小窗，不用切走——"
-      ]
-    },
-    {
-      sender: "xiaoqi", platform: "bilibili", status: "ok", embed: false,
-      id: "BV14v411p72v",
-      url: "https://www.bilibili.com/video/BV14v411p72v/",
-      title: "《奶龙》官方动画 · 第30集",
-      author: "第七印象", stat: "全系列播放 20.6 亿",
-      heat: 2060000000, kind: "official",
-      lead: [
-        "从第 1 话开始补也可以，讲的是奶龙住进人家之后的事。"
       ]
     },
     {
