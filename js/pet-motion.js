@@ -367,6 +367,25 @@ function createNativeMotion(source, id, resolved) {
   );
   root.updateMatrixWorld(true);
 
+  /* 重算逆绑定矩阵（rebind）。
+     现象：这批 GLB 的 skeleton 根节点比导出 IBM 时的位置整体高 1 单位，静止时
+     蒙皮把所有顶点再抬高 1.0 —— 角色悬空一格、头被裁出画面（"无头" bug）。
+     根因是 IBM 与静止位姿不一致；与其重导资产，不如在绑定时直接以当前
+     （归一化后的）骨骼世界矩阵为准重建 boneInverses —— 静止时 boneMatrix
+     恒为单位阵，蒙皮结果 = 原始网格，任何 IBM 漂移都自动归零；
+     之后的 clip 旋转则以静止位姿为基准，动作照常。 */
+  source.traverse((object) => {
+    if (!object.isSkinnedMesh || !object.skeleton) return;
+    const skeleton = object.skeleton;
+    const ok = skeleton.bones.every((bone) => bone.matrixWorld);
+    if (ok) {
+      skeleton.boneInverses = skeleton.bones.map(
+        (bone) => new T.Matrix4().copy(bone.matrixWorld).invert()
+      );
+      skeleton.update();
+    }
+  });
+
   const sw = size.x * tf.scale, sd = size.z * tf.scale;
   const bounds = new T.Box3(new T.Vector3(-sw / 2, 0, -sd / 2), new T.Vector3(sw / 2, 2, sd / 2));
 

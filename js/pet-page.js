@@ -73,13 +73,13 @@
   function syncMode() {
     var available = catalog.some(function (p) { return p.id === pet.id && p.model; });
     var mode = renderView ? renderView.mode : "2d";
-    depthBtn.textContent = available ? (mode === "3d" ? "🧊 真 3D" : "▫️ 平面") : "▫️ 小草 2D";
+    depthBtn.textContent = available ? (mode === "3d" ? "🧊 伪 3D" : "▫️ 平面") : "▫️ 小草 2D";
     depthBtn.setAttribute("aria-pressed", String(mode === "3d"));
     depthBtn.setAttribute("aria-disabled", String(!available));
-    depthBtn.title = available ? "切换平面与可活动的真实 3D" : "小草使用透明抠图形象";
+    depthBtn.title = available ? "切换平面与伪 3D" : "小草使用透明抠图形象";
     pet.el.dataset.renderMode = mode;
   }
-  var rendererReady = import("./pet-renderer.js?v=fast-pet-2").then(function (module) {
+  var rendererReady = import("./pet-renderer.js?v=fast-pet-3").then(function (module) {
     pet.bodyEl.replaceChildren();
     renderView = new module.PetRenderer(pet.bodyEl, {
       catalog: catalog,
@@ -152,7 +152,7 @@
       setNote(wants3D ? "正在准备这位村民的 3D 形象……" : "已切换平面形象。");
       await view.setMode(wants3D ? "3d" : "2d");
       syncMode();
-      setNote(view.mode === "3d" ? "现在是真实 3D。点「跑一跑」，看看这位村民怎么活动。" : "已切换平面形象。");
+      setNote(view.mode === "3d" ? "现在是伪 3D。点「跑一跑」，看看这位村民怎么活动。" : "已切换平面形象。");
     } catch (error) {
       wants3D = false;
       setNote("3D 加载失败：" + error.message + "。可再次点击重试。", "warn");
@@ -176,7 +176,7 @@
     syncExtensionButton();
   });
   syncExtensionButton();
-  setNote("先选一位村民。可拖动、聊天，或切到真实 3D 后跑一跑。");
+  setNote("先选一位村民。可拖动、聊天，或切到伪 3D 后跑一跑。");
   pinBtn.addEventListener("click", async function () {
     pinBtn.disabled = true;
     try {

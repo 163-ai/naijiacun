@@ -5,7 +5,7 @@ import * as T from "three";
 import { mergeGeometries } from "../vendor/three/BufferGeometryUtils.js";
 import { GLTFLoader } from "../vendor/three/GLTFLoader.js";
 import { MeshoptDecoder } from "../vendor/meshopt/meshopt_decoder.module.js";
-import { createPetMotion } from "./pet-motion.js?v=pm-4";
+import { createPetMotion } from "./pet-motion.js?v=pm-5";
 import { makeAnimator } from "./creature.js?v=59";
 import { attachGearVisuals } from "./gear-visuals.js?v=1";
 import { Fight } from "./kof.js?v=60";
