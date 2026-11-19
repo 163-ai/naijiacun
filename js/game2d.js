@@ -7,7 +7,8 @@ import { GLTFLoader } from "../vendor/three/GLTFLoader.js";
 import { MeshoptDecoder } from "../vendor/meshopt/meshopt_decoder.module.js";
 import { createPetMotion } from "./pet-motion.js?v=2";
 import { makeAnimator } from "./creature.js?v=59";
-import { Fight } from "./kof.js?v=58";
+import { attachGearVisuals } from "./gear-visuals.js?v=1";
+import { Fight } from "./kof.js?v=60";
 import {
   TS, TI, VILLAGE, TOWN, GROVE, HILL, TOWN_LOTS, TOWN_STALLS, HOUSE, SHOP, STATION, ARCHIVE, MAPS,
   tileAt, setSolid, solidAt, markAt, mapTexture, toTile, toWorld
@@ -29,6 +30,15 @@ const pick = a => a[Math.floor(Math.random() * a.length)];
 const lerp = (a, b, t) => a + (b - a) * t;
 // v1 是旧 3D 版的存档，坐标体系完全不同，直接弃用
 const SAVE_KEY = "naijiacun_game_v2";
+// 存档结构版本：写入每份存档，读档时据此在 migrateSave 里做一次性升级。
+// 字段级 ?? 兜底继续保留（双保险）；version 的价值是字段含义改变时也能识别老档，
+// 而不只是"字段缺失"这一种情况。当前结构 = 1。
+const SAVE_VERSION = 1;
+// 迁移钩子：d 为解析后的存档对象，返回迁移后的 d。将来改字段结构时在此按 d.v 分支补。
+function migrateSave(d) {
+  // v1 是首版带版本号的结构，无需迁移；老档（无 v）字段靠下面的 ?? 兜底兼容。
+  return d;
+}
 
 /* =========================================================
    角色表
@@ -105,6 +115,10 @@ const state = {
   viewMode: "3d", camFollow: true,
   captured: {}, metNpc: false, steps: 0,
   lv: 3, exp: 0, maxHp: 62, hp: 62, atk: ATK_BASE,
+  // 小七装备铺：owned = 已买下的装备 id；equipped = 三个槽位当前装备的 id。
+  // 装备加成在开战时统一汇入（武器→atk / 护甲→maxHp / 饰品→捕捉率），
+  // 切换装备走增减回调，属性不会漂移。读档时随 atk/maxHp 一起恢复。
+  gear: { owned: [], equipped: { weapon: null, armor: null, charm: null } },
   // 探索：见过谁、聊过谁、领了什么活
   met: {},                 // npcId → true
   dayFlags: {},            // "xiaocao:3" → true（每天一次的事）
@@ -143,6 +157,23 @@ const GROWTH = {
 };
 const expNeed = lv => GROWTH.expBase + lv * GROWTH.expPerLv;
 
+/* ---- 装备加成：与 farm.js 的 GEAR 表保持同一套 id/数值 ----------------
+   战斗属性 = 基础(state.atk/maxHp) + 当前装备加成；捕捉率加成单独传给 kof.js。
+   不写回 state.atk/maxHp，切换装备只换 id，避免反复增减导致数值漂移。 */
+const GEAR_BONUS = {
+  w1: { atk: 2 },  w2: { atk: 5 },  w3: { atk: 10 },
+  a1: { hp: 8 },   a2: { hp: 20 },  a3: { hp: 40 },
+  c1: { catch: .08 }, c2: { catch: .16 }, c3: { catch: .24 }
+};
+function gearBonus(kind) {
+  const id = state.gear && state.gear.equipped && state.gear.equipped[kind];
+  const b = id && GEAR_BONUS[id];
+  return b ? (b[kind === "weapon" ? "atk" : kind === "armor" ? "hp" : "catch"] || 0) : 0;
+}
+// 开战用的有效属性
+const effectiveAtk  = () => state.atk + gearBonus("weapon");
+const effectiveMaxHp = () => state.maxHp + gearBonus("armor");
+
 const SPAWN = { x: .5, z: 27 };
 // jumpY：脚离地高度；vy：竖直速度。落地由重力积分 + 地形面判定，不用定时器。
 let player = { x: SPAWN.x, z: SPAWN.z, heading: Math.PI, moving: false, run: false, phase: 0, ready: false,
@@ -156,7 +187,9 @@ function save() {
   if (!state.started && !loadDone) return;
   try {
     localStorage.setItem(SAVE_KEY, JSON.stringify({
+      v: SAVE_VERSION,
       lv: state.lv, exp: state.exp, maxHp: state.maxHp, hp: state.hp, atk: state.atk,
+      gear: state.gear,
       balls: state.balls, captured: state.captured, metNpc: state.metNpc,
       steps: state.steps, muted: state.muted,
       viewMode: state.viewMode, camFollow: state.camFollow,
@@ -195,10 +228,31 @@ function load() {
     localStorage.removeItem("naijiacun_game_v1");
     const raw = localStorage.getItem(SAVE_KEY);
     if (!raw) return false;
-    const d = JSON.parse(raw);
+    const d = migrateSave(JSON.parse(raw));
+    // 存档版本号（无 v 的老档记为 0），供诊断与后续迁移使用；不参与玩法判定。
+    state.saveVersion = Number(d.v) || 0;
     Object.assign(state, {
       lv: d.lv ?? 3, exp: d.exp ?? 0, maxHp: d.maxHp ?? 62, hp: d.hp ?? 62,
       atk: d.atk ?? ATK_BASE, balls: d.balls ?? 8, captured: d.captured || {},
+      gear: (() => {
+        // 老档无 gear 字段时按空装备处理；已拥有列表和槽位都做基本清洗，坏档不崩。
+        const g = d.gear || {};
+        const valid = ["w1","w2","w3","a1","a2","a3","c1","c2","c3"];
+        const owned = Array.isArray(g.owned) ? g.owned.filter(x => valid.indexOf(x) >= 0) : [];
+        const eq = g.equipped || {};
+        const pick = (slot, ids) => {
+          const id = eq[slot];
+          return id && ids.indexOf(id) >= 0 && owned.indexOf(id) >= 0 ? id : null;
+        };
+        return {
+          owned,
+          equipped: {
+            weapon: pick("weapon", ["w1","w2","w3"]),
+            armor:  pick("armor",  ["a1","a2","a3"]),
+            charm:  pick("charm",  ["c1","c2","c3"])
+          }
+        };
+      })(),
       metNpc: !!d.metNpc, steps: d.steps || 0, muted: !!d.muted,
       viewMode: d.viewMode === "2d" ? "2d" : "3d", camFollow: d.camFollow !== false,
       met: d.met || {}, dayFlags: d.dayFlags || {}, gifts: d.gifts || {},
@@ -3122,7 +3176,11 @@ async function getActor(key) {
     try {
       await ensureSrc(key, entry);
       loaded.set(key, true);
-      return withAnim(buildRig(key, c, entry));
+      const actor = withAnim(buildRig(key, c, entry));
+      // 装备可视化：主角按当前已装备的件挂上几何体（战斗与场景共用 getActor，一处挂载两头生效）。
+      // 换装时由 refreshGearVisuals 就地更新，不必重建角色。
+      if (key === "nailong") attachGearVisuals(T, actor, state.gear.equipped);
+      return actor;
     } catch (err) {
       console.warn("[game] 模型加载失败，改用立牌：" + key, err);
       loaded.set(key, null);
@@ -3175,6 +3233,12 @@ function makeContactShadow(diameter = 1.3) {
 const playerObj = new T.Group();
 scene.add(playerObj);
 playerObj.position.set(player.x, 0, player.z);
+// 换装后就地刷新场景主角的装备外观（playerObj.children[0] 是主角 actor）。
+// 战斗对象在开战时经 getActor 现建，自动读最新 state.gear，无需在此处理。
+function refreshGearVisuals() {
+  const actor = playerObj.children[0];
+  if (actor && actor.userData && actor.userData.anim) attachGearVisuals(T, actor, state.gear.equipped);
+}
 // 玩家的阴影独立挂在 scene：playerObj.children[0] 约定是模型，不能被阴影占位；
 // 而且玩家会跳跃/颠簸，阴影要留在地面，不能跟着升起来。
 const playerShadow = makeContactShadow(1.35);
@@ -3922,6 +3986,12 @@ function hudTick() {
   $("#hudHp").classList.toggle("low", p < .3);
   $("#hudHpText").textContent = Math.round(state.hp) + "/" + state.maxHp;
   $("#hudExp").textContent = state.exp + "/" + expNeed(state.lv);
+  // HUD 显示战斗有效值：武器加攻击、护甲加血上限，让装备效果"看得见"。
+  // 注意野外血量仍以裸装 maxHp 为分母（护甲只在战斗内生效），这里只标注数值。
+  const atkEl = $("#hudAtk"); if (atkEl) atkEl.textContent = effectiveAtk();
+  const hpEl = $("#hudHpText"); if (hpEl && gearBonus("armor") > 0) {
+    hpEl.textContent = Math.round(state.hp) + "/" + state.maxHp + " (+" + gearBonus("armor") + ")";
+  }
   $("#ballCount").textContent = state.balls;
   $("#stepCount").textContent = Math.round(state.steps);
   $("#areaChip").innerHTML = '<span class="dot"></span> ' + areaName();
@@ -4701,6 +4771,7 @@ const POUCH_SPOTS = [
 ];
 const pouchQuest = { active: false, got: 0, objs: [] };
 let arenaPending = false;
+let battleArmorHp = 0;   // 本场战斗的护甲加成，结算时把血量折算回裸装上限
 let starChallengeFight = false;   // 本场是否为图鉴集齐后的明星挑战
 
 function buildPouches() {
@@ -6358,6 +6429,13 @@ async function startEncounter(zoneKey, forceKey, opts) {
   document.body.classList.add("infight");
   blip(300, .18, "sawtooth", .05);
 
+  // 装备加成只在这一场战斗内生效：武器累加攻击、护甲累加血上限、饰品累加捕捉率。
+  // 记下护甲加成，结算时把血量按比例折算回裸装上限，避免野外血条虚高。
+  const armorHp = gearBonus("armor");
+  battleArmorHp = armorHp;
+  const fightMaxHp = state.maxHp + armorHp;
+  const fightHp = Math.min(fightMaxHp, Math.max(1, Math.round(state.hp) + armorHp));
+
   try {
     await Fight.start({
       actorFor: getActor,
@@ -6366,10 +6444,11 @@ async function startEncounter(zoneKey, forceKey, opts) {
       enemyLv,
       enemyMaxHp: Math.round(GROWTH.enemyHpBase + enemyLv * GROWTH.enemyHpPerLv),
       enemyAtk: ATK_BASE + (enemyLv - 3) * GROWTH.atkPerLv,
-      hp: Math.max(1, Math.round(state.hp)),
-      maxHp: state.maxHp,
+      hp: fightHp,
+      maxHp: fightMaxHp,
       lv: state.lv,
-      atk: state.atk,
+      atk: effectiveAtk(),
+      catchBonus: gearBonus("charm"),
       balls: state.balls,
       sfx,
       onEnd: onBattleEnd
@@ -6394,7 +6473,16 @@ function onBattleEnd(res) {
   starChallengeFight = false;
 
   state.balls -= res.ballUsed;
-  state.hp = res.playerHp;
+  // 战斗内血量含护甲加成，回写野外存档时按比例折回裸装上限，防止血条虚高。
+  const armor = battleArmorHp || 0;
+  battleArmorHp = 0;
+  if (armor > 0) {
+    const fightMax = state.maxHp + armor;
+    const ratio = clamp(res.playerHp / fightMax, 0, 1);
+    state.hp = Math.max(1, Math.round(state.maxHp * ratio));
+  } else {
+    state.hp = Math.min(res.playerHp, state.maxHp);
+  }
   if (res.win || res.captured) courierProgress("battle", roomState.name);
 
   if (res.captured) {
@@ -6561,16 +6649,70 @@ function esc(s) {
   return String(s == null ? "" : s).replace(/[&<>"']/g, c =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
+/* 村里传闻：非强制的软目标提示。
+   把游戏里已经存在的玩法用"听说……"的口吻列出来，玩家想试就去，不试也无人催。
+   不新增玩法、不计入任务进度、不弹红点——只解决"开局不知道能干嘛"的迷茫。 */
+function buildRumors() {
+  const esc2 = esc;
+  const rumors = [];
+  // 每条：图标 / 传闻 / 去哪 / 关联成就 id（可选，仅把已有成就标注出来，不新增奖励系统）
+  if (!state.met || !state.met["xiaoqi"]) {
+    rumors.push(["🏠", "村口的小七说，他那儿进了一批新货，还有几件像样的家伙事儿。", "村口 · 小七的杂货摊", null]);
+  }
+  if (dexCount() < Object.keys(CAST).length) {
+    rumors.push(["📖", "村里人脚下的图鉴还空着几格。跟每个村民说说话，或去草丛里碰碰运气。", "村口 · 图鉴面板", "dex8"]);
+  }
+  if (!state.anchors || !state.anchors.town) {
+    rumors.push(["🗺", "往东走能到奶家镇，路上有传送锚点。点亮的锚点以后按 M 就能直接去。", "村东门 · 奶家镇", null]);
+  }
+  if ((state.arenaWins || 0) < 3) {
+    rumors.push(["🥊", "暴暴龙在擂台上摆了三场，说连赢三场才肯认人。", "村东门 · 擂台", "arena3"]);
+  }
+  if (!state.beatQiyet) {
+    rumors.push(["⚫", "棋爷天天在公园摆棋，嘴上不说，下着下你会发现哪儿不对劲。", "广场往东 · 棋爷的公园", null]);
+  }
+  if (state.fishCaught < 3) {
+    rumors.push(["🎣", "竹林水塘的沙地能抛竿，一天八竿。凑够三条鱼还能换一个捕捉球。", "村西北 · 竹林水塘", "fish20"]);
+  }
+  if (!state.starChallenge || !state.starChallenge.done) {
+    rumors.push(["🌟", "听说把村民都认全了，会有一场特别的挑战在等着。", "先集齐图鉴", "star5"]);
+  }
+  if (!rumors.length) {
+    return '<div class="rumor-empty">村里的新鲜事你都试过了。剩下的日子，想怎么过就怎么过——<br>这本来就是你的村子。</div>';
+  }
+  // 关联成就的奖励角标：让玩家看到"顺着这条线索走，顺带能领个成就"，软目标有实际回报兜底。
+  const achTag = id => {
+    if (!id) return "";
+    const a = ACHIEVEMENTS.find(x => x.id === id);
+    if (!a || achClaimed(id)) return "";
+    const r = a.reward || {};
+    const bits = [];
+    if (r.gold) bits.push(r.gold + " 金");
+    if (r.balls) bits.push("捕捉球 ×" + r.balls);
+    return '<span class="rumor-reward">🎁 ' + esc2(bits.join(" · ") || "有奖励") + '</span>';
+  };
+  return '<p class="rumor-intro">没有非做不可的事。以下都是村里人随口提的，感兴趣就去看看，不理会也没关系。</p>'
+    + '<div class="rumor-list">' + rumors.map(r =>
+        '<div class="rumor-card"><span class="rumor-ic">' + r[0] + '</span>'
+        + '<div class="rumor-body"><p>' + esc2(r[1]) + '</p><span class="rumor-where">' + esc2(r[2]) + '</span>' + achTag(r[3]) + '</div></div>'
+      ).join("") + '</div>';
+}
+
 function buildToday() {
   // 标签切换态
-  const tD = $("#tabDaily"), tA = $("#tabAch");
+  const tD = $("#tabDaily"), tA = $("#tabAch"), tR = $("#tabRumor");
   if (tD && tA) {
     tD.classList.toggle("active", todayTab === "daily");
     tA.classList.toggle("active", todayTab === "ach");
+    if (tR) tR.classList.toggle("active", todayTab === "rumor");
     $("#todayDaily").hidden = todayTab !== "daily";
     $("#todayAch").hidden = todayTab !== "ach";
+    const rumorBox = $("#todayRumor"); if (rumorBox) rumorBox.hidden = todayTab !== "rumor";
   }
-  if (todayTab === "daily") {
+  if (todayTab === "rumor") {
+    const box = $("#todayRumor");
+    if (box) box.innerHTML = buildRumors();
+  } else if (todayTab === "daily") {
     const box = $("#todayDaily");
     if (!box) return;
     box.className = "quest-list";
@@ -6756,6 +6898,7 @@ if ($("#btnToday")) {
   $("#btnTodayClose").onclick = () => $("#today").classList.remove("show");
   $("#tabDaily").onclick = () => { todayTab = "daily"; buildToday(); };
   $("#tabAch").onclick = () => { todayTab = "ach"; buildToday(); };
+  if ($("#tabRumor")) $("#tabRumor").onclick = () => { todayTab = "rumor"; buildToday(); };
 }
 /* ---- 2D / 3D 视角切换：同一张地图、同一份存档，只是镜头表现不同 ----
    3D = 第三人称透视跟拍（开放世界）；2D = 正交俯视（房间式的平面感）。
@@ -7272,7 +7415,27 @@ async function boot() {
     aimCell,
     lieDown, getUp, dim,
     onHarvest(k) { questProgress("harvest"); },
-    onSleep() { state.hp = state.maxHp; hudTick(); }
+    onSleep() { state.hp = state.maxHp; hudTick(); },
+    // 小七装备铺：Farm 只管展示和扣钱，装备状态以 state.gear 为单一数据源。
+    getGear() { return state.gear; },
+    onBuyGear(id) {
+      if (state.gear.owned.indexOf(id) >= 0) return;
+      state.gear.owned.push(id);
+      // 买下即自动装备到对应槽（槽位由 id 前缀推断：w/a/c）
+      const slot = id[0] === "w" ? "weapon" : id[0] === "a" ? "armor" : "charm";
+      state.gear.equipped[slot] = id;
+      refreshGearVisuals();
+      hudTick(); save();
+    },
+    onEquipGear(slot, id) {
+      if (!state.gear.equipped.hasOwnProperty(slot)) return;
+      if (id !== null && state.gear.owned.indexOf(id) < 0) return;
+      state.gear.equipped[slot] = id;
+      const name = id ? (GEAR_BONUS[id] ? ({ w1:"木棍",w2:"铁叉",w3:"村长拐杖",a1:"布衣",a2:"皮甲",a3:"铁皮甲",c1:"幸运草",c2:"招财铃",c3:"聚宝盆" })[id] : id) : null;
+      toast(id ? "装备了" + name : "已卸下" + ({ weapon:"武器",armor:"护甲",charm:"饰品" })[slot]);
+      refreshGearVisuals();
+      hudTick(); save();
+    }
   });
 
   // 先把主循环跑起来：模型没到位也有画面，不会白屏干等
@@ -7318,6 +7481,8 @@ async function boot() {
   }
   buildDex();
   hudTick();
+  // 主角在 load() 之前就建好了，那时 state.gear 还是空；读档后按存档装备补挂外观。
+  refreshGearVisuals();
   // 村子搭好了：把开始按钮交还给玩家
   pm("boot:done");
   const sb = $("#btnStart");
@@ -7378,6 +7543,7 @@ function startGame(fresh) {
   if (fresh) {
     Object.assign(state, {
       lv: 3, exp: 0, maxHp: 62, hp: 62, atk: ATK_BASE,
+      gear: { owned: [], equipped: { weapon: null, armor: null, charm: null } },
       balls: 8, captured: {}, metNpc: false, steps: 0,
       // 重开就是全新的一天：锚点、外卖、擂台、小游戏的每日计数都得归零，
       // 不然同一个浏览器里「重新开始」会带着上一档的进度进新档

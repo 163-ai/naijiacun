@@ -86,6 +86,7 @@ let ready = false;
 
 let P = null, E = null;          // 双方 fighter
 let ball = 8;
+let catchBonus = 0;   // 饰品带来的捕捉率加成，每场由 opts 重置
 let enemyKey = "naiwa";
 let onEndCb = null;
 let sfx = () => {};
@@ -293,9 +294,24 @@ let bgMesh = null;
    角色
    ========================================================= */
 function makeFighter(key, root, o) {
-  root.traverse(m => { if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } });
+  // 受击闪白：角色材质来自共享 GLB（createPetMotion 直接引用 part.object.material），
+  // 直接改 emissive 会污染场景里同模型的其他实例。这里给每个战斗角色克隆一份材质，
+  // 单独驱动 emissive 闪光，退场时可安全 dispose，不影响场景主角。
+  const flashMats = [];
+  root.traverse(m => {
+    if (!m.isMesh || !m.material) return;
+    m.castShadow = true; m.receiveShadow = true;
+    const mats = Array.isArray(m.material) ? m.material : [m.material];
+    const clones = mats.map(src => {
+      const c = src.clone();
+      if ("emissive" in c && c.emissive) c.userData.baseEmissive = c.emissive.clone();
+      return c;
+    });
+    m.material = Array.isArray(m.material) ? clones : clones[0];
+    flashMats.push(...clones);
+  });
   const f = {
-    key, root,
+    key, root, flashMats, flashT: 0,
     x: o.x, y: 0, vx: 0, vy: 0,
     facing: o.facing,
     hp: o.hp, maxHp: o.maxHp, hpLag: o.hp,
@@ -329,8 +345,12 @@ Fight.start = async function (opts) {
   if (!ready) buildStage();
   Object.keys(keys).forEach(k => keys[k] = false);
   // 清掉上一场留下的角色和特效，否则会残留一个定格的人影
-  if (P && P.root && P.root.parent) P.root.parent.remove(P.root);
-  if (E && E.root && E.root.parent) E.root.parent.remove(E.root);
+  // flashMats 是每场给角色克隆的材质（为受击闪白做隔离），退场时一并释放，避免逐场泄漏。
+  for (const old of [P, E]) {
+    if (!old) continue;
+    if (old.flashMats) for (const m of old.flashMats) m.dispose();
+    if (old.root && old.root.parent) old.root.parent.remove(old.root);
+  }
   for (const p of parts) { if (p.s.parent) p.s.parent.remove(p.s); p.s.material.dispose(); }
   parts.length = 0;
   for (const p of fx) {
@@ -346,6 +366,8 @@ Fight.start = async function (opts) {
   if (catchTimer !== null) { clearTimeout(catchTimer); catchTimer = null; }
   Fight.result = null;
   ball = opts.balls ?? 8;
+  // 饰品捕捉率加成（由 game2d 传入），实测时叠加到原公式，仍受上下限钳制。
+  catchBonus = clamp(Number(opts.catchBonus) || 0, 0, BALANCE.catch.max);
   vsState = { hp: opts.hp, ballUsed: 0 };
   sfx = opts.sfx || (() => {});
   onEndCb = opts.onEnd || null;
@@ -644,6 +666,9 @@ function applyHit(a, d, mv) {
   d.hitstun = blocked ? mv.hitstun * BALANCE.block.hitstun : mv.hitstun;
   d.act = null;
   d.state = "hurt";
+  // 受击闪白：格挡只轻闪，实击按招式强度给不同时长，和顿帧/火花同帧触发。
+  d.flashT = blocked ? .09 : (mv.id === "special" ? .26 : mv.id === "heavy" ? .18 : .12);
+  d.flashDirty = true;
   const dir = a.facing;
   d.vx = dir * (blocked ? mv.kb * BALANCE.block.kb : mv.kb);
   if (blocked) d.blockstun = BALANCE.block.stun;
@@ -835,7 +860,8 @@ function tryCatch() {
   ball--;
   vsState.ballUsed++;
   // 捕捉略收紧：30% 血约 65%、10% 血约 79%，保留"残血更好抓"但不再近乎必中。
-  const chance = clamp((1 - ratio) * catchCfg.slope + catchCfg.base, catchCfg.min, catchCfg.max);
+  // 饰品加成叠加在原公式上，仍受 max(.88) 钳制——不会破坏原有平衡上限。
+  const chance = clamp((1 - ratio) * catchCfg.slope + catchCfg.base + catchBonus, catchCfg.min, catchCfg.max);
   sfx("throw");
   catchTimer = setTimeout(() => {
     catchTimer = null;
@@ -1067,6 +1093,21 @@ function poseFighter(f, dt) {
   r.position.y = f.y;
   const t = performance.now() / 1000;
   const anim = r.userData && r.userData.anim;
+
+  // 受击闪白：flashT 由 applyHit 置位，这里逐帧衰减并把强度写进克隆材质的 emissive。
+  // 用白色自发光叠加（不碰原色），受击瞬间最亮、线性回落；结束后恢复原始 emissive。
+  // 注意：即使 flashT 刚归零也要跑一次恢复，否则材质会卡在最后一帧的加亮值。
+  if (f.flashT > 0 || f.flashDirty) {
+    f.flashT = Math.max(0, f.flashT - dt);
+    const glow = f.flashT > 0 ? Math.min(1, f.flashT / .12) * 1.4 : 0;
+    for (const m of f.flashMats) {
+      if (!m.emissive) continue;
+      const base = m.userData.baseEmissive;
+      if (base) m.emissive.copy(base); else m.emissive.setRGB(0, 0, 0);
+      if (glow) { m.emissive.r += glow; m.emissive.g += glow; m.emissive.b += glow; }
+    }
+    f.flashDirty = f.flashT > 0;
+  }
 
   if (f.ko) {
     if (anim) anim.update("hurt", { k: 0 });

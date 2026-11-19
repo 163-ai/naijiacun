@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>奶家村 · 大冒险</title>
   <meta name="description" content="奶家村进村大冒险：在村庄里探索、钓鱼、种田，和村民格斗下棋，收集图鉴里的每一位村民。">
-  <link rel="stylesheet" href="css/game.css?v=21">
+  <link rel="stylesheet" href="css/game.css?v=24">
   <!-- importmap 必须在任何模块预取之前注册：modulepreload 拉下的 GLTFLoader
        内部有 import "three"（裸说明符），没有 importmap 就地报错整条链挂掉 -->
   <script type="importmap">{"imports":{"three":"./vendor/three/three.module.min.js"}}</script>
@@ -18,10 +18,10 @@
   <link rel="modulepreload" href="vendor/three/GLTFLoader.js">
   <link rel="modulepreload" href="vendor/three/BufferGeometryUtils.js">
   <link rel="modulepreload" href="vendor/meshopt/meshopt_decoder.module.js">
-  <link rel="modulepreload" href="js/game2d.js?v=101">
+  <link rel="modulepreload" href="js/game2d.js?v=104">
   <link rel="modulepreload" href="js/tiles.js?v=6">
-  <link rel="modulepreload" href="js/farm.js?v=2">
-  <link rel="modulepreload" href="js/kof.js?v=58">
+  <link rel="modulepreload" href="js/farm.js?v=4">
+  <link rel="modulepreload" href="js/kof.js?v=60">
   <link rel="modulepreload" href="js/creature.js?v=60">
   <link rel="modulepreload" href="js/pet-motion.js?v=3">
   <link rel="modulepreload" href="js/pet-laugh.js?v=site-pets-1">
@@ -41,7 +41,7 @@
         <div style="flex:1">
           <div class="nm">奶龙 <span class="lv" id="hudLv">Lv.3</span></div>
           <div class="bar"><div class="bar-fill" id="hudHp"></div></div>
-          <div class="nums"><span id="hudHpText">62/62</span> · EXP <span id="hudExp">0/54</span></div>
+          <div class="nums"><span id="hudHpText">62/62</span> · ⚔ <span id="hudAtk">28</span> · EXP <span id="hudExp">0/54</span></div>
         </div>
       </div>
       <div class="tools">
@@ -176,6 +176,11 @@
           </div>
         </div>
         <p class="shop-tip">萝卜 3 天、玉米 4 天、甜瓜 5 天成熟；每天浇水才长，下雨天不用管。</p>
+        <div class="train-box">
+          <div class="train-head"><span class="shop-kicker">⚔ 小七装备铺</span><span class="train-sub">武器 · 护甲 · 饰品　买下永久拥有，随时切换</span></div>
+          <div id="shopTrain"></div>
+          <p class="shop-tip">武器加攻击、护甲加血、饰品提高捕捉率，打起来立刻生效。钱是拿去多种地，还是先给自己添件家伙？随你。</p>
+        </div>
         <div class="closebar"><button class="btn dark" id="btnShopClose">收起来</button></div>
       </div>
     </div>
@@ -293,9 +298,11 @@
         <div class="today-tabs">
           <button class="btn dark" data-tab="daily" id="tabDaily">今日任务</button>
           <button class="btn" data-tab="ach" id="tabAch">成就 <span id="achProgress">0/0</span></button>
+          <button class="btn" data-tab="rumor" id="tabRumor">村里传闻</button>
         </div>
         <div id="todayDaily"></div>
         <div hidden id="todayAch"></div>
+        <div hidden id="todayRumor"></div>
         <div class="closebar"><button class="btn dark" id="btnTodayClose">收起</button></div>
       </div>
     </div>
@@ -403,6 +410,6 @@
   <script src="js/rain.js?v=1"></script>
   <script src="js/3d-models.js"></script>
   <script src="js/site-pet.js?v=fast-pet-2"></script>
-  <script type="module" src="js/game2d.js?v=101"></script>
+  <script type="module" src="js/game2d.js?v=104"></script>
 </body>
 </html>

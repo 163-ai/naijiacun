@@ -20,6 +20,59 @@ export const CROPS = {
   melon:  { name: "甜瓜", icon: "🍈", cost: 60, sell: 118, days: 5, fruit: 0x8fcc4f, leaf: 0x5c9b3f, h: .6 }
 };
 
+/* =========================================================
+   小七装备铺 —— 装备/武器系统 + 金币回收口（sink）
+   ---------------------------------------------------------
+   设计 rationale：
+   1) 玩家诉求：主角在开放世界里"乱跑没有目标"，且想要武器/装备提供战斗力。
+      装备给出一条自驱的成长线：逛村攒钱 → 挑装备 → 变强 → 敢去更远的地方/
+      挑战更强的村民，全程自愿，没有强制主线任务。
+   2) 经济诉求：原系统金币只进少出（日净入 300~480，稳定出口几乎为零），
+      中期必然通胀。装备要花钱买、按件计价，是持续性金币出口。
+
+   三个槽位（每槽多件、可切换，制造搭配决策）：
+     武器 weapon  → 加 atk，直接进 kof.js 伤害公式（审查刚修好的真实通道）
+     护甲 armor   → 加 maxHp，进血条与存档
+     饰品 charm   → 加捕捉率，作为 catchBonus 传进战斗（不改原有平衡基线）
+
+   为什么不改战斗判定/渲染：装备加成只在开战入口汇入 optsatk/maxHp/catchBonus，
+   kof.js 的招式、帧判定、AI、3D 场景一行不动——街斗式玩法保持原样。
+
+   ⚠️ 价格与数值均为草稿初始值 [待 playtest]：上线前需用真实跑图数据收敛。
+   纯游戏内金币购买，无付费、无 PVP、无诱导，不涉及数值碾压他人。
+   ========================================================= */
+const GEAR = {
+  weapon: {
+    label: "武器", icon: "⚔️",
+    items: [
+      { id: "w1", name: "木棍",   price: 120, atk: 2, desc: "攻击 +2 · 约 +4.7% 伤害" },
+      { id: "w2", name: "铁叉",   price: 300, atk: 5, desc: "攻击 +5 · 约 +12% 伤害" },
+      { id: "w3", name: "村长拐杖", price: 620, atk: 10, desc: "攻击 +10 · 约 +23% 伤害" }
+    ]
+  },
+  armor: {
+    label: "护甲", icon: "🛡️",
+    items: [
+      { id: "a1", name: "布衣",   price: 100, hp: 8,  desc: "体力上限 +8" },
+      { id: "a2", name: "皮甲",   price: 260, hp: 20, desc: "体力上限 +20" },
+      { id: "a3", name: "铁皮甲", price: 540, hp: 40, desc: "体力上限 +40" }
+    ]
+  },
+  charm: {
+    label: "饰品", icon: "🍀",
+    items: [
+      { id: "c1", name: "幸运草", price: 140, catch: 0.08, desc: "捕捉率 +8%" },
+      { id: "c2", name: "招财铃", price: 340, catch: 0.16, desc: "捕捉率 +16%" },
+      { id: "c3", name: "聚宝盆", price: 660, catch: 0.24, desc: "捕捉率 +24%" }
+    ]
+  }
+};
+// 装备 id → { slot, item } 索引，供 game2d 侧查询加成用
+const GEAR_INDEX = {};
+for (const [slot, def] of Object.entries(GEAR)) {
+  for (const item of def.items) GEAR_INDEX[item.id] = { slot, item };
+}
+
 const TOOLS = [
   { key: "hoe", name: "锄头", icon: "⛏️" },
   { key: "can", name: "水壶", icon: "💧" },
@@ -694,6 +747,40 @@ Farm.renderShop = function () {
   }).join("");
   $("#shopBuy").innerHTML = buy;
 
+  // 小七装备铺：三槽位装备，买下永久拥有，可切换搭配。
+  // 拥有/装备状态由 game2d 侧 state.gear 持有，通过回调读写（单一数据源）。
+  const getGear = this._o.getGear || (() => ({ owned: [], equipped: {} }));
+  const gs = getGear();
+  const owned = gs.owned || [];
+  const equipped = gs.equipped || {};
+  const gearHtml = Object.entries(GEAR).map(([slot, def]) => {
+    const curId = equipped[slot];
+    const rows = def.items.map(item => {
+      const has = owned.indexOf(item.id) >= 0;
+      const isOn = curId === item.id;
+      let btn;
+      if (has && isOn)      btn = `<button class="sbtn train" data-unequip="${slot}">卸下</button>`;
+      else if (has)         btn = `<button class="sbtn" data-equip="${slot}" data-id="${item.id}">装备</button>`;
+      else {
+        const can = this.gold >= item.price;
+        btn = `<button class="sbtn train" data-gear="${item.id}" ${can ? "" : "disabled"}>${item.price} 金</button>`;
+      }
+      return `<div class="srow${isOn ? " on" : ""}">
+        <span class="sic">${def.icon}</span>
+        <div class="smeta"><b>${item.name}${isOn ? " · 装备中" : ""}</b><i>${item.desc}${has ? "　已拥有" : ""}</i></div>
+        ${btn}
+      </div>`;
+    }).join("");
+    return `<div class="gear-slot"><div class="gear-slot-title">${def.icon} ${def.label}</div>${rows}</div>`;
+  }).join("");
+  const gearBox = $("#shopTrain");
+  if (gearBox) {
+    gearBox.innerHTML = gearHtml;
+    gearBox.querySelectorAll("[data-gear]").forEach(b => { b.onclick = () => this.buyGear(b.dataset.gear); });
+    gearBox.querySelectorAll("[data-equip]").forEach(b => { b.onclick = () => this.equipGear(b.dataset.equip, b.dataset.id); });
+    gearBox.querySelectorAll("[data-unequip]").forEach(b => { b.onclick = () => this.equipGear(b.dataset.unequip, null); });
+  }
+
   const rows = Object.entries(CROPS).filter(([k]) => (this.bag[k] || 0) > 0);
   $("#shopSell").innerHTML = rows.length ? rows.map(([k, C]) => `
     <div class="srow">
@@ -717,6 +804,36 @@ Farm.buy = function (k) {
   this.gold -= C.cost;
   this.seeds[k] = (this.seeds[k] || 0) + 1;
   this._o.sfx && this._o.sfx("coin");
+  this.renderShop(); this.paint();
+};
+
+// 买装备：扣钱后回调 game2d 把 id 记入已拥有，并自动装备到该槽。
+// 拥有/装备状态以 game2d 侧 state.gear 为准（单一数据源），这里只做展示和扣费入口。
+Farm.buyGear = function (id) {
+  const entry = GEAR_INDEX[id];
+  if (!entry) return;
+  const getGear = this._o.getGear || (() => ({ owned: [], equipped: {} }));
+  if ((getGear().owned || []).indexOf(id) >= 0) return;   // 已拥有不重复收费
+  const item = entry.item;
+  if (this.gold < item.price) {
+    this._o.toast("钱不够，" + item.name + "要 " + item.price + " 金");
+    this._o.sfx && this._o.sfx("deny");
+    return;
+  }
+  if (!this._o.onBuyGear) return;   // 没接回调就不扣钱，避免只花钱不生效
+  this.gold -= item.price;
+  this._o.onBuyGear(id);            // game2d 记入 owned 并自动装备
+  this._o.sfx && this._o.sfx("coin");
+  this._o.toast("买下了" + item.name + "，已装备到" + GEAR[entry.slot].label + "槽");
+  this.renderShop(); this.paint();
+};
+
+// 装备/卸下：id 为 null 表示卸下该槽。切换加成由 game2d 侧统一增减，避免属性漂移。
+Farm.equipGear = function (slot, id) {
+  if (!GEAR[slot]) return;
+  if (!this._o.onEquipGear) return;
+  this._o.onEquipGear(slot, id);
+  this._o.sfx && this._o.sfx("pick");
   this.renderShop(); this.paint();
 };
 
