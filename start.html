@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>工作台 · 奶家村</title>
+<meta name="robots" content="noindex, nofollow">
+<meta name="description" content="奶家村内部工作台入口：本机模型工坊、线上站点、私有仓库。">
+<link rel="stylesheet" href="css/style.css?v=village-1">
+<link rel="stylesheet" href="css/village.css?v=village-1">
+<style>
+  .wb-wrap { max-width: 1000px; margin: 0 auto; padding: 40px 22px 70px; }
+  .wb-head { margin-bottom: 30px; }
+  .wb-kicker {
+    display: inline-block; padding: 5px 16px; margin-bottom: 14px;
+    color: #7a3a26; background: #f3e3d4; border: 1px solid #e0c4ab;
+    border-radius: 48% 20% 43% 25% / 25% 48% 25% 48%; font-size: 13px; font-weight: 700;
+  }
+  .wb-head h1 { margin: 0 0 10px; font-size: clamp(28px, 4vw, 40px); line-height: 1.25; letter-spacing: -.5px; }
+  .wb-head p { margin: 0; color: var(--ink-2); font-size: 15px; }
+
+  .wb-card {
+    position: relative; display: block; padding: 24px 26px 22px;
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+    color: inherit; text-decoration: none;
+    box-shadow: 0 2px 0 #d8c6ae, 0 10px 24px #4f362510;
+    transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease;
+  }
+  .wb-card:hover { transform: translateY(-2px); border-color: #c9a888; box-shadow: 0 3px 0 #cdb79c, 0 16px 30px #4f362518; }
+  .wb-card:active { transform: translateY(0); }
+  .wb-card h2 { margin: 12px 0 8px; font-size: 22px; }
+  .wb-card p { margin: 0; color: var(--ink-2); font-size: 14px; line-height: 1.65; }
+  .wb-card-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .wb-badge {
+    display: inline-block; padding: 4px 11px; border-radius: 99px;
+    background: #344f49; color: #f4ecd8; font-size: 12px; font-weight: 700; letter-spacing: .5px;
+  }
+  .wb-badge-soft { background: #f3e3d4; color: #823d2f; border: 1px solid #e0c4ab; font-weight: 700; }
+  .wb-go { display: inline-block; margin-top: 16px; color: var(--green); font-size: 14px; font-weight: 800; }
+
+  .wb-card-main { border-color: #cbb08e; background: linear-gradient(#fffdf7, #fdf6e8); }
+  .wb-card-main h2 { font-size: 27px; }
+  .wb-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 18px; }
+
+  /* 状态灯：只作提示，判断不到就说判断不到 */
+  .wb-dot { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: var(--ink-2); font-weight: 700; }
+  .wb-dot i { width: 9px; height: 9px; border-radius: 50%; background: #b9ac97; box-shadow: 0 0 0 3px #b9ac9722; }
+  .wb-dot b { font-weight: 700; }
+  .wb-dot[data-state="online"] i { background: #2f7d4f; box-shadow: 0 0 0 3px #2f7d4f26; }
+  .wb-dot[data-state="online"] b { color: #2f7d4f; }
+  .wb-dot[data-state="locked"] i { background: var(--amber); box-shadow: 0 0 0 3px #95631d26; }
+  .wb-dot[data-state="locked"] b { color: var(--amber); }
+  .wb-dot[data-state="offline"] i { background: #a8493a; box-shadow: 0 0 0 3px #a8493a26; }
+  .wb-dot[data-state="offline"] b { color: #a8493a; }
+
+  .wb-quick { margin-top: 34px; }
+  .wb-quick h3, .wb-tip h3 { margin: 0 0 12px; font-size: 15px; color: var(--ink-2); letter-spacing: 1px; }
+  .wb-chips { display: flex; flex-wrap: wrap; gap: 9px; }
+  .wb-chips a {
+    padding: 8px 15px; border: 1px solid var(--line); border-radius: 99px;
+    background: #fffdf8; color: var(--green); font-size: 13px; font-weight: 700; text-decoration: none;
+  }
+  .wb-chips a:hover { background: var(--green-soft); border-color: #d3b79c; }
+
+  .wb-tip { margin-top: 34px; padding: 20px 22px; background: #f6eddd; border: 1px dashed #d6bf9f; border-radius: 16px; }
+  .wb-tip p { margin: 0 0 8px; font-size: 14px; line-height: 1.7; color: var(--ink-2); }
+  .wb-tip p:last-child { margin-bottom: 0; }
+  .wb-tip code {
+    padding: 2px 6px; border-radius: 5px; background: #fffaf0; border: 1px solid #e3d2b8;
+    font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 13px; color: #7a3a26;
+  }
+  .wb-tip-dim { color: var(--ink-3); font-size: 13px !important; }
+
+  @media (max-width: 720px) {
+    .wb-wrap { padding: 26px 16px 80px; }
+    .wb-grid { grid-template-columns: 1fr; }
+    .wb-card { padding: 20px 20px 18px; }
+    .wb-card-main h2 { font-size: 23px; }
+  }
+</style>
+</head>
+<body class="village-theme wb-page">
+<main class="wb-wrap">
+  <header class="wb-head">
+    <span class="wb-kicker">内部 · 不对外</span>
+    <h1>今天从哪儿开工</h1>
+    <p>三个入口摆在一页：本机工坊、线上站点、私有仓库。点一下就过去。</p>
+  </header>
+
+  <a class="wb-card wb-card-main" id="forgeCard" href="http://127.0.0.1:3100/">
+    <div class="wb-card-top">
+      <span class="wb-badge">本机 · 127.0.0.1:3100</span>
+      <span class="wb-dot" id="forgeDot" data-state="checking"><i></i><b id="forgeState">检测中…</b></span>
+    </div>
+    <h2>模型工坊</h2>
+    <p>搜角色 → 挑三视图 → 生成候选 → 并排对比 → 压缩入库。只在本机跑，不对外暴露。</p>
+    <span class="wb-go">打开工坊 →</span>
+  </a>
+
+  <div class="wb-grid">
+    <a class="wb-card" href="https://163-ai.github.io/naijiacun/" target="_blank" rel="noopener">
+      <span class="wb-badge wb-badge-soft">公网</span>
+      <h2>奶家村线上站</h2>
+      <p>已经发布的那一份：图鉴、桌宠、3D 展台、小游戏。改完推上去，刷新就能看到。</p>
+      <span class="wb-go">打开线上站 →</span>
+    </a>
+    <a class="wb-card" href="https://github.com/163-ai/naijiacun-model-forge" target="_blank" rel="noopener">
+      <span class="wb-badge wb-badge-soft">私有</span>
+      <h2>模型工坊仓库</h2>
+      <p>工坊的代码、说明和改动记录。换台电脑要重跑，从这里 clone。</p>
+      <span class="wb-go">打开仓库 →</span>
+    </a>
+  </div>
+
+  <section class="wb-quick">
+    <h3>站内常用页</h3>
+    <div class="wb-chips">
+      <a href="index.html">村口</a>
+      <a href="gallery.html">村民总表</a>
+      <a href="pet3d.html">3D 展台</a>
+      <a href="pet.html">桌宠</a>
+      <a href="game.html">小游戏</a>
+      <a href="chat.html">聊两句</a>
+    </div>
+  </section>
+
+  <section class="wb-tip">
+    <h3>点开工坊没反应？</h3>
+    <p>说明本机服务没在跑。在 <code>naijiacun-model-forge</code> 目录执行 <code>npm start</code> 起一次，或者 <code>npm run autostart</code> 让它常驻开机自启，再回来点。</p>
+    <p class="wb-tip-dim">工坊设了访问口令。用带 <code>?k=</code> 的本页链接打开，口令会自动带给工坊；否则就进工坊后手动输一次。</p>
+    <p class="wb-tip-dim">状态灯只作参考：浏览器隐私策略偶尔会拦住本页对 127.0.0.1 的探测，显示“没连上”不代表真没起，直接点卡片最准。</p>
+  </section>
+</main>
+
+<script>
+(function () {
+  var card = document.getElementById('forgeCard');
+  var dot = document.getElementById('forgeDot');
+  var label = document.getElementById('forgeState');
+  var base = 'http://127.0.0.1:3100';
+
+  /* ?k=口令 只在本页内存里转一手，不写 cookie、不进 localStorage */
+  var key = new URLSearchParams(location.search).get('k');
+  if (key) card.href = base + '/?k=' + encodeURIComponent(key);
+
+  function set(state, text) {
+    dot.dataset.state = state;
+    label.textContent = text;
+  }
+
+  var ctrl = new AbortController();
+  var timer = setTimeout(function () { ctrl.abort(); }, 2500);
+
+  fetch(base + '/api/providers', { cache: 'no-store', signal: ctrl.signal })
+    .then(function (res) {
+      if (res.status === 401) { set('locked', '在线 · 需要口令'); return; }
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return res.json().then(function (data) {
+        var names = { mock: '占位', hunyuan: '混元 3D', modelscope: '魔搭' };
+        set('online', '在线 · ' + (names[data.active] || data.active || '就绪'));
+      });
+    })
+    .catch(function () { set('offline', '没连上 · 服务可能没起'); })
+    .finally(function () { clearTimeout(timer); });
+}());
+</script>
+<script src="js/village.js?v=village-1"></script>
+</body>
+</html>

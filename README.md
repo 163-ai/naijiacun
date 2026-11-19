@@ -3,6 +3,8 @@
 > **在线体验：[https://163-ai.github.io/naijiacun/](https://163-ai.github.io/naijiacun/)**
 >
 > 手机、电脑浏览器直接打开，即可进入奶家村首页。
+>
+> 🧰 自己的入口页：[start.html](https://163-ai.github.io/naijiacun/start.html) —— 本机模型工坊 / 线上站 / 私有仓库 一页点开（`noindex`，不参与站点导航）
 
 一个关于网络热门虚拟形象（奶龙、奶蛙、卡皮巴拉…）的互动图鉴。纯静态、零依赖，打开浏览器就能用。
 
