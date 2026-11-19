@@ -158,7 +158,12 @@
 
   fetch(base + '/api/providers', { cache: 'no-store', signal: ctrl.signal })
     .then(function (res) {
-      if (res.status === 401) { set('locked', '在线 · 需要口令'); return; }
+      if (res.status === 401) {
+        /* 探测本身不带 cookie，401 说明服务活着、只是要口令 */
+        if (key) { set('online', '在线 · 口令已带上'); }
+        else { set('locked', '在线 · 需要口令'); }
+        return;
+      }
       if (!res.ok) throw new Error('HTTP ' + res.status);
       return res.json().then(function (data) {
         var names = { mock: '占位', hunyuan: '混元 3D', modelscope: '魔搭' };
