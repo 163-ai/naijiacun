@@ -99,3 +99,11 @@
 @media (prefers-reduced-motion: reduce) {
   .p3-btn, .p3-chip, .p3-back { transition: none !important; }
 }
+
+/* 拖入本地 glb 时的接住提示：只改边框和阴影，不挪动布局 */
+.p3-stage.dropping { border-color: #823d2f; box-shadow: inset 0 0 0 3px #823d2f33, 0 7px 22px #65513308; }
+.p3-stage.dropping::after {
+  content: "松手即可预览这个模型";
+  position: absolute; inset: 0; display: grid; place-items: center;
+  font-size: 13px; color: #823d2f; background: #fffbf2cc; pointer-events: none;
+}

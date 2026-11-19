@@ -191,8 +191,11 @@ import { mapBones } from "./pet-rig.js?v=rig-1";
     var meta = (entry && entry.meta) || {};
     var parts = [];
     if (meta.provider) parts.push(meta.provider);
-    if (meta.bones) parts.push(meta.bones + " 根骨骼");
-    else if (root && root.userData.vertices) parts.push("单网格静态模型");
+    /* 骨骼数：入库时写的 meta 最可信；本地预览没有 meta，就直接数模型里真实的骨骼。
+       数不出来（老模型的单网格）才说「无骨骼」——这句话以前是猜的，现在是有依据的判断。 */
+    var boneCount = Number(meta.bones) || (root && root.userData.bones) || 0;
+    if (boneCount) parts.push(boneCount + " 根骨骼");
+    else if (root && root.userData.vertices) parts.push("单网格静态模型（无骨骼）");
     var clips = (root && root.userData.clips) || [];
     var clipCount = Number(meta.animations) || clips.length;
     if (clipCount) parts.push(clipCount + " 段自带动画");
@@ -220,6 +223,8 @@ import { mapBones } from "./pet-rig.js?v=rig-1";
     pendingLoad = controller;
     currentId = id;
     syncPetButton();
+    /* 本地预览时这个按钮被关掉过，切回站内角色要恢复 */
+    document.getElementById("pinBtn").disabled = false;
     stopAudio();
     if (model) { scene.remove(model); model = null; }
     stopIdleClip();
@@ -332,6 +337,7 @@ import { mapBones } from "./pet-rig.js?v=rig-1";
       scene.add(model);
       stopAction();
       buildRig(model);
+      model.userData.bones = rig ? Object.keys(rig.bones).length : 0;
       startIdleClip(model, entry);
       updateActAvailability();
       updateActNote();
@@ -936,6 +942,110 @@ import { mapBones } from "./pet-rig.js?v=rig-1";
     var person = byId(currentId);
     if (person && person.clip) play(person.clip, "🎵 " + person.name + "原声片段");
   };
+  /* ---------- 本地模型预览 ----------
+     存在的理由只有一个：forge 生成/绑骨之后，要判断「这个模型到底能不能用」，
+     现在必须走完 入库 → 改 5 个文件 → push → 等 Pages → 等 CDN 缓存 才知道结果。
+     这里让它在浏览器里直接看：几根骨骼、自带几段动画、动作能不能做。
+     完全独立于 setCharacter：不写 modelCache、不动 chips、不影响站内角色，
+     也不上传任何文件（FileReader 只在内存里读）。 */
+  async function previewLocalFile(file) {
+    if (!file) return;
+    var name = file.name.replace(/\.(glb|gltf)$/i, "");
+    var version = ++loadVersion;
+    if (pendingLoad) { pendingLoad.abort(); pendingLoad = null; }
+    stopAction();
+    stopIdleClip();
+    stopAudio();
+    if (model) { scene.remove(model); model = null; }
+    fallback.classList.add("hidden");
+    loading.hidden = false;
+    loading.classList.remove("hidden");
+    loadLabel.textContent = "正在读取" + name + "…";
+    loadProgress.removeAttribute("value");
+    loadDetail.textContent = "本地文件，不联网、不上传";
+    setStatus(loadLabel.textContent);
+    currentId = null;
+    chipsBox.querySelectorAll(".p3-chip").forEach(function (el) {
+      el.classList.remove("active");
+      el.setAttribute("aria-pressed", "false");
+    });
+    /* 本地文件不在 PACK 里，桌宠/配音/原声都无从谈起，先关掉而不是点下去报错 */
+    document.getElementById("pinBtn").disabled = true;
+    document.getElementById("talkBtn").disabled = true;
+    document.getElementById("clipBtn").disabled = true;
+    document.getElementById("modelCredit").textContent = "本地预览 · " + file.name;
+    document.getElementById("modelSpec").hidden = true;
+    var sourceLink = document.getElementById("modelSource");
+    sourceLink.removeAttribute("href");
+    sourceLink.textContent = "来自这台电脑，尚未入库";
+    document.getElementById("modelLicense").textContent = "只在浏览器内存里读取，不会上传，也不会写进仓库。";
+    try {
+      var buffer = await file.arrayBuffer();
+      if (version !== loadVersion) return;
+      var gltf = await loader.parseAsync(buffer, new URL("./", window.location.href).href);
+      if (version !== loadVersion) { disposeModel(gltf.scene); return; }
+      var root;
+      try { root = normalizeModel(gltf.scene, {}); }
+      catch (e) { disposeModel(gltf.scene); throw e; }
+      root.userData.resourceRoot = gltf.scene;
+      root.userData.clips = gltf.animations || [];
+      model = root;
+      scene.add(model);
+      buildRig(model);
+      model.userData.bones = rig ? Object.keys(rig.bones).length : 0;
+      /* 预览的默认诉求就是「看看它自带什么动画」，所以按原生模式播；
+         若轨道全是根位移（usableClips 会过滤掉），startIdleClip 自己会跳过。 */
+      startIdleClip(model, { rig: { mode: "native" } });
+      updateActAvailability();
+      updateActNote();
+      yaw = pitch = velYaw = velPitch = 0;
+      zoom = 1;
+      target.set(0, model.position.y, 0);
+      fitCamera();
+      applyWireframe();
+      loading.hidden = true;
+      loading.classList.add("hidden");
+      var boneTotal = model.userData.bones;
+      setStatus(name + " · " +
+        (boneTotal ? boneTotal + " 根骨骼" : "无骨骼（静态网格，动作靠整体变形）") +
+        " · " + (mixerClip ? "循环播放 " + mixerClip : "无自带动画"));
+      updateSpec({ meta: {} }, model);
+    } catch (err) {
+      showError("读不了这个文件：" + (err && err.message ? err.message : String(err)));
+    }
+  }
+
+  (function bindLocalPreview() {
+    var input = document.getElementById("localFile");
+    var openBtn = document.getElementById("openFileBtn");
+    if (!input || !openBtn) return;
+    openBtn.onclick = function () { input.value = ""; input.click(); };
+    input.onchange = function () {
+      var file = input.files && input.files[0];
+      if (file) previewLocalFile(file);
+    };
+    if (!stage) return;
+    var isModel = function (item) { return !!item && /\.(glb|gltf)$/i.test(item.name); };
+    /* 拖进来自动接住：开发者手上通常就是资源管理器里的一个 glb */
+    stage.addEventListener("dragover", function (e) {
+      if (!e.dataTransfer) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "copy";
+      stage.classList.add("dropping");
+    });
+    stage.addEventListener("dragleave", function (e) {
+      if (e.target === stage) stage.classList.remove("dropping");
+    });
+    stage.addEventListener("drop", function (e) {
+      if (!e.dataTransfer) return;
+      e.preventDefault();
+      stage.classList.remove("dropping");
+      var file = e.dataTransfer.files && e.dataTransfer.files[0];
+      if (!isModel(file)) { setStatus("只认 .glb / .gltf 文件。"); return; }
+      previewLocalFile(file);
+    });
+  })();
+
   document.getElementById("resetBtn").onclick = resetView;
   document.getElementById("pinBtn").onclick = togglePin;
   window.addEventListener("naijiacun-site-pet-state", function (event) { browserPetState = event.detail; syncPetButton(); });
