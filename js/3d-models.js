@@ -18,7 +18,7 @@ window.N3D_MODELS = {};
 ].forEach(function (item) {
   var path = item[0] === "nailong" ? "assets/models/nailong-waving.glb" : "assets/models/" + item[0] + ".glb";
   window.N3D_MODELS[item[0]] = {
-    file: path + "?v=mini-1",
+    file: path + "?v=mini-2",
     cdn: window.N3D_MODEL_HOST ? window.N3D_MODEL_HOST + path : null,
     source: "https://github.com/163-ai/naijiacun/blob/main/assets/models/SOURCES.md#" + item[0],
     credit: "用户提供 · " + item[1] + " 3D 模型",
