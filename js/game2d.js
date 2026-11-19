@@ -505,6 +505,7 @@ const TP = {
   fov: 55, dist: 6.2, minDist: 2.8, maxDist: 13,
   yaw: Math.PI, pitch: .34, lookY: 1.05
 };
+const TP_DEFAULT_PITCH = .34;   // 俯角默认值，手动拖动后回正到这里
 // 手动转镜头后暂停自动跟随几秒，免得刚转过去就被镜头拽回来
 let camFollowPause = 0;
 const camTP = new T.PerspectiveCamera(TP.fov, 16 / 9, .08, 600);
@@ -3361,9 +3362,10 @@ function updateCamThird(snap) {
   const cx = camSmooth.x, cz = camSmooth.z;
   const hd = TP.dist * Math.cos(TP.pitch);     // 水平退距
   const dy = TP.dist * Math.sin(TP.pitch);     // 抬多高
-  const back = camBackDist(cx, cz, hd);
-  const k = hd > .01 ? back / hd : 1;          // 被挡时按比例缩水平距离
-  const y = Math.max(1.2, TP.lookY + dy * (.45 + .55 * k));
+  // 镜头距离恒定，不再靠拉近规避障碍（拉近/拉远瞬跳正是"突然拉近又强制拉远"的根源）。
+  // 挡路的物体改为由 updateOcclusion() 临时渐隐，镜头本身保持稳定。
+  const back = hd;
+  const y = Math.max(1.2, TP.lookY + dy);
   const off = regionOff(roomState.name);
   camTP.position.set(cx - Math.sin(TP.yaw) * back + off.x, y, cz - Math.cos(TP.yaw) * back + off.z);
   if (camShake > 0) {
@@ -3372,6 +3374,84 @@ function updateCamThird(snap) {
     camTP.position.y += (Math.random() - .5) * s;
   }
   camTP.lookAt(cx + off.x, TP.lookY + .25, cz + off.z);
+}
+
+/* ---- 镜头遮挡渐隐：挡在「角色 ↔ 镜头」之间的物体临时半透明 ----
+   镜头距离恒定不再拉近，于是看到房子/树挡住人时，把挡路的物体淡出，
+   走过去后自动恢复。主流第三人称游戏的做法，画面稳定且能看到角色。 */
+const occRay = new T.Raycaster();
+const OCC_FADE = .28;                 // 挡路时不透明度
+occRay.far = 40;
+let occAcc = 0;
+const occluders = new Map();          // mesh -> { ghost, orig, target, cur }
+const occSkip = new Set();            // 永不淡出的材质（地面/天空/水等）
+let occCandidates = [];               // 可挡镜头的普通静态 Mesh 白名单
+function markOccluderSkips() {
+  occSkip.clear();
+  groundMats.forEach(m => occSkip.add(m));
+  if (skyDome) occSkip.add(skyDome.material);
+  if (farGroup) farGroup.traverse(o => { if (o.material) occSkip.add(o.material); });
+  // 只收户外地图组里的普通实体 Mesh：跳过 Points/Line/Sprite/骨骼/实例，
+  // 它们有的 raycast 实现会引用空 matrixWorld 而抛错，且本来也不该挡镜头。
+  occCandidates = [];
+  for (const key of REGION_KEYS) {
+    const grp = OUTDOOR[key];
+    if (!grp) continue;
+    grp.traverse(o => {
+      if (!o.isMesh || o.isInstancedMesh || o.isSkinnedMesh) return;
+      if (Array.isArray(o.material) || !o.material || occSkip.has(o.material)) return;
+      if (!o.geometry || !o.geometry.attributes || !o.geometry.attributes.position) return;
+      occCandidates.push(o);
+    });
+  }
+}
+function updateOcclusion(dt) {
+  const active = state.started && !topDown() && !(overlayOpen && overlayOpen());
+  if (active) {
+    occAcc += dt;
+    if (occAcc >= .05) {              // 20fps 检测足够，别每帧发射线
+      occAcc = 0;
+      const from = camTP.position;
+      const to = new T.Vector3(visX(), TP.lookY + .35, visZ());
+      const dir = to.clone().sub(from);
+      const dist = dir.length();
+      occRay.set(from, dir.normalize());
+      occRay.far = Math.max(1, dist - .9);   // 别把角色自己算进去
+      let hits = [];
+      try { hits = occRay.intersectObjects(occCandidates, false); }
+      catch (e) { hits = []; }              // 任何异常都不该影响画面
+      const hitSet = new Set();
+      for (const h of hits) {
+        const o = h.object;
+        if (!o.isMesh || !o.material || Array.isArray(o.material) || occSkip.has(o.material)) continue;
+        hitSet.add(o);
+      }
+      // 更新目标：命中→OCC_FADE，其余→1
+      for (const mesh of occluders.keys()) occluders.get(mesh).target = hitSet.has(mesh) ? OCC_FADE : 1;
+      for (const mesh of hitSet) {
+        if (!occluders.has(mesh)) {
+          const ghost = mesh.material.clone();   // 克隆隔离：不影响共享同材质的其它块
+          occluders.set(mesh, { ghost, orig: mesh.material, target: OCC_FADE, cur: 1, applied: false });
+        }
+      }
+    }
+  } else {
+    for (const o of occluders.values()) o.target = 1;   // 全部恢复
+  }
+  // 平滑渐隐 / 恢复
+  for (const [mesh, o] of occluders) {
+    o.cur += (o.target - o.cur) * Math.min(1, dt * 9);
+    if (o.cur >= .995 && o.target === 1) {
+      if (o.applied) { mesh.material = o.orig; o.applied = false; }
+      occluders.delete(mesh);
+      continue;
+    }
+    if (!o.applied) { mesh.material = o.ghost; o.applied = true; }
+    o.ghost.transparent = true;
+    o.ghost.opacity = o.cur;
+    o.ghost.depthWrite = o.cur > .9;
+    o.ghost.needsUpdate = true;
+  }
 }
 
 /* =========================================================
@@ -3633,6 +3713,18 @@ function update(dt) {
     if (camShakeT <= 0) { camShakeT = 0; camShake = 0; }
   }
   if (camFollowPause > 0) camFollowPause = Math.max(0, camFollowPause - dt);
+  // 镜头角度自动回正：手动拖拽 / Z、C 转镜头后，暂停 2.2 秒让人看够，
+  // 之后平滑把水平角转回角色背后、俯角转回默认值。修复「角度变了回不去」。
+  // 只在户外 3D、跟随开启、没在手动拖拽、且非锁定时生效。
+  if (state.camFollow && !topDown() && state.started && camFollowPause <= 0 && !camDrag) {
+    // 水平角回正到角色朝向（角色背后）——和自动跟随同一目标
+    if (player.heading != null) {
+      let diff = ((player.heading - TP.yaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+      TP.yaw += diff * Math.min(1, dt * 1.6);
+    }
+    // 俯角回正到默认 .34
+    TP.pitch += (TP_DEFAULT_PITCH - TP.pitch) * Math.min(1, dt * 1.6);
+  }
   // 时间只在能自由走动的时候流；翻菜单、对话、打架都暂停
   Farm.update(dt, locked);
   if (locked) {
@@ -7047,6 +7139,7 @@ function loop() {
     return;
   }
   update(dt);
+  updateOcclusion(dt);          // 挡住角色的物体渐隐 / 走过后恢复
   animateAnchors(dt);
   const wt = performance.now() / 1000;
   for (const wm of waterSurfaces) wm.uniforms.uTime.value = wt;
@@ -7144,6 +7237,7 @@ async function boot() {
     batchOutdoors();   // 静态摆件统一合批：四图同时可见也不涨 draw call
     pm("boot:batch");
     applyStyle();   // 场景搭好后统一套用主题（国风染色 / 飞檐 / 背景）
+    markOccluderSkips();   // 镜头遮挡渐隐：登记永不淡出的材质（地面/天空/远景）
     pm("boot:style");
     await bootNote("正在搭村子 85%");
     buildAmbientLife();   // v86：水车 / 栈桥 / 蝴蝶 / 萤火虫 / 飞鸟 / 炊烟（要贴已建好的地形）
@@ -7227,8 +7321,31 @@ window.__naijiaQuality = () => ({
   shadows: renderer.shadowMap.enabled, gpu: _gpuName,
   software: SOFT_GL, dprCap: QUALITY_DPR[qTier], fpsWindowSeconds: fpsWin.t,
   // 本帧实际提交量：视锥剔除后，视野外的块/草/角色都不计入
-  drawCalls: renderer.info.render.calls, triangles: renderer.info.render.triangles
+  drawCalls: renderer.info.render.calls, triangles: renderer.info.render.triangles,
+  occluding: occluders.size, camYaw: +TP.yaw.toFixed(3), camPitch: +TP.pitch.toFixed(3)
 });
+// 诊断：镜头遮挡射线命中了什么（排查"遮挡没淡出"）
+window.__occDebug = () => {
+  const from = camTP.position.clone();
+  const to = new T.Vector3(visX(), TP.lookY + .35, visZ());
+  const dir = to.clone().sub(from);
+  const dist = dir.length();
+  const r = new T.Raycaster(from, dir.normalize(), 0, Math.max(1, dist - .9));
+  let hits = [];
+  try { hits = r.intersectObjects(occCandidates, false); } catch (e) {}
+  return {
+    from: from.toArray().map(v => +v.toFixed(2)),
+    to: to.toArray().map(v => +v.toFixed(2)),
+    dist: +dist.toFixed(2),
+    hits: hits.slice(0, 12).map(h => ({
+      name: h.object.name || h.object.type,
+      d: +h.distance.toFixed(2),
+      skip: occSkip.has(h.object.material),
+      inst: !!h.object.isInstancedMesh,
+      op: h.object.material && h.object.material.opacity
+    }))
+  };
+};
 
 // 开始按钮恒为新游戏：有存档时它已改文案为「重新开始」，必须真正开新档。
 // 原写法 startGame(!has) 在 has="1" 时取到 false，导致「重新开始」实际在读档。
