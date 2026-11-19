@@ -195,6 +195,12 @@
     return row;
   }
 
+  var transcript = [];   // 最近的聊天记录 { who, text }，供模型回复当上下文
+  function noteTranscript(who, text) {
+    transcript.push({ who: who, text: text });
+    if (transcript.length > 12) transcript = transcript.slice(-12);
+  }
+
   function addText(senderKey, text, mine) {
     var row = rowFor(senderKey, mine);
     var bubble = el("div", "ch-bubble", text);
@@ -208,6 +214,7 @@
       row.appendChild(bubble);
     }
     list.appendChild(row);
+    noteTranscript(mine ? "我" : ((members[senderKey] || {}).name || senderKey), text);
     return row;
   }
 
@@ -220,6 +227,7 @@
     var m = members[senderKey] || {};
     var status = v.status || "ok";
     var row = rowFor(senderKey, false);
+    noteTranscript(m.name || senderKey, "发了一条视频「" + (v.title || "") + "」");
     var wrap = el("div", "g-bwrap");
     wrap.appendChild(el("div", "g-name", m.name || senderKey));
 
@@ -755,40 +763,112 @@
     return pick(lines);
   }
 
-  /* 最高优先级：你说话，一定有人接——但要像人一样慢慢打 */
+  /* ---------- 内容感知回复 ----------
+   * 你说话后不再随机灌罐头：把最近聊天记录 + 正在推的视频标题发给
+   * 站点自带的模型代理（/api/chat，Key 在服务端，访客免配置），
+   * 按发言人的人设生成"接得住你话"的回复。
+   * 9 秒没回 / 接口挂了 / 返回空 —— 退回原来的罐头台词线路，群不冷场。 */
+  var LLM_URL = "https://naijiacun-chat.app.workbuddy.host/api/chat?sharecode=LJAS5NSXQO";
+  var LLM_MODEL = "glm-4-flash";
+  var LLM_TIMEOUT = 9000;
+
+  function personaPrompt(key) {
+    var m = members[key] || {};
+    var titles = [];
+    posts.slice(0, 8).forEach(function (v) { if (v.title) titles.push(v.title); });
+    return [
+      "你在给一个搞笑群聊「相亲相爱一家人」扮演群成员。只输出这个角色说的话本身：不要引号、不要旁白、不要角色名前缀、不要解释。",
+      "你的角色：" + (m.name || key) + "。" + (m.title || ""),
+      "群里最近在推这些视频（可以自然地接话、吐槽，但不要编造没发过的内容）：",
+      titles.join("；") || "（还没发视频）",
+      "要求：必须针对对方刚说的内容回应，不能答非所问；口语化、带梗、可以损人；1~2 句总共不超过 40 个字；不要复读群规。"
+    ].join("\n");
+  }
+
+  function transcriptText() {
+    return transcript.slice(-8).map(function (t) { return t.who + "：" + t.text; }).join("\n");
+  }
+
+  function askLLM(key, onOk, onFail) {
+    var settled = false;
+    function finish(fn, arg) { if (settled) return; settled = true; fn(arg); }
+    var ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+    var timer = setTimeout(function () {
+      if (ctrl) ctrl.abort();
+      finish(onFail);
+    }, LLM_TIMEOUT);
+
+    var body = {
+      model: LLM_MODEL,
+      messages: [
+        { role: "system", content: personaPrompt(key) },
+        { role: "user", content: "最近聊天记录：\n" + transcriptText()
+          + "\n\n请以「" + (members[key] || {}).name + "」的身份，针对上面你看到的内容回一句。" }
+      ],
+      temperature: 0.9,
+      max_tokens: 90,
+      stream: false
+    };
+    fetch(LLM_URL, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+      signal: ctrl ? ctrl.signal : undefined
+    }).then(function (r) {
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.json();
+    }).then(function (d) {
+      var ch = d && d.choices && d.choices[0];
+      var t = (ch && ch.message && ch.message.content) || "";
+      /* 去掉模型可能裹上的引号和前后空白 */
+      t = String(t).replace(/^[\s"'「」]+|[\s"'「」]+$/g, "").trim();
+      if (!t) throw new Error("empty");
+      clearTimeout(timer);
+      finish(onOk, t);
+    }).catch(function () {
+      clearTimeout(timer);
+      finish(onFail);
+    });
+  }
+
+  /* 最高优先级：你说话，一定有人接——回复内容按你说的生成，节奏照旧 */
   function onUserSpoke(text, sticker) {
     var keys = sticker ? [sticker.sender] : respondersFor(text);
     if (!keys.length) keys = memberKeys.slice();
     var key = pick(keys);
-    var line = replyLine(key);
+    var line = replyLine(key);   // 罐头兜底
 
     /* 连发几条时，后面的人依次往后排，不抢话 */
     var think = thinkTime() + replySeq * 320;
-    var typeMs = typingTime(line);
     replySeq++;
 
-    /* 这一轮对话期间自动推送让路 */
-    hold(think + typeMs + 3000);
+    /* 模型生成期间自动推送让路，给足超时 + 打字时间 */
+    hold(think + LLM_TIMEOUT + 4000);
     removeTyping();
 
     later(function () {
       var tip = showTyping(key);
       autoScroll();
 
-      later(function () {
+      function settle(reply) {
         if (tip.parentNode) tip.remove();
-        addText(key, line, false);
-        autoScroll();
-        replySeq = Math.max(0, replySeq - 1);
+        later(function () {
+          addText(key, reply, false);
+          autoScroll();
+          replySeq = Math.max(0, replySeq - 1);
 
-        if (sticker && Math.random() < 0.45) {
-          /* 你发表情，他/她看一会儿也回一张表情 */
-          emitSticker(key, 1200 + Math.random() * 900);
-        } else if (!sticker && Math.random() < 0.34) {
-          /* 群里另一个人看到话题，过几秒也插一句 */
-          secondVoice(key);
-        }
-      }, typeMs);
+          if (sticker && Math.random() < 0.45) {
+            /* 你发表情，他/她看一会儿也回一张表情 */
+            emitSticker(key, 1200 + Math.random() * 900);
+          } else if (!sticker && Math.random() < 0.34) {
+            /* 群里另一个人看到话题，过几秒也插一句 */
+            secondVoice(key);
+          }
+        }, typingTime(reply));
+      }
+
+      askLLM(key, function (reply) { settle(reply); },
+        function () { settle(line); });
     }, think);
   }
 
@@ -884,7 +964,10 @@
   }
   var LIVE_SOURCES = [
     "/api/group-videos" + liveSuffix(),
-    "https://naijiacun-chat.app.workbuddy.host/api/group-videos" + liveSuffix()
+    "https://naijiacun-chat.app.workbuddy.host/api/group-videos" + liveSuffix(),
+    /* GitHub Pages 版兜底：每日定时抓取后提交进仓库的静态快照
+       （由 scripts/refresh-group-live.js 生成），保证 Pages 版也有"新货" */
+    "js/group-live.json"
   ];
   var pendingLater = [];
 

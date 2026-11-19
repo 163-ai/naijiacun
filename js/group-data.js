@@ -14,6 +14,8 @@
 //   kind     : "ugc" 二创 / 搬运 / 二次剪辑 | "official" 官方正片、官方账号
 //              | "video" 普通投稿（识别不出二创特征，也不属于官方，排序上不加分）
 //   lead     : 发卡前的铺垫台词（按顺序逐条发出，先说再发）
+//   pubdate  : 发布时间（Unix 秒）。用于「新近度」打分，老视频自然下沉
+//   durationSec : 时长（秒）。短视频在排序上加权
 //
 // 推送规则（页面顶部「已推送 x/y」会实时显示进度）：
 //   ① 免跳转优先 —— 能在本页内直接播的排前面
@@ -156,7 +158,216 @@ window.NAIJIA_GROUP = {
         "就……勉为其难发一下。"
       ]
     },
+        {
+      sender: "niulai", platform: "bilibili", status: "ok", embed: true,
+      id: "BV1aAbY6HEsX",
+      url: "https://www.bilibili.com/video/BV1aAbY6HEsX",
+      title: "牛来名场面 笑死我了！",
+      author: "散漫乌鱼子", stat: "186.1万 播放",
+      heat: 1861209, kind: "video",
+      pubdate: 1786948166, durationSec: 146,
+      lead: [
+        "刚推到我首页的",
+        "「牛来名场面 笑死我了！」 才发不久就 186.1万 了"
+      ]
+    },
     {
+      sender: "naiwa", platform: "bilibili", status: "ok", embed: true,
+      id: "BV1eCsk6gECq",
+      url: "https://www.bilibili.com/video/BV1eCsk6gECq",
+      title: "【BilibiliToy】我给这个逆天游戏做了个奶蛙版本!",
+      author: "魔魔园", stat: "4.5万 播放",
+      heat: 45462, kind: "video",
+      pubdate: 1794938661, durationSec: 48,
+      lead: [
+        "这条真的太顶了",
+        "魔魔园 整的活，自己看吧"
+      ]
+    },
+    {
+      sender: "naiwa", platform: "bilibili", status: "ok", embed: true,
+      id: "BV1pJsQ6mEwS",
+      url: "https://www.bilibili.com/video/BV1pJsQ6mEwS",
+      title: "雷霆日本人疯狂玩中国表情包，传播奶蛙",
+      author: "吃瓜第二前沿", stat: "4.9万 播放",
+      heat: 48734, kind: "ugc",
+      pubdate: 1795016250, durationSec: 44,
+      lead: [
+        "这个必须发群里",
+        "吃瓜第二前沿 新活，「雷霆日本人疯狂玩中国表情包，传播奶蛙」"
+      ]
+    },
+    {
+      sender: "naiwa", platform: "bilibili", status: "ok", embed: true,
+      id: "BV14Q4u6CEVV",
+      url: "https://www.bilibili.com/video/BV14Q4u6CEVV",
+      title: "全网最爽奶蛙大笑",
+      author: "我枯燥了", stat: "15.3万 播放",
+      heat: 153096, kind: "video",
+      pubdate: 1793700924, durationSec: 83,
+      lead: [
+        "这个必须发群里",
+        "我枯燥了 新活，「全网最爽奶蛙大笑」"
+      ]
+    },
+    {
+      sender: "naiwa", platform: "bilibili", status: "ok", embed: true,
+      id: "BV1gQsH65EvD",
+      url: "https://www.bilibili.com/video/BV1gQsH65EvD",
+      title: "奶蛙奇遇吴家村【AI全民制作人】",
+      author: "五个油条6", stat: "14.9万 播放",
+      heat: 149233, kind: "video",
+      pubdate: 1794746873, durationSec: 139,
+      lead: [
+        "刚推到我首页的",
+        "「奶蛙奇遇吴家村【AI全民制作人】」 才发不久就 14.9万 了"
+      ]
+    },
+    {
+      sender: "naiwa", platform: "bilibili", status: "ok", embed: true,
+      id: "BV1a5sA6oEwh",
+      url: "https://www.bilibili.com/video/BV1a5sA6oEwh",
+      title: "没有非凡之爱，只有出生奶蛙",
+      author: "增殖的发呆", stat: "11.5万 播放",
+      heat: 115264, kind: "video",
+      pubdate: 1794831115, durationSec: 64,
+      lead: [
+        "刚推到我首页的",
+        "「没有非凡之爱，只有出生奶蛙」 才发不久就 11.5万 了"
+      ]
+    },
+    {
+      sender: "capybara", platform: "bilibili", status: "ok", embed: true,
+      id: "BV1D3xT6uEz3",
+      url: "https://www.bilibili.com/video/BV1D3xT6uEz3",
+      title: "卡皮巴拉，一种佛系生物#水豚#卡皮巴拉#搞笑动物解说#动物世界#可爱世界",
+      author: "吃货看世界-", stat: "1.5万 播放",
+      heat: 14788, kind: "ugc",
+      pubdate: 1793499900, durationSec: 179,
+      lead: [
+        "这条真的太顶了",
+        "吃货看世界- 整的活，自己看吧"
+      ]
+    },
+    {
+      sender: "nailong", platform: "bilibili", status: "ok", embed: true,
+      id: "BV1fHss6hEAw",
+      url: "https://www.bilibili.com/video/BV1fHss6hEAw",
+      title: "我的玩具日记！奶龙在我的房间里到处恶作剧",
+      author: "小玩子玩点啥", stat: "4.5万 播放",
+      heat: 44693, kind: "video",
+      pubdate: 1794755661, durationSec: 71,
+      lead: [
+        "刷到这个，笑到打鸣",
+        "「我的玩具日记！奶龙在我的房间里到处恶作剧」 小玩子玩点啥 的，已经 4.5万 播放了"
+      ]
+    },
+    {
+      sender: "niulai", platform: "bilibili", status: "ok", embed: true,
+      id: "BV1qFWS6fEgc",
+      url: "https://www.bilibili.com/video/BV1qFWS6fEgc",
+      title: "百兽战队 | 牙吠黑の牛来牧场III",
+      author: "YOUTHAII", stat: "3.7万 播放",
+      heat: 36665, kind: "video",
+      pubdate: 1794411446, durationSec: 79,
+      lead: [
+        "这个必须发群里",
+        "YOUTHAII 新活，「百兽战队 | 牙吠黑の牛来牧场III」"
+      ]
+    },
+    {
+      sender: "nailong", platform: "bilibili", status: "ok", embed: true,
+      id: "BV1gmTg6iEC2",
+      url: "https://www.bilibili.com/video/BV1gmTg6iEC2",
+      title: "穿越奶家村，十二星座领取你的奶家人发型胶囊",
+      author: "_AiSmR", stat: "15.1万 播放",
+      heat: 151084, kind: "video",
+      pubdate: 1782646880, durationSec: 72,
+      lead: [
+        "这个必须发群里",
+        "_AiSmR 新活，「穿越奶家村，十二星座领取你的奶家人发型胶囊」"
+      ]
+    },
+    {
+      sender: "capybara", platform: "bilibili", status: "ok", embed: true,
+      id: "BV14isn6iEbd",
+      url: "https://www.bilibili.com/video/BV14isn6iEbd",
+      title: "卡皮巴拉驱魔",
+      author: "Z贤者", stat: "15.8万 播放",
+      heat: 157539, kind: "video",
+      pubdate: 1794727646, durationSec: 591,
+      lead: [
+        "救命 又刷到一条",
+        "Z贤者：卡皮巴拉驱魔"
+      ]
+    },
+    {
+      sender: "naiwa", platform: "bilibili", status: "ok", embed: true,
+      id: "BV1oQ4M69EKj",
+      url: "https://www.bilibili.com/video/BV1oQ4M69EKj",
+      title: "奶蛙的生日（第三集）",
+      author: "肥鸡煲", stat: "13.8万 播放",
+      heat: 137915, kind: "video",
+      pubdate: 1793683588, durationSec: 447,
+      lead: [
+        "救命 又刷到一条",
+        "肥鸡煲：奶蛙的生日（第三集）"
+      ]
+    },
+    {
+      sender: "nailong", platform: "bilibili", status: "ok", embed: true,
+      id: "BV1SNsK68Esw",
+      url: "https://www.bilibili.com/video/BV1SNsK68Esw",
+      title: "我的玩具日记！错怪奶龙了，我的手机找回来了",
+      author: "小玩子玩点啥", stat: "2.5万 播放",
+      heat: 24575, kind: "video",
+      pubdate: 1794836204, durationSec: 63,
+      lead: [
+        "救命 又刷到一条",
+        "小玩子玩点啥：我的玩具日记！错怪奶龙了，我的手机找回来了"
+      ]
+    },
+    {
+      sender: "niulai", platform: "bilibili", status: "ok", embed: true,
+      id: "BV1jVYs6jEMo",
+      url: "https://www.bilibili.com/video/BV1jVYs6jEMo",
+      title: "我把【牛来！妈妈在终点】做成了闯关游戏：点击即闯！",
+      author: "十八腹肌灵缇酱", stat: "4.8万 播放",
+      heat: 48349, kind: "video",
+      pubdate: 1788928660, durationSec: 44,
+      lead: [
+        "刚推到我首页的",
+        "「我把【牛来！妈妈在终点】做成了闯关游戏：点击即闯！」 才发不久就 4.8万 了"
+      ]
+    },
+    {
+      sender: "niulai", platform: "bilibili", status: "ok", embed: true,
+      id: "BV131Wo6GEyr",
+      url: "https://www.bilibili.com/video/BV131Wo6GEyr",
+      title: "百兽战队 | 牙吠黑の牛来牧场IV",
+      author: "YOUTHAII", stat: "1.7万 播放",
+      heat: 16513, kind: "video",
+      pubdate: 1794496659, durationSec: 61,
+      lead: [
+        "有人看过这个没",
+        "「百兽战队 | 牙吠黑の牛来牧场IV」 1.7万 播放，我笑不活了"
+      ]
+    },
+    {
+      sender: "naiwa", platform: "bilibili", status: "ok", embed: true,
+      id: "BV18isV6pES2",
+      url: "https://www.bilibili.com/video/BV18isV6pES2",
+      title: "奶蛙一败涂地 蓄力跳更新 B站内联机可玩【B站AI创造公开赛】",
+      author: "蛮古月子", stat: "1.6万 播放",
+      heat: 16018, kind: "video",
+      pubdate: 1794665709, durationSec: 63,
+      lead: [
+        "救命 又刷到一条",
+        "蛮古月子：奶蛙一败涂地 蓄力跳更新 B站内联机可玩【B站AI创造公开赛】"
+      ]
+    },
+
+{
       sender: "nailong", platform: "douyin", status: "ok",
       url: "https://www.douyin.com/video/7333132668411923763",
       title: "新年到，奶龙上新才艺！给大家跳一段开运舞",
