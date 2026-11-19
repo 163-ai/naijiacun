@@ -128,14 +128,25 @@ function drawStone(g, s, r) {
 }
 
 function drawWater(g, s, r) {
-  const hue = 184 + r() * 6;
-  g.fillStyle = `hsl(${hue},${38 + r() * 8}%,${63 + r() * 3}%)`;
+  // 塘底：真正的「水」由 game2d.js 里的 3D 水面网格呈现，这张贴图只做水下的塘泥底子。
+  // 以前这里画的是青蓝色水面 —— 3D 水面再盖上去，等于底下藏了一层假水，透出来就发假。
+  // 现在改成湿润的深色泥沙，透过浅水能看见泥底，才像一汪真水。
+  const hue = 36 + r() * 10;
+  g.fillStyle = `hsl(${hue},${16 + r() * 8}%,${30 + r() * 6}%)`;
   g.fillRect(0, 0, s, s);
-  // 水下的一点点深浅，不要画弧线：弧线一格一条，拼起来像贴瓷砖
-  g.fillStyle = `hsla(${hue - 4},42%,${54 + r() * 6}%,.22)`;
-  g.beginPath();
-  g.ellipse(r() * s, r() * s, s * .4, s * .3, r() * 3, 0, 7);
-  g.fill();
+  // 泥底的深浅斑驳 + 细砂颗粒，不画任何波纹线条
+  for (let i = 0; i < 26; i++) {
+    g.fillStyle = `hsla(${hue - 6},${14 + r() * 10}%,${24 + r() * 18}%,${.16 + r() * .22})`;
+    g.beginPath();
+    g.ellipse(r() * s, r() * s, .8 + r() * 2.4, .6 + r() * 1.8, r() * 3, 0, 7);
+    g.fill();
+  }
+  for (let i = 0; i < 18; i++) {
+    g.fillStyle = `hsla(${hue + 4},${12 + r() * 8}%,${50 + r() * 20}%,${.12 + r() * .16})`;
+    g.beginPath();
+    g.arc(r() * s, r() * s, .4 + r() * .8, 0, 7);
+    g.fill();
+  }
 }
 
 function drawSand(g, s, r) {
@@ -416,14 +427,12 @@ export function paintMap(m) {
     }
   }
 
-  // 水面：整片统一画波纹，跨着格子走
-  waterDetail(g, m);
+  // 水面原有两层「画上去的」细节（波纹笔触、岸边浪花条）已删除：
+  // 现在水塘完全由 3D 水面 + 塘底 mesh 构成，贴图上不再叠加假水纹，避免双重水感。
   // 荒地里的高草：也是整片画，不按格子切
   weedDetail(g, m);
   // 边缘过渡：草地和硬地面/水交界处，让草往里吃掉一点点
   softEdges(g, m);
-  // 水岸
-  waterEdge(g, m);
   // 室内：墙根影子 + 踢脚线（外墙、隔断墙都算）
   wallEdges(g, m);
   // 家具
@@ -499,56 +508,6 @@ function softEdges(g, m) {
                     cy + jitterY + (by === 0 ? 3 : (by > PX - 4 ? -3 : (r() - .5) * 3)));
           g.stroke();
         }
-      }
-    }
-  }
-}
-
-function waterDetail(g, m) {
-  const R = rng(4711);
-  g.save();
-  g.lineCap = "round";
-  for (let tz = 0; tz < m.h; tz++) {
-    for (let tx = 0; tx < m.w; tx++) {
-      if (m.tiles[tz * m.w + tx] !== TI.WATER) continue;
-      const x = tx * PX, y = tz * PX;
-      const n = 1 + Math.floor(R() * 2);
-      for (let i = 0; i < n; i++) {
-        const sx = x - PX * .4 + R() * PX * .8;
-        const sy = y + 4 + R() * (PX - 8);
-        const len = PX * (.5 + R() * .9);
-        g.strokeStyle = `rgba(255,255,255,${.1 + R() * .16})`;
-        g.lineWidth = 1.2 + R() * 1.1;
-        g.beginPath();
-        g.moveTo(sx, sy);
-        g.quadraticCurveTo(sx + len * .5, sy - 2.2, sx + len, sy);
-        g.stroke();
-      }
-    }
-  }
-  g.restore();
-}
-
-function waterEdge(g, m) {
-  for (let tz = 0; tz < m.h; tz++) {
-    for (let tx = 0; tx < m.w; tx++) {
-      if (m.tiles[tz * m.w + tx] !== TI.WATER) continue;
-      const x = tx * PX, y = tz * PX;
-      const nb = [
-        [0, -1, 0, 0, PX, 4],
-        [0, 1, 0, PX - 4, PX, 4],
-        [-1, 0, 0, 0, 4, PX],
-        [1, 0, PX - 4, 0, 4, PX]
-      ];
-      for (const [dx, dz, bx, by, bw, bh] of nb) {
-        if (tileAt(m, tx + dx, tz + dz) === TI.WATER) continue;
-        // 贴岸的水色略深
-        g.fillStyle = "rgba(70,136,146,.34)";
-        g.fillRect(x + bx, y + by, bw, bh);
-        // 一条窄浪花
-        g.fillStyle = "rgba(255,255,255,.62)";
-        g.fillRect(x + bx + (bw < PX ? 3 : 0), y + by + (bh < PX ? 3 : 0),
-                   bw < PX ? 2.4 : bw, bh < PX ? 2.4 : bh);
       }
     }
   }
@@ -872,8 +831,14 @@ export const VILLAGE = (() => {
   const m = makeMap(88, 68, "奶家村", -44, -34);
   m.tiles.fill(TI.GRASS);
 
-  // ---- 水塘（西北）----
-  fillEll(m, 17, 31, 9.4, 6.2, TI.WATER);
+  // ---- 湖（西北）----
+  // 三个椭圆叠出来的不规则岸线：主湖 + 西湾 + 南湾。
+  // 单个大椭圆像个水盆，叠起来才有开阔水面、窄湾和伸进水里的半岛；
+  // 深度场（makeWaterBasin 的 BFS 距离）也会跟着分出浅滩 / 缓坡 / 深水三层。
+  // 特意避开西口土路（tz14 横路 + tx14 竖路）：那条路正好成了湖东岸的小径。
+  fillEll(m, 14, 32, 10.5, 9.0, TI.WATER);     // 主湖：湖心最深，能游
+  fillEll(m, 7.5, 25, 5.0, 7.0, TI.WATER);     // 西湾：窄而浅，往北伸到土路西侧
+  fillEll(m, 20, 40, 6.0, 4.0, TI.WATER);      // 南湾：贴着农田北头，岸边能蹚
 
   // ---- 广场与路 ----
   fillEll(m, 44, 34, 8.5, 6.5, TI.STONE);
@@ -991,7 +956,9 @@ export const VILLAGE = (() => {
   mark(m, 45, 36, { kind: "well", label: "打水" });
   mark(m, 46, 37, { kind: "well", label: "打水" });
 
-  // ---- 水塘里不能走 ----
+  // ---- 水面在碰撞表里留 solid：让「别摆在路上/水上」的生成逻辑（草丛、石头、刷怪点）
+  //      自动避开水面。玩家自己进不进得去由 game2d.js 的 isSolid 决定（浅水蹚、深水游），
+  //      这里的 solid 只是给摆放用的「不可占用」标记，不是墙。
   for (let i = 0; i < m.tiles.length; i++) if (m.tiles[i] === TI.WATER) m.solid[i] = 1;
 
   // ---- 边界 ----
@@ -1098,7 +1065,9 @@ export const TOWN = (() => {
     }
   }
 
-  // ---- 水面不能走 ----
+  // ---- 水面在碰撞表里留 solid：让「别摆在路上/水上」的生成逻辑（草丛、石头、刷怪点）
+  //      自动避开水面。玩家自己进不进得去由 game2d.js 的 isSolid 决定（浅水蹚、深水游），
+  //      这里的 solid 只是给摆放用的「不可占用」标记，不是墙。
   for (let i = 0; i < m.tiles.length; i++) if (m.tiles[i] === TI.WATER) m.solid[i] = 1;
 
   // ---- 边界 ----
@@ -1150,7 +1119,9 @@ export const GROVE = (() => {
   // ---- 招牌 ----
   mark(m, 57, 35, { kind: "sign", text: "竹林水塘　·　竹笋掐了能换钱，水边地滑当心" });
 
-  // ---- 水面不能走 ----
+  // ---- 水面在碰撞表里留 solid：让「别摆在路上/水上」的生成逻辑（草丛、石头、刷怪点）
+  //      自动避开水面。玩家自己进不进得去由 game2d.js 的 isSolid 决定（浅水蹚、深水游），
+  //      这里的 solid 只是给摆放用的「不可占用」标记，不是墙。
   for (let i = 0; i < m.tiles.length; i++) if (m.tiles[i] === TI.WATER) m.solid[i] = 1;
 
   // ---- 边界 ----

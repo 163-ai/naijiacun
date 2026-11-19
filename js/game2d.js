@@ -12,10 +12,10 @@ import { Fight } from "./kof.js?v=60";
 import {
   TS, TI, VILLAGE, TOWN, GROVE, HILL, TOWN_LOTS, TOWN_STALLS, HOUSE, SHOP, STATION, ARCHIVE, MAPS,
   tileAt, setSolid, solidAt, markAt, mapTexture, toTile, toWorld
-} from "./tiles.js?v=6";
+} from "./tiles.js?v=9";
 import { Farm, CROPS, PLOT } from "./farm.js?v=2";
 import { portrait, moodFilter, speakerKey, PLAYER_KEY } from "./portraits.js?v=57";
-import { NPCS, DESK_OFFICER, bountyOf } from "./villagers.js?v=2";
+import { NPCS, DESK_OFFICER, bountyOf } from "./villagers.js?v=4";
 import { Gomoku } from "./gomoku.js";
 
 const $ = s => document.querySelector(s);
@@ -177,7 +177,8 @@ const effectiveMaxHp = () => state.maxHp + gearBonus("armor");
 const SPAWN = { x: .5, z: 27 };
 // jumpY：脚离地高度；vy：竖直速度。落地由重力积分 + 地形面判定，不用定时器。
 let player = { x: SPAWN.x, z: SPAWN.z, heading: Math.PI, moving: false, run: false, phase: 0, ready: false,
-  jumpY: 0, vy: 0, jumping: false };
+  jumpY: 0, vy: 0, jumping: false,
+  inWater: false, swimming: false };   // 踩在水里 / 水够深浮起来游
 
 let loadDone = false;   // 读档阶段结束之前，禁止任何启动期 save() 覆盖已有存档
 let _saveFailWarned = false;  // 存档失败提示只弹一次
@@ -731,7 +732,7 @@ function groundAtBuild(x, z) {
 /* 水塘碗形深度场：给每个「格点」算到最近陆地的距离（BFS）。
    地形顶点都落在整数格点上，用这个场下沉，水心最深、岸线为 0，天然连续不裂缝。
    返回 { at(tx,tz) -> 0..1 的下沉系数 }，非水图直接返回全 0。 */
-const POND_DEPTH = .55;   // 塘心相对岸线最多下沉多少（世界单位）
+const POND_DEPTH = 1.5;   // 塘心相对岸线最多下沉多少（世界单位）——够深才浮得起来、游得动
 function makeWaterBasin(map) {
   const W = map.w, H = map.h;
   const isW = (tx, tz) => tx >= 0 && tz >= 0 && tx < W && tz < H && tileAt(map, tx, tz) === TI.WATER;
@@ -749,6 +750,27 @@ function makeWaterBasin(map) {
       if (isW(nx, nz) && !dist.has(k)) { dist.set(k, d + 1); q.push([nx, nz]); }
     }
   }
+  // 陆地到水的外圈距离（最多 3 格）：用来在岸外做一圈缓坡。
+  // 否则岸线格点是 0、岸外一格就是起伏值，会突兀地竖起一道 1 格宽的「断崖」，
+  // 水面贴上去就像插在草里的一张纸。
+  const ld = new Map(), lq = [];
+  const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  for (let tz = 0; tz < H; tz++) for (let tx = 0; tx < W; tx++) {
+    if (isW(tx, tz)) continue;
+    let near = false;
+    for (const [dx, dz] of DIRS) if (isW(tx + dx, tz + dz)) { near = true; break; }
+    if (near) { ld.set(tx + ',' + tz, 0); lq.push([tx, tz]); }
+  }
+  for (let hd = 0; hd < lq.length; hd++) {
+    const [tx, tz] = lq[hd], d = ld.get(tx + ',' + tz);
+    if (d >= 3) continue;
+    for (const [dx, dz] of DIRS) {
+      const nx = tx + dx, nz = tz + dz, k = nx + ',' + nz;
+      if (nx < 0 || nz < 0 || nx >= W || nz >= H) continue;
+      if (isW(nx, nz) || ld.has(k)) continue;
+      ld.set(k, d + 1); lq.push([nx, nz]);
+    }
+  }
   const maxD = Math.max(1, ...dist.values());
   // 格点 (gx,gz) 被四周最多 4 个水格包围，取这些水格深度的最大归一化值。
   // 岸边格点（周围只有 1 个水格）深度≈0，与陆地齐平 → 岸线不出现台阶。
@@ -760,14 +782,18 @@ function makeWaterBasin(map) {
     }
     return best;
   }
-  return { at, maxD, hasWater: dist.size > 0 };
+  function landAt(gx, gz) { return ld.get(gx + ',' + gz); }
+  return { at, landAt, maxD, hasWater: dist.size > 0 };
 }
 function makeHeightFn(map, seed) {
   const s = seed || 0;
-  // 野外（草坡/竹林）起伏大，才不像一张纸；村镇房子多，压小免得穿模
+  // 野外（草坡/竹林）起伏大，才不像一张纸；村镇房子多，压小免得穿模。
+  // 村/镇再压一档：房屋、桌椅、路灯虽然都会贴地，但坡一陡，墙脚和台阶就容易露缝。
   const wild = map.name === "南高草坡" || map.name === "竹林水塘";
-  const amp = wild ? 1.85 : (map.name === "奶家镇" ? .5 : .72);
+  const amp = wild ? 1.85 : (map.name === "奶家镇" ? .38 : .5);
   const basin = makeWaterBasin(map);
+  // 挂到地图上：游泳要按「这一处水有多深」判断浮不浮得起来，不能靠贴图或碰撞猜
+  map.__basin = basin;
   // 原始起伏（不含拼缝混合）。先给每张户外图都算好，邻图才拿得到。
   const raw = function (x, z) {
     const tx = x - map.ox, tz = z - map.oz;
@@ -780,11 +806,17 @@ function makeHeightFn(map, seed) {
     // 水塘：真实挖一个碗。地形顶点落在该处的水域深度场里，越靠塘心越低；
     // 岸边（深度≈0）保留原地形高度并把它压平到 0 附近，和水面齐平，不露台阶。
     if (basin.hasWater) {
-      const dep = basin.at(Math.round(tx), Math.round(tz));
+      const gx = Math.round(tx), gz = Math.round(tz);
+      const dep = basin.at(gx, gz);
       if (dep > 0) {
-        const shoreH = 0;                       // 岸线基准：与水面下沿齐平
-        return shoreH - dep * POND_DEPTH;       // 岸 0 → 塘心 -POND_DEPTH
+        // 岸线基准比水面再低 2cm：水面会「漫」过岸沿一点点，
+        // 从低角度看就不会露出塘底那条褐色缝，水岸像是自然浸润的。
+        const shoreH = -.08;
+        return shoreH - dep * POND_DEPTH;       // 岸 -0.08 → 塘心 -POND_DEPTH
       }
+      // 岸外 3 格缓坡：越靠水越贴近岸线基准，池塘周围是缓滩而不是断崖
+      const lsv = basin.landAt(gx, gz);
+      if (lsv != null && lsv <= 3) h = lerp(h, -.08, (3 - lsv) / 3 * .9);
     }
     if (t === TI.WATER) return 0;
     // 村中心广场（锚点一带）压成平台，房子/摊位落脚也稳
@@ -839,7 +871,25 @@ function makeHeightFn(map, seed) {
 // 水底由 makeWaterBasin 挖到 -POND_DEPTH，二者之间就是真实水深。
 const WATER_LEVEL = -.06;
 const waterSurfaces = [];
+const _sunDirTmp = new T.Vector3();   // 水面高光用的太阳方向临时量，避免每帧 new
 let waterRipple = null;
+
+// 游泳：水够深就把人托到水面，浅水还是站在塘底蹚过去。
+// 阈值按世界单位（1 单位 ≈ 1 米）算，和塘底挖多深直接对应。
+const SWIM_DEPTH = .75;   // 水深超过这个就浮起来
+const SWIM_SINK = .60;    // 游泳时身体没入水面多深（只露头肩）
+/* 当前位置的水况；返回 null 表示没在水里。
+   depth 是 0~1 的归一化深度（给水面调色用），phys 是真实水深（世界单位），
+   swim 决定这个人该站着蹚水还是浮起来游。 */
+function waterInfoAt(x, z) {
+  const m = activeMap;
+  if (!m || m.indoor || !m.__basin || !m.__basin.hasWater) return null;
+  const tx = Math.floor(x - m.ox), tz = Math.floor(z - m.oz);
+  if (tileAt(m, tx, tz) !== TI.WATER) return null;
+  const dep = m.__basin.at(Math.round(x - m.ox), Math.round(z - m.oz));
+  const phys = Math.max(0, WATER_LEVEL - surfaceY(m, x, z));
+  return { depth: dep, phys, swim: phys > SWIM_DEPTH };
+}
 
 function buildWaterSurface(map, group) {
   if (map.indoor) return;
@@ -946,82 +996,164 @@ function buildWaterSurface(map, group) {
   geo.computeVertexNormals();
 
   // 沙石水底 mesh：真实水塘该看到的是水底泥沙，而不是「一层画着水波的贴图」。
-  // 用顶点色做深浅斑驳，越靠塘心越暗（水越深），岸边偏浅沙色。
+  // 用顶点色做深浅斑驳，越靠塘心越暗（水越深）。
+  // 岸边不再用发白的浅沙色 —— 那会从水面边缘透出来，看着像一圈白沙滩；改成湿润的塘泥。
   const bedGeo = new T.BufferGeometry();
   bedGeo.setAttribute("position", new T.Float32BufferAttribute(bedPos, 3));
   bedGeo.setIndex(bedIdx);
   const bedCol = [];
   for (let i = 0; i < bedPos.length; i += 3) {
     const d = dep[i / 3] || 0;
-    const sand = new T.Color().setHSL(.11 - d * .02, .28 - d * .06, .52 - d * .24);
+    const sand = new T.Color().setHSL(.08 - d * .01, .32 - d * .06, .26 - d * .10);
     bedCol.push(sand.r, sand.g, sand.b);
   }
   bedGeo.setAttribute("color", new T.Float32BufferAttribute(bedCol, 3));
   bedGeo.computeVertexNormals();
-  const bedMat = new T.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0, flatShading: true, side: T.DoubleSide });
+  // 关掉 flatShading：水底是按格点铺三角面的，平面着色会让每个三角面各算一个法线，
+  // 俯视时整圈浅滩透出来就是一片斜方格。用顶点法线后水底是连续过渡的。
+  const bedMat = new T.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0, flatShading: false, side: T.DoubleSide });
   const bedMesh = new T.Mesh(bedGeo, bedMat);
+  bedMesh.name = "pondBed";
   bedMesh.frustumCulled = false;
+  // 水底接收岸边树/水车投下的阴影：透过清水能看到水底的影子，水才「沉」下去
+  bedMesh.receiveShadow = true;
   group.add(bedMesh);
 
   const mat = new T.ShaderMaterial({
-    uniforms: { uTime: { value: 0 } },
+    uniforms: {
+      uTime: { value: 0 },
+      uSunDir: { value: new T.Vector3(12, 20, 8).normalize() },
+      uSunColor: { value: new T.Color(0xffe9c8) },
+      uSunI: { value: 2.3 },
+      uSkyColor: { value: new T.Color(0xbcd8ea) },
+      uNight: { value: 0 },
+      // 2D 俯视时把波幅压到 20%：俯视看下去两组正交正弦会显出规则棋盘纹，
+      // 一圈「蕾丝边」似的碎格贴着岸，压平之后就是一片干净的水面
+      uFlat: { value: 0 }
+    },
     transparent: true, depthWrite: false, side: T.DoubleSide,
     vertexShader: `
       uniform float uTime;
+      uniform float uFlat;
       attribute float aDepth;
-      varying float vDepth; varying vec3 vP;
+      varying float vDepth; varying vec3 vWorld; varying vec3 vNormalW;
       void main(){
         vec3 p = position;
-        // 波幅随深度变化：岸边几乎不起伏（不漏缝），水心才荡起来
-        float amp = .03 * (.3 + .7 * aDepth);
-        p.y += (sin(p.x * 1.9 + uTime * 1.5) + sin(p.z * 2.3 - uTime * 1.1)) * amp;
-        vP = p; vDepth = aDepth;
+        // 波幅随深度变化：岸边几乎不起伏（不漏缝），水心才荡起来。
+        // 俯视（2D）再压一档，避免正交波纹变成棋盘格。
+        float amp = .045 * (.24 + .76 * aDepth) * (1.0 - uFlat * .8);
+        // 三组不同方向 / 速度的波叠在一起，避免规则平行的水纹
+        float w1 = sin(p.x * 1.7 + uTime * 1.35);
+        float w2 = sin(p.z * 2.1 - uTime * 1.05);
+        float w3 = sin((p.x * .8 + p.z * 1.3) * 2.9 + uTime * 1.9) * .5;
+        p.y += (w1 + w2 + w3) * amp;
+        // 用波形的偏导近似水面法线；放大一点，高光才有形状
+        float dx = (cos(p.x * 1.7 + uTime * 1.35) * 1.7
+                  + cos((p.x * .8 + p.z * 1.3) * 2.9 + uTime * 1.9) * 2.9 * .8 * .5) * amp * 2.4;
+        float dz = (cos(p.z * 2.1 - uTime * 1.05) * 2.1
+                  + cos((p.x * .8 + p.z * 1.3) * 2.9 + uTime * 1.9) * 2.9 * 1.3 * .5) * amp * 2.4;
+        vNormalW = normalize(vec3(-dx, 1.0, -dz));
+        vWorld = p; vDepth = aDepth;
         gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
       }`,
     fragmentShader: `
       uniform float uTime;
-      varying float vDepth; varying vec3 vP;
+      uniform vec3 uSunDir;
+      uniform vec3 uSunColor;
+      uniform float uSunI;
+      uniform vec3 uSkyColor;
+      uniform float uNight;
+      varying float vDepth; varying vec3 vWorld; varying vec3 vNormalW;
       void main(){
-        vec3 shallow = vec3(.42, .70, .66);
-        vec3 deep    = vec3(.07, .28, .46);
-        vec3 col = mix(shallow, deep, smoothstep(.0, .8, vDepth));
-        // 高频细碎闪光：两个频率叠起来打散规则感，只留零星亮点
-        float sp = sin(vP.x * 6.1 + uTime * 1.7) * sin(vP.z * 5.3 - uTime * 1.3)
-                 + .6 * sin(vP.x * 11.7 - vP.z * 8.9 + uTime * 2.1);
-        col += vec3(.9, .95, .9) * smoothstep(1.34, 1.56, sp) * .22;
-        // 浅处透明、能看清沙底；深处才逐渐不透，露出水的蓝。这样才是「一汪水」而不是「一张贴纸」。
-        float alpha = mix(.22, .88, smoothstep(.0, .85, vDepth));
+        vec3 N = normalize(vNormalW);
+        vec3 V = normalize(cameraPosition - vWorld);
+        float NdV = clamp(dot(N, V), 0.0, 1.0);
+
+        // 水体本色分三段：浅滩翠绿 → 中层青蓝 → 湖心深蓝黑。
+        // 两段插值看起来永远是「一种水」的深浅变化，三段才有真正的水下纵深。
+        vec3 shallow = vec3(.46, .77, .64);
+        vec3 mid     = vec3(.13, .45, .53);
+        vec3 deep    = vec3(.022, .12, .27);
+        vec3 body = mix(shallow, mid, smoothstep(.03, .38, vDepth));
+        body = mix(body, deep, smoothstep(.34, .92, vDepth));
+
+        // 菲涅尔：视线越掠射，水面越像镜子，映出天空
+        float fres = pow(1.0 - NdV, 5.0);
+        vec3 sky = uSkyColor * (1.0 - uNight * .8);
+        vec3 col = mix(body, sky, fres * .52);
+
+        // 太阳高光：窄峰 + 一层很宽的水面光泽。
+        // 逆光时半程向量 H 几乎正对法线，整片水面都会命中宽光泽那一项，
+        // 乘上 uSunI 直接冲成一片死白 —— 所以峰值收窄、宽光泽砍到 1/3，并给 spec 兜底上限。
+        vec3 L = normalize(uSunDir);
+        vec3 H = normalize(L + V);
+        float nh = max(dot(N, H), 0.0);
+        float spec = pow(nh, 160.0) * 1.10 + pow(nh, 22.0) * .05;
+        spec = min(spec, 1.0);
+        col += uSunColor * spec * (.55 + uSunI * .22);
+
+        // 高频细碎闪光：原来阈值太松，两个正弦的等值线在斜视时被拉成一条条白色短横线，
+        // 俯视像水面浮渣。现在只留极窄的峰值（零星亮点），且浅滩不闪。
+        float sp = sin(vWorld.x * 6.1 + uTime * 1.7) * sin(vWorld.z * 5.3 - uTime * 1.3)
+                 + .6 * sin(vWorld.x * 11.7 - vWorld.z * 8.9 + uTime * 2.1);
+        float spark = smoothstep(1.48, 1.585, sp) * smoothstep(.12, .45, vDepth);
+        col += vec3(.9, .95, .9) * spark * .07 * (.35 + uSunI * .35);
+
+        // 极浅处把水色混向岸边的草色：水陆交界是渐变，不是一条硬切线
+        col = mix(vec3(.60, .70, .47) * (1.0 - uNight * .68), col, smoothstep(.0, .15, vDepth));
+
+        // 岸边泡沫：只在最外缘一条窄带里零星冒白，不铺满整个浅滩。
+        // 原来两组正交正弦直接乘，俯视正交看下去就是一张整齐的斜方格网；
+        // 这里换成三组不同角度 / 不同频率的波叠起来，等值线散开成碎浪。
+        float band = smoothstep(.16, .07, vDepth) * smoothstep(.02, .07, vDepth);
+        float fn = sin(vWorld.x * 8.2 + uTime * 1.9) * sin(vWorld.z * 6.8 - uTime * 1.5)
+                 + .62 * sin((vWorld.x * .8 + vWorld.z * 1.15) * 11.5 + uTime * 2.6)
+                 + .34 * sin((vWorld.x * 1.3 - vWorld.z * .75) * 7.2 - uTime * 1.1);
+        float foam = band * smoothstep(.56, .94, fn * .5 + .5);
+        // 夜里泡沫要跟着暗下去，否则岸边会亮成一圈发光的白带
+        col = mix(col, vec3(.94, .97, .95) * (1.0 - uNight * .72), foam * .20);
+
+        // 水体本色也要跟着夜色沉下去：原来只压了岸边和天空倒影，
+        // 入夜后草坡房子都黑了，水心还亮着一块蓝，像自己会发光。
+        col *= (1.0 - uNight * .48);
+
+        // 浅处略透、能看到泥底；水心几乎不透，露出水的蓝。
+        // 岸边保持一定不透明度，避免把水下沙床整片露出来变成「白沙滩」。
+        float alpha = mix(.72, .94, smoothstep(.02, .70, vDepth));
+        // 最外缘化开：水面不是被格子线切出来的硬边，而是渐渐渗进岸边深色塘泥里
+        alpha *= smoothstep(.004, .07, vDepth);
+        alpha = clamp(alpha + foam * .16 + fres * .06, 0.0, .95);
         gl_FragColor = vec4(col, alpha);
       }`
   });
   const mesh = new T.Mesh(geo, mat);
+  mesh.name = "pondWater";
   mesh.frustumCulled = false;
   group.add(mesh);
   waterSurfaces.push(mat);
 }
 
-// 涉水时脚下一圈涟漪，随时间轻轻放大、忽明忽暗
+// 涉水/游泳时脚下一圈涟漪，随时间轻轻放大、忽明忽暗
 function updateWaterRipple(t) {
   const m = activeMap;
-  let shallow = false;
-  if (m && m.__shallow) {
-    const cx = Math.floor(player.x - m.ox), cz = Math.floor(player.z - m.oz);
-    shallow = m.__shallow.has(cx + "," + cz);
-  }
-  if (!shallow) { if (waterRipple) waterRipple.visible = false; return; }
+  if (!m || !player.inWater) { if (waterRipple) waterRipple.visible = false; return; }
   if (!waterRipple) {
-    waterRipple = new T.Mesh(new T.RingGeometry(.26, .4, 24),
-      new T.MeshBasicMaterial({ color: 0xe6fbf4, transparent: true, opacity: .5,
+    // 细一点的环：原来是 .26~.4 的粗环，放大以后像脚下一块灰白圆盘
+    waterRipple = new T.Mesh(new T.RingGeometry(.34, .45, 30),
+      new T.MeshBasicMaterial({ color: 0xeafdf7, transparent: true, opacity: .34,
         side: T.DoubleSide, depthWrite: false }));
     waterRipple.rotation.x = -Math.PI / 2;
     waterRipple.renderOrder = 3;
     scene.add(waterRipple);
   }
   waterRipple.visible = true;
-  const sc = 1 + Math.sin(t * 4) * .18;
+  // 游起来水花更大；站着不动就只留一圈慢慢扩散的细纹
+  const big = (player.swimming ? 1.5 : 1) * (player.moving ? 1.1 : .82);
+  const sc = (1 + Math.sin(t * 4) * .18) * big;
   waterRipple.scale.set(sc, sc, 1);
-  waterRipple.material.opacity = .38 + Math.sin(t * 4) * .12;
-  waterRipple.position.set(visX(), surfaceY(m, player.x, player.z) + WATER_LEVEL + .015, visZ());
+  waterRipple.material.opacity = (.24 + Math.sin(t * 4) * .1) * (player.swimming ? 1.1 : 1);
+  // 涟漪贴在水面上，不能沉到塘底 —— 塘挖深了以后这一点尤其明显
+  waterRipple.position.set(visX(), WATER_LEVEL + .015, visZ());
 }
 
 /* 程序化细节法线贴图：用一张可平铺的灰度高度场经 Sobel 派生法线，
@@ -2354,6 +2486,24 @@ function freeSpot(x, z, m = .7) {
   return true;
 }
 
+/* 湖挖深以后，个别原本长在岸上的小摆件会整体沉到水面以下 —— 从岸上看就是
+   「水里露出半个脑袋」，很怪。这里把「脚在水格、整体已在水面以下」的组收起来。
+   水面 / 沙床 / 水车 / 栈桥都挂在别的组上，且 y 在水面附近，不会被误伤。 */
+function hideSubmergedProps() {
+  const m = VILLAGE;
+  scene.children.forEach(top => {
+    if (!top || !top.isGroup || top.name === "ambientLife") return;
+    top.traverse(o => {
+      if (!o.isGroup || !o.position) return;
+      if (o.position.y > -.5) return;               // 只处理沉在水下的
+      const t = toTile(m, o.position.x, o.position.z);
+      if (t.tx < 0 || t.tz < 0 || t.tx >= m.w || t.tz >= m.h) return;
+      if (tileAt(m, t.tx, t.tz) !== TI.WATER) return;
+      o.visible = false;
+    });
+  });
+}
+
 function buildProps() {
   const r = mulberry(99);
 
@@ -2477,13 +2627,15 @@ function buildProps() {
 
   // 广场不放牌子：人一开局就站在那儿，脚底下压着字反而挡路
   addPlaceLabel(14.5, 10.9, "棋爷的公园", 2.9);
-  addPlaceLabel(-27.4, 4.6, "水塘", 2.0);
+  // 湖边字牌挪到东岸干地：原先那块位置（-27.4, 4.6）现在已经是湖心了
+  addPlaceLabel(-19.0, 3.0, "水塘", 2.2);
   addPlaceLabel(-25.4, 21.6, "我的地", 2.2);
   addPlaceLabel(24, 21.4, "花田", 2.0);
   addPlaceLabel(3.0, -16.6, "村北树林", 2.6);
 
   // ---- 国风装饰（竹林 / 红灯笼），最后加，不影响上面的占地判断 ----
   buildGuofengDecor();
+
   // 树和国风竹丛从此刻起不再单独绘制：几千个小 mesh 合成几十张网格
   batchStatic(treeGroup);
   batchStatic(guofengGroup);
@@ -3534,8 +3686,10 @@ function isSolid(cx, cz) {
     const vz = MAP.oz + cz + .5 + off.z;
     if (inPortalBand(vx, vz)) return false;
   }
-  // 塘边一圈是浅水，可以涉进去；深水仍然是走不进去的
-  if (!MAP.indoor && MAP.__shallow && MAP.__shallow.has(cx + "," + cz)) return false;
+  // 水面一律对人放行：浅水蹚过去，深水自动浮起来游（见 waterInfoAt）。
+  // 注意 solid 里仍然记着水格 —— 那是给「草丛/石头/刷怪点别落在水上」的摆放逻辑用的，
+  // 不是墙；所以这里必须在 solidAt 之前把水挑出来放行。
+  if (!MAP.indoor && tileAt(MAP, cx, cz) === TI.WATER) return false;
   return solidAt(MAP, cx, cz);
 }
 
@@ -3804,6 +3958,13 @@ function update(dt) {
     return;
   }
 
+  // 这一帧踩在水里没有：决定走速；顺手把「从岸上跳进水里」的抛物线收掉，
+  // 不然人会带着跳跃动量砸进塘底再弹回来。
+  const wetNow = waterInfoAt(player.x, player.z);
+  player.inWater = !!wetNow;
+  player.swimming = !!(wetNow && wetNow.swim);
+  if (player.inWater && player.jumping) { player.jumping = false; player.jumpY = 0; player.vy = 0; }
+
   let ix = 0, iz = 0;
   if (keys.camL) {
     TP.yaw += dt * 1.9; moveSig = -1; camFollowPause = 2.2;  // 手动转镜头：暂停自动跟随
@@ -3845,7 +4006,8 @@ function update(dt) {
       TP.yaw += diff * Math.min(1, dt * 2.4);
     }
 
-    const sp = (player.run ? 7.6 : 4.6) * dt;
+    // 水里划水比走路慢一截；游泳时也别指望狂奔
+    const sp = (player.run && !player.inWater ? 7.6 : 4.6) * dt * (player.inWater ? .55 : 1);
     let moved = 0;
     const nx = player.x + dx * sp;
     const nz = player.z + dz * sp;
@@ -3894,7 +4056,13 @@ function update(dt) {
   // 跳跃物理：重力积分，落地时 jumpY 归零。空中照样能水平移动（上面已算）。
   if (!sleepPose.on) updateJump(dt);
   const groundY = terrainY(player.x, player.z);
-  const footY = groundY + player.jumpY;
+  // 水里不是踩在塘底：浅水照旧站着蹚，深水被水托到「水面往下 SWIM_SINK」处。
+  // 用 max 而不是直接赋值 —— 从深水走上浅滩时高度连续，不会一跳一沉。
+  const wi = waterInfoAt(player.x, player.z);
+  player.inWater = !!wi;
+  player.swimming = !!(wi && wi.swim);
+  const floatY = WATER_LEVEL - SWIM_SINK;
+  const footY = player.inWater ? Math.max(groundY, floatY) : groundY + player.jumpY;
   playerObj.position.set(visX(), sleepPose.on ? playerObj.position.y : footY, visZ());
   // 接触阴影：贴地面（用 groundY，不随跳跃升高），跳起时缩小变淡，躺下藏起来
   playerShadow.position.set(visX(), groundY + .026, visZ());
@@ -3933,6 +4101,16 @@ function update(dt) {
     const anim = pActor && pActor.userData.anim;
     if (anim) anim.update("wave", { t });
     playerObj.position.y = footY + Math.sin(t * 6) * .02;
+  } else if (player.inWater && player.swimming && !playerObj.userData.isBillboard) {
+    // 游泳：身子被水托着，划水借用慢速走路的摆臂，再叠一点随波起伏。
+    // 水面会没到胸口，玩家只看得到头和肩在动，不做新骨骼动作也够自然。
+    const t = performance.now() / 1000;
+    const pActor = playerObj.children[0];
+    const anim = pActor && pActor.userData.anim;
+    if (anim) anim.update(player.moving ? "walk" : "idle", { t, phase: player.phase });
+    playerObj.position.y = footY + Math.sin(t * 2.1) * .03
+      + (player.moving ? Math.abs(Math.sin(player.phase * .6)) * .035 : 0);
+    playerObj.rotation.z = Math.sin(t * 1.7) * .05;   // 水推着人轻轻侧摇
   } else if (!playerObj.userData.isBillboard) {
     const t = performance.now() / 1000;
     const pActor = playerObj.children[0];
@@ -4047,7 +4225,9 @@ function areaName() {
   if (nearFarm(x, z, 3)) return "我的地";
   if (Math.hypot(x - 14.5, z - 8) < 5.6) return "棋爷的公园";
   if (Math.hypot(x, z) < 9) return "奶家村广场";
-  if (Math.hypot(x + 26.5, z + 2.5) < 12) return "水塘边";
+  // 湖扩了，地名判定跟着换成贴住湖形（连岸边一圈）的椭圆：
+  // 站在湖心或湖岸上都算「水塘边」，不再是「中央草坡」
+  if (Math.hypot((x + 30) / 15, (z + 3.5) / 16) < 1) return "水塘边";
   if (x > 18 && z > 20) return "东边花田";
   if (z < -10) return "村北树林";
   if (z > 20) return "村口南坡";
@@ -4915,8 +5095,8 @@ function npcUpdate(dt) {
       } else {
         const sp = (def.speed || 1.4) * dt;
         const nx = n.x + dx / len * sp, nz = n.z + dz / len * sp;
-        if (!blocked(nx, n.z, .3)) n.x = nx;
-        if (!blocked(n.x, nz, .3)) n.z = nz;
+        if (!blocked(nx, n.z, .3) && !waterInfoAt(nx, n.z)) n.x = nx;
+        if (!blocked(n.x, nz, .3) && !waterInfoAt(n.x, nz)) n.z = nz;
         n.obj.rotation.y = Math.atan2(dx, dz);
         n.walking = true;
       }
@@ -4932,8 +5112,8 @@ function npcUpdate(dt) {
       if (len > .16) {
         const sp = .85 * dt;
         const nx = n.x + dx / len * sp, nz = n.z + dz / len * sp;
-        if (!blocked(nx, n.z, .28)) n.x = nx;
-        if (!blocked(n.x, nz, .28)) n.z = nz;
+        if (!blocked(nx, n.z, .28) && !waterInfoAt(nx, n.z)) n.x = nx;
+        if (!blocked(n.x, nz, .28) && !waterInfoAt(n.x, nz)) n.z = nz;
         n.obj.rotation.y = Math.atan2(dx, dz);
         n.walking = true;
       }
@@ -5455,6 +5635,8 @@ const JUMP_V0 = 6.4, GRAVITY = 17.5;
 function jump() {
   if (!state.started || dlg.open || Fight.on || overlayOpen() || sleepPose.on) return false;
   if (player.jumping || fishing.on || stageGame.on) return false;
+  // 在水里蹬不了地
+  if (player.inWater) return false;
   player.jumping = true;
   player.vy = JUMP_V0;
   player.jumpY = 0;
@@ -6981,7 +7163,9 @@ function buildWaterWheel(grp) {
   g.position.set(x, 0, z);            // 全部零件用世界高度，不再被单点地面高度整体抬升
   const woodM = ambWood(0x8a6238), darkM = ambWood(0x5e4226);
   const R = 1.45, halfW = .36;
-  const axleY = WATER_LEVEL + R - .04; // 轮圈最低点 = WATER_LEVEL - 0.04，浅浅入水不碰沙床
+  // 湖挖深以后轮子不能还贴在水面上「浮着」——让它下缘没入水中约 0.3，
+  // 看着才像被水推着转的水车；塘底在 -1.58，远低于此，不会插进沙床。
+  const axleY = WATER_LEVEL + R * .78;
   // 轮体单独装组（绕 x 轴转），支架不动
   const rotor = new T.Group();
   rotor.position.y = axleY;
@@ -7020,6 +7204,18 @@ function buildWaterWheel(grp) {
   hub.rotation.z = Math.PI / 2;
   const axle = put(new T.Mesh(new T.CylinderGeometry(.07, .07, halfW * 2 + 1.0, 6), darkM), true);
   axle.rotation.z = Math.PI / 2;
+  // 露出水面的立柱：湖挖到 -1.5 以后，原来的 A 形架整个沉在水下，
+  // 站在岸边只看得见水上那半圈轮子，像个浮着的木环。这里在轮子两侧各立一根
+  // 从水里长出来的柱子把轴托住，水车才「立」得住。
+  [-1, 1].forEach(sx => {
+    const topY = axleY + .04, botY = -.75;
+    const post = put(new T.Mesh(new T.CylinderGeometry(.085, .105, topY - botY, 6), darkM), false);
+    post.position.set(sx * (halfW + .36), (topY + botY) / 2, 0);
+    post.castShadow = true;
+    // 柱顶到轮轴的短横撑，看着才不是两根光杆
+    const arm = put(new T.Mesh(new T.BoxGeometry(.42, .085, .085), woodM), false);
+    arm.position.set(sx * (halfW + .18), topY - .05, 0);
+  });
   // 两副 A 形架：顶点在轮轴，四只脚都落在岸上（+Z 方向），不站在水里
   [-.55, .55].forEach(sx => {
     const top = at(x + sx, axleY, z);
@@ -7307,7 +7503,22 @@ function loop() {
   updateOcclusion(dt);          // 挡住角色的物体渐隐 / 走过后恢复
   animateAnchors(dt);
   const wt = performance.now() / 1000;
-  for (const wm of waterSurfaces) wm.uniforms.uTime.value = wt;
+  // 水面反射/高光跟随太阳与昼夜：太阳方向、颜色、强度、天空色每帧同步
+  const sunDir = _sunDirTmp.copy(sun.position).sub(sun.target.position).normalize();
+  const wNight = 1 - Math.min(1, sun.intensity / 1.2);
+  const wSky = scene.fog && scene.fog.color ? scene.fog.color : null;
+  for (const wm of waterSurfaces) {
+    const u = wm.uniforms;
+    u.uTime.value = wt;
+    if (u.uSunDir) {
+      u.uSunDir.value.copy(sunDir);
+      u.uSunColor.value.copy(sun.color);
+      u.uSunI.value = sun.intensity;
+      u.uNight.value = wNight;
+      if (u.uFlat) u.uFlat.value = state.viewMode === "2d" ? 1 : 0;
+      if (wSky) u.uSkyColor.value.copy(wSky);
+    }
+  }
   updateWaterRipple(wt);
   tickAmbient(dt, wt);
   radarAcc += dt;
@@ -7406,6 +7617,7 @@ async function boot() {
     pm("boot:style");
     await bootNote("正在搭村子 85%");
     buildAmbientLife();   // v86：水车 / 栈桥 / 蝴蝶 / 萤火虫 / 飞鸟 / 炊烟（要贴已建好的地形）
+    hideSubmergedProps(); // 收掉沉到新湖面以下的零星摆件（水车/栈桥在水面上，不受影响）
     pm("boot:ambient");
   } catch (e) { console.error("[game] 场景搭建出错", e); }
   await bootNote("加载角色…");
