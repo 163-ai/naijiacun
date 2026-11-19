@@ -79,7 +79,7 @@
     depthBtn.title = available ? "切换平面与可活动的真实 3D" : "小草使用透明抠图形象";
     pet.el.dataset.renderMode = mode;
   }
-  var rendererReady = import("./pet-renderer.js?v=fast-pet-1").then(function (module) {
+  var rendererReady = import("./pet-renderer.js?v=fast-pet-2").then(function (module) {
     pet.bodyEl.replaceChildren();
     renderView = new module.PetRenderer(pet.bodyEl, {
       catalog: catalog,

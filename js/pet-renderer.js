@@ -5,7 +5,7 @@ function load3D() {
   modules3D ||= Promise.all([
     import('../vendor/three/three.module.min.js'),
     import('../vendor/three/GLTFLoader.js'),
-    import('./pet-motion.js?v=site-pets-1')
+    import('./pet-motion.js?v=pm-4')
   ]).then(([T, loader, motion]) => ({ T, GLTFLoader: loader.GLTFLoader, createPetMotion: motion.createPetMotion }))
     .catch(error => { modules3D = null; throw error; });
   return modules3D;
@@ -152,6 +152,9 @@ export class PetRenderer {
     catch (error) { if (this._destroyed || version !== this._version) return this.mode; throw error; }
     if (this._destroyed || version !== this._version) { disposeModel(gltf.scene); return this.mode; }
     let rig;
+    /* 自带动画随 scene 一起交给绑骨：rig.mode = 'native' 的角色要播这几段 clip。
+       本处每次都是新 parse 出来的 gltf，scene 只此一个使用者，原生模式可以安全接管。 */
+    gltf.scene.userData.clips = gltf.animations || [];
     try { rig = createPetMotion(gltf.scene, person.id); }
     catch (error) { disposeModel(gltf.scene); throw error; }
     if (this._destroyed || version !== this._version) { disposeModel(rig.root); return this.mode; }

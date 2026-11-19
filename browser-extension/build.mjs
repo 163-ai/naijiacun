@@ -8,7 +8,9 @@ const repoDir = path.dirname(extensionDir);
 const outputDir = path.resolve(extensionDir, 'dist');
 if (path.dirname(outputDir) !== extensionDir || path.basename(outputDir) !== 'dist') throw new Error('构建输出必须是 browser-extension/dist');
 
-const context = vm.createContext({ window: {} });
+/* 3d-models.js 会读 location.hostname 决定 CDN 前缀；沙箱里没有 location，
+   不补一个就会在构建时报 ReferenceError */
+const context = vm.createContext({ window: {}, location: { hostname: 'localhost' } });
 vm.runInContext(`${await readFile(path.join(repoDir, 'js/data.js'), 'utf8')}\n;globalThis.villagers = PEOPLE;`, context, { timeout: 1000 });
 vm.runInContext(await readFile(path.join(repoDir, 'js/3d-models.js'), 'utf8'), context, { timeout: 1000 });
 const cleanPath = value => value.split('?')[0];
@@ -22,7 +24,7 @@ if (catalog.length !== 10 || catalog.filter(item => item.model).length !== 9) th
 
 const extensionFiles = ['manifest.json', 'content-entry.js', 'service-worker.js', 'overlay.js', 'state.js', 'meshopt-proxy.js', 'model-buffer.js', 'popup.html', 'popup.js', 'popup.css'];
 const sharedFiles = [
-  'js/pet-renderer.js', 'js/pet-motion.js', 'js/pet-laugh.js',
+  'js/pet-renderer.js', 'js/pet-motion.js', 'js/pet-rig.js', 'js/pet-laugh.js',
   'vendor/three/three.module.min.js', 'vendor/three/three.core.min.js',
   'vendor/three/GLTFLoader.js', 'vendor/three/BufferGeometryUtils.js', 'vendor/three/THREE-LICENSE.txt',
   'vendor/meshopt/meshopt_decoder.module.js', 'vendor/meshopt/LICENSE.md',

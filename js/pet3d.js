@@ -3,6 +3,7 @@ import * as T from "three";
 import { GLTFLoader } from "../vendor/three/GLTFLoader.js";
 import { MeshoptDecoder } from "../vendor/meshopt/meshopt_decoder.module.js";
 import { getLaughPose } from "./pet-laugh.js?v=site-pets-1";
+import { mapBones } from "./pet-rig.js?v=rig-1";
 
 (function () {
   "use strict";
@@ -182,11 +183,32 @@ import { getLaughPose } from "./pet-laugh.js?v=site-pets-1";
     zoom = 1;
     fitCamera();
   }
+  /* 制作规格：数据来自 forge 入库时写的 js/3d-rig.js（entry.meta）。
+     没有 meta 的老模型就跟以前一样，只显示来源、不编造数字。 */
+  function updateSpec(entry, root) {
+    var el = document.getElementById("modelSpec");
+    if (!el) return;
+    var meta = (entry && entry.meta) || {};
+    var parts = [];
+    if (meta.provider) parts.push(meta.provider);
+    if (meta.bones) parts.push(meta.bones + " 根骨骼");
+    else if (root && root.userData.vertices) parts.push("单网格静态模型");
+    var clips = (root && root.userData.clips) || [];
+    var clipCount = Number(meta.animations) || clips.length;
+    if (clipCount) parts.push(clipCount + " 段自带动画");
+    if (meta.triangles) parts.push(Number(meta.triangles).toLocaleString() + " 面");
+    else if (root && root.userData.vertices) parts.push(Math.round(root.userData.vertices / 3).toLocaleString() + " 面（按顶点估）");
+    if (meta.mb) parts.push(meta.mb + " MB");
+    if (meta.generatedAt) parts.push("入库 " + String(meta.generatedAt).slice(0, 10));
+    el.textContent = parts.join(" · ");
+    el.hidden = parts.length === 0;
+  }
   function updateSource(entry) {
     document.getElementById("modelCredit").textContent = entry.credit || "公开社区模型";
     document.getElementById("modelSource").href = entry.source;
     document.getElementById("modelLicense").textContent = entry.license === "unknown"
       ? "来源未注明明确的素材许可。" : (entry.license || "使用范围以来源页面为准。");
+    updateSpec(entry, null);
   }
   async function setCharacter(id) {
     var entry = PACK[id];
@@ -200,6 +222,7 @@ import { getLaughPose } from "./pet-laugh.js?v=site-pets-1";
     syncPetButton();
     stopAudio();
     if (model) { scene.remove(model); model = null; }
+    stopIdleClip();
     fallback.classList.add("hidden");
     loading.hidden = false;
     loading.classList.remove("hidden");
@@ -295,6 +318,8 @@ import { getLaughPose } from "./pet-laugh.js?v=site-pets-1";
         try { root = normalizeModel(gltf.scene, entry); }
         catch (e) { disposeModel(gltf.scene); if (resources !== gltf.scene) disposeModel(resources); throw e; }
         root.userData.resourceRoot = resources;
+        /* 自带动画留给空闲时间播；pet-motion 那条管线用的是另一套（原生骨骼模式） */
+        root.userData.clips = gltf.animations || [];
       }
       modelCache.delete(id);
       modelCache.set(id, root);
@@ -307,6 +332,7 @@ import { getLaughPose } from "./pet-laugh.js?v=site-pets-1";
       scene.add(model);
       stopAction();
       buildRig(model);
+      startIdleClip(model, entry);
       updateActAvailability();
       updateActNote();
       yaw = pitch = velYaw = velPitch = 0;
@@ -320,6 +346,7 @@ import { getLaughPose } from "./pet-laugh.js?v=site-pets-1";
       loading.hidden = true;
       loading.classList.add("hidden");
       setStatus(name + " · 完整模型已加载 · 拖动旋转查看");
+      updateSpec(PACK[currentId], model);
       prefetched.add(id);
       prefetchRest();
     } catch (e) {
@@ -429,10 +456,13 @@ import { getLaughPose } from "./pet-laugh.js?v=site-pets-1";
     }).catch(function () { if (audioEl === audio) setStatus("音频暂时无法播放，请再点一次。"); });
   }
 
-  // ---------- 动作系统：骨骼实时驱动，不依赖模型自带动画 ----------
-  // 模型自带的 7 段动画只动头部（幅度 0.03~0.14），当不了「大笑／鞠躬」，
-  // 因此这里直接按骨骼摆姿势：动作幅度可控、每个模型都能复用。
+  // ---------- 动作系统：自带动画打底，手写演出盖在上面 ----------
+  // 声明了原生骨骼的角色（forge 入库时写入 rig.mode='native'）空闲时循环播自带 clip；
+  // 其余角色保持原样：手写姿态驱动骨骼，不依赖模型自带动画。
+  // 三个动作始终是手写的整体演出，靠整体旋转与骨骼摆姿势；
+  // 两者不同时驱动——动作播放期间暂停 mixer，见 loop() 里的 !active 判断。
   var rig = null, active = null, activeStart = 0, laughAudio = null, frozen = null;
+  var mixer = null, mixerClip = "";
   var soundOn = true;
   try { soundOn = localStorage.getItem("p3-sound") !== "off"; } catch (e) {}
 
@@ -440,6 +470,10 @@ import { getLaughPose } from "./pet-laugh.js?v=site-pets-1";
     var bones = {};
     root.traverse(function (o) { if (o.isBone) bones[o.name] = o; });
     root.updateMatrixWorld(true);
+    /* 骨骼名归一：混元/Meshy/Tripo/本地绑骨导出的同一根骨头叫法完全不同
+       （Spine / spine / mixamorig:Spine / J_Bip_C_Spine）。这里是唯一一处
+       把外部命名翻成站点词汇表的地方，后面一律用 boneOf('Spine') 取。 */
+    var alias = mapBones(root).bones;
     var rootInv = root.getWorldQuaternion(new T.Quaternion()).invert();
     var rest = {};
     Object.keys(bones).forEach(function (name) {
@@ -457,7 +491,7 @@ import { getLaughPose } from "./pet-laugh.js?v=site-pets-1";
     var size = new T.Vector3();
     box.getSize(size);
     rig = {
-      root: root, centered: centered, bones: bones, rest: rest,
+      root: root, centered: centered, bones: bones, alias: alias, rest: rest,
       baseY: centered.position.y,
       baseX: centered.position.x,
       baseZ: centered.position.z,
@@ -477,11 +511,57 @@ import { getLaughPose } from "./pet-laugh.js?v=site-pets-1";
     rig.restLift = (rig.groundY + ex0) - centered.position.y;
   }
 
+  /* 模型自带的动画（glTF animation）以前被完全忽略：展台上模型是一尊一动不动的雕像。
+     现在只要 clip 里全是旋转/表情轨道（不带根位移），就在空闲时循环播放，
+     动作播放期间暂停——动作是手写的整体演出，两套一起驱动骨骼会互相打架。 */
+  function usableClips(root) {
+    var clips = (root.userData && root.userData.clips) || [];
+    return clips.filter(function (clip) {
+      var tracks = (clip.tracks || []).filter(function (track) {
+        return /\.quaternion$/.test(track.name) || /morphTargetInfluences$/.test(track.name);
+      });
+      clip.tracks = tracks;
+      return tracks.length > 0;
+    });
+  }
+  function startIdleClip(root, entry) {
+    stopIdleClip();
+    /* 只有角色显式声明「走原生骨骼」（forge 写入的 rig.mode='native' / idleClip）才播自带 clip。
+       老模型没有这项声明，行为和改动前完全一致——还是一尊静止的雕像，
+       不会因为一次升级就突然换姿态。 */
+    var decl = entry && entry.rig;
+    if (!decl || (decl.mode !== "native" && !decl.idleClip)) return;
+    var clips = usableClips(root);
+    if (!clips.length) return;
+    var want = decl.idleClip;
+    var clip = (want && clips.find(function (c) { return c.name === want; }))
+      || clips.find(function (c) { return /idle|breath|stand|loop|rest/i.test(c.name); })
+      || clips[0];
+    try {
+      mixer = new T.AnimationMixer(root);
+      var action = mixer.clipAction(clip);
+      action.setLoop(T.LoopRepeat, Infinity);
+      action.play();
+      mixer.update(0);
+      mixerClip = clip.name || "";
+    } catch (e) {
+      mixer = null; mixerClip = "";
+    }
+  }
+  function stopIdleClip() {
+    if (mixer) { try { mixer.stopAllAction(); } catch (e) {} }
+    mixer = null; mixerClip = "";
+  }
+
   function resetRig() {
     if (!rig) return;
-    Object.keys(rig.bones).forEach(function (name) {
-      rig.bones[name].quaternion.copy(rig.rest[name].q);
-    });
+    /* 有自带 clip 时骨骼归 mixer 管：这里再按静止位写一遍会跟动画打架
+       （动作播到一半骨骼被拉回原状，看起来像抽搐）。只复位整体变换。 */
+    if (!mixer) {
+      Object.keys(rig.bones).forEach(function (name) {
+        rig.bones[name].quaternion.copy(rig.rest[name].q);
+      });
+    }
     rig.centered.position.y = rig.baseY;
     rig.centered.position.x = rig.baseX;
     rig.centered.position.z = rig.baseZ;
@@ -490,14 +570,25 @@ import { getLaughPose } from "./pet-laugh.js?v=site-pets-1";
   }
 
   // 以「模型自身坐标」的世界轴旋转某根骨骼（X 右、Y 上、Z 前）
+  // 名字先按原样找，找不到再走别名表——两种写法（Spine / spine / J_Bip_C_Spine）都能命中。
+  function boneOf(name) {
+    if (!rig) return null;
+    return rig.bones[name] || (rig.alias && rig.alias[name]) || null;
+  }
+  function hasSpine() {
+    return !!(rig && (boneOf("Spine") || boneOf("Chest") || boneOf("Hips")));
+  }
   function rotWorld(name, moves) {
-    if (!rig || !rig.bones[name]) return;
-    var quat = rig.rest[name].self.clone();
+    var bone = boneOf(name);
+    if (!bone) return;
+    var restEntry = rig.rest[bone.name];
+    if (!restEntry) return;
+    var quat = restEntry.self.clone();
     moves.forEach(function (move) {
       var axis = new T.Vector3(move[0][0], move[0][1], move[0][2]).normalize();
       quat.premultiply(new T.Quaternion().setFromAxisAngle(axis, move[1]));
     });
-    rig.bones[name].quaternion.copy(rig.rest[name].parent.clone().invert().multiply(quat));
+    bone.quaternion.copy(restEntry.parent.clone().invert().multiply(quat));
   }
 
   function setActiveAct(el) {
@@ -570,7 +661,7 @@ import { getLaughPose } from "./pet-laugh.js?v=site-pets-1";
       rig.baseScale.y * (1 + stretch),
       rig.baseScale.z * (1 - stretch)
     );
-    if (rig.bones.LeftArm && rig.bones.RightArm) {
+    if (boneOf("LeftArm") && boneOf("RightArm")) {
       rotWorld("LeftArm", [[[0, 1, 0], -0.28 * hop]]);
       rotWorld("RightArm", [[[0, 1, 0], 0.28 * hop]]);
     }
@@ -676,7 +767,7 @@ import { getLaughPose } from "./pet-laugh.js?v=site-pets-1";
   function playAction(name, btn) {
     var def = ACTIONS[name];
     if (!def || !rig) return;
-    if (def.needsBones && !rig.bones.Spine) {
+    if (def.needsBones && !hasSpine()) {
       setStatus("这个模型没有骨骼，暂时只能做「捧腹大笑」。");
       return;
     }
@@ -729,7 +820,7 @@ import { getLaughPose } from "./pet-laugh.js?v=site-pets-1";
   }
 
   function updateActAvailability() {
-    var hasBones = !!(rig && rig.bones.Spine);
+    var hasBones = hasSpine();
     document.querySelectorAll(".p3-act[data-act]").forEach(function (btn) {
       var def = ACTIONS[btn.dataset.act];
       btn.disabled = !!(def && def.needsBones && !hasBones);
@@ -751,7 +842,7 @@ import { getLaughPose } from "./pet-laugh.js?v=site-pets-1";
     var tab = document.querySelector(".p3-cat.on");
     var mood = !tab || tab.dataset.cat === "mood";
     if (!rig) { note2.textContent = ""; return; }
-    if (!rig.bones.Spine) {
+    if (!hasSpine()) {
       note2.textContent = mood
         ? "情绪档：大笑会笑到抖、笑到歪倒在地再爬起来；愤怒呐喊先蹲下憋气，再冲着镜头吼、气到发抖跺脚，最后喘两口气。"
         : "蹦一下：原地跳起再落回，不带动骨骼。";
@@ -853,6 +944,7 @@ import { getLaughPose } from "./pet-laugh.js?v=site-pets-1";
     stopPrefetch();
     ++loadVersion;
     stopAction();
+    stopIdleClip();
     if (pendingLoad) { pendingLoad.abort(); pendingLoad = null; }
     stopAudio();
     if (!e.persisted) {
@@ -878,6 +970,8 @@ import { getLaughPose } from "./pet-laugh.js?v=site-pets-1";
       velYaw *= 0.93; velPitch *= 0.93;
     }
     if (model) model.rotation.set(pitch, yaw, 0);
+    // 空闲时播模型自带的 idle；动作期间停手，让手写的整体演出独占骨骼
+    if (mixer && !active) mixer.update(delta);
     updateAction(now);
     renderer.render(scene, camera);
   }

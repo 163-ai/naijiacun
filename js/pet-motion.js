@@ -1,5 +1,9 @@
 import * as T from '../vendor/three/three.module.min.js';
 import { getLaughPose } from './pet-laugh.js?v=site-pets-1';
+import {
+  mapBones, anatomyFromBones, validAnatomy, mergeAnatomy, defaultHumanoidAnatomy,
+  humanoidScore, HUMAN_RIG_THRESHOLD, isRigKind
+} from './pet-rig.js?v=rig-1';
 
 const smooth = (a, b, x) => T.MathUtils.smoothstep(x, a, b);
 // Measurements are fractions of each model's standing height. The waving hand,
@@ -113,10 +117,81 @@ function weightsAt(x, y, z, config, kind, output) {
  *    head 骨的权重区间（fy≈0.585~0.665）于是永远取不到顶点——就是"无头圆盘"。
  * 因此这里改为：先把顶点烘焙成 Float32 实测包围盒，再做归一化与权重。
  */
-/** Bake all node transforms before binding, so every joint uses one coordinate space. */
-export function createPetMotion(source, id) {
+/* ---------------- 绑骨参数解析 ----------------
+ * 一个角色的「怎么动」由三层数据决定，优先级从高到低：
+ *   1. 本文件 ANATOMY 里的实测值（现有 9 个模型，逐模型量出来的，谁也不能覆盖）；
+ *   2. 模型登记 entry.anatomy —— forge 入库时自动写入 js/3d-rig.js；
+ *   3. 模型自带骨骼的位置反推（humanoid 命名能被识别出来时）；
+ *   4. 站立人形默认比例（比「当蛋滚」强，但明确标记为 default，方便排查）。
+ * 只有明确声明 rig.mode === 'native' 的角色才走「原生骨骼 + 自带动画」，
+ * 其余一律沿用原来的程序化绑骨，保证老模型逐帧不变。 */
+
+const LEGACY_KIND = { feidudu: 'hop', capybara: 'bowl' };
+
+/** 抽样包围盒：只用来判断「像不像站立人形」并算归一化参数 */
+function quickBounds(source) {
+  const box = new T.Box3(), probe = new T.Vector3();
   source.updateMatrixWorld(true);
-  const config = ANATOMY[id], kind = config ? 'biped' : id === 'feidudu' ? 'hop' : id === 'capybara' ? 'bowl' : 'roll';
+  source.traverse((object) => {
+    if (!object.isMesh || !object.geometry) return;
+    const position = object.geometry.attributes && object.geometry.attributes.position;
+    if (!position) return;
+    const stride = Math.max(1, Math.floor(position.count / 4000));
+    for (let i = 0; i < position.count; i += stride) {
+      probe.set(position.getX(i), position.getY(i), position.getZ(i)).applyMatrix4(object.matrixWorld);
+      box.expandByPoint(probe);
+    }
+  });
+  return box;
+}
+
+function resolveRig(source, id, def) {
+  const rigDef = def && def.rig && typeof def.rig === 'object' ? def.rig : null;
+  const box = quickBounds(source);
+  const size = box.getSize(new T.Vector3());
+  const tf = {
+    scale: size.y > 1e-6 ? 2 / size.y : 1,
+    centerX: (box.min.x + box.max.x) / 2,
+    centerZ: (box.min.z + box.max.z) / 2,
+    floorY: box.min.y
+  };
+  const mapped = mapBones(source);
+  /* 站立人形：比宽度、厚度都明显高。四足/蛋形/碗里的卡皮巴拉不会被误判 */
+  const standing = size.y >= Math.max(size.x, size.z) * 1.02;
+
+  const declaredKind = rigDef && isRigKind(rigDef.kind) ? rigDef.kind : null;
+  const legacyKind = ANATOMY[id] ? null : LEGACY_KIND[id] || null;
+
+  let anatomy = ANATOMY[id] || null;
+  let anatomyFrom = anatomy ? 'measured' : null;
+  let kind = declaredKind || legacyKind || null;
+
+  if (!kind) {
+    if (!anatomy && def && validAnatomy(def.anatomy)) {
+      anatomy = mergeAnatomy(defaultHumanoidAnatomy(), def.anatomy);
+      anatomyFrom = 'declared';
+    }
+    if (!anatomy && humanoidScore(mapped.bones) >= HUMAN_RIG_THRESHOLD) {
+      const derived = anatomyFromBones(mapped, tf);
+      if (derived) { anatomy = derived; anatomyFrom = 'derived'; }
+    }
+    if (anatomy) kind = 'biped';
+    else if (standing) { anatomy = defaultHumanoidAnatomy(); anatomyFrom = 'default'; kind = 'biped'; }
+    else kind = 'roll';
+  }
+  if (kind === 'biped' && !anatomy) { anatomy = defaultHumanoidAnatomy(); anatomyFrom = 'default'; }
+
+  return { rigDef, anatomy, anatomyFrom, kind, box, size, tf, mapped };
+}
+
+/** Bake all node transforms before binding, so every joint uses one coordinate space. */
+export function createPetMotion(source, id, defIn) {
+  source.updateMatrixWorld(true);
+  const pack = typeof window !== 'undefined' ? window.N3D_MODELS : null;
+  const def = defIn || (pack && pack[id]) || null;
+  const resolved = resolveRig(source, id, def);
+  if (resolved.rigDef && resolved.rigDef.mode === 'native') return createNativeMotion(source, id, resolved);
+  const config = resolved.anatomy, kind = resolved.kind;
   const { bones, named } = makeBones(config, kind), root = new T.Group();
   root.name = 'pet-' + id; root.add(bones[0]); root.updateMatrixWorld(true);
   const skeleton = new T.Skeleton(bones), parts = [], rawBounds = new T.Box3(), probe = new T.Vector3();
@@ -181,7 +256,7 @@ export function createPetMotion(source, id) {
   /** 供调试/自检使用：每根骨骼拿到多少个顶点、归一化前后的实测范围。 */
   function stats() {
     return {
-      kind, verts: parts.reduce((n, part) => n + part.count, 0),
+      kind, anatomyFrom: resolved.anatomyFrom, verts: parts.reduce((n, part) => n + part.count, 0),
       rawHeight: +size.y.toFixed(3),
       bindBounds: { min: [+rawBounds.min.x.toFixed(3), +rawBounds.min.y.toFixed(3), +rawBounds.min.z.toFixed(3)], max: [+rawBounds.max.x.toFixed(3), +rawBounds.max.y.toFixed(3), +rawBounds.max.z.toFixed(3)] },
       bones: bones.map((bone, index) => ({ name: bone.name, hits: boneHits[index] }))
@@ -241,5 +316,143 @@ export function createPetMotion(source, id) {
   // armSwing 兼容字段：给外部只读代码一个「相对摆幅」的粗略表示（1=可不限制）。
   const limit = config && config.armLimit != null ? config.armLimit : 2.6;
   root.userData.armSwing = limit >= 2 ? 1 : +(limit / 2.6).toFixed(3);
-  return { root, bones: named, skeleton, meshes, bounds, kind, armLimit: limit, armSwing: root.userData.armSwing, reset, update, laugh, stats, get time() { return time; } };
+  return { root, bones: named, skeleton, meshes, bounds, kind, boneSpace: 1, armLimit: limit, armSwing: root.userData.armSwing, reset, update, laugh, stats, get time() { return time; } };
+}
+
+/* ---------------- 原生骨骼模式 ----------------
+ * 适用：entry.rig.mode === 'native' —— forge 入库时明确声明的角色，模型自带一套
+ * 真实骨骼（本地几何绑骨 / Meshy），通常还带一段 idle 动画。
+ *
+ * 为什么不走程序化绑骨：程序化绑骨会把顶点按世界坐标重新烤一遍、丢掉原骨架，
+ * 模型自带的骨骼和动画就全废了——这正是「绑过骨但站上展台还是不动」的根因。
+ *
+ * 代价（必须知道）：原生骨骼的静止朝向由导出器决定，直接写 rotation.x 没有意义，
+ * 所以这里不接管四肢的逐骨姿势，只播模型自带的 clip，外加根节点层面的大动作。
+ * 需要逐骨程序化姿势（走/跑/出拳）的场合仍然走程序化绑骨，由调用方决定。
+ *
+ * 另一个前提：原生模式会「接管」传入的 gltf.scene（把它挂进自己的根节点），
+ * 因此同一个 scene 只能喂给一个 rig。调用方若共享源场景，请显式声明 procedural。
+ */
+function pickClip(source, rigDef) {
+  const clips = (source.userData && source.userData.clips) || [];
+  const usable = clips.filter((clip) => {
+    const tracks = (clip.tracks || []).filter((track) => /\.quaternion$/.test(track.name) || /morphTargetInfluences$/.test(track.name));
+    /* 只留旋转/表情轨道：.position 轨道多半是根位移（走一段再瞬移回原点），
+       在站内定点的角色身上直接播会漂走。 */
+    clip.tracks = tracks;
+    return tracks.length > 0;
+  });
+  if (!usable.length) return null;
+  const prefer = rigDef && rigDef.idleClip;
+  if (prefer) {
+    const hit = usable.find((clip) => clip.name === prefer);
+    if (hit) return hit;
+  }
+  return usable.find((clip) => /idle|breath|stand|loop|rest/i.test(clip.name)) || usable[0];
+}
+
+function createNativeMotion(source, id, resolved) {
+  const { tf, size } = resolved;
+  const root = new T.Group();
+  root.name = 'pet-' + id;
+  const holder = new T.Group();
+  holder.scale.setScalar(tf.scale);
+  root.add(holder);
+  holder.add(source);
+  /* 与程序化绑骨同一套归一化：高 2 单位、脚在 y=0、XZ 居中、面朝 +Z */
+  source.position.set(
+    source.position.x - tf.centerX,
+    source.position.y - tf.floorY,
+    source.position.z - tf.centerZ
+  );
+  root.updateMatrixWorld(true);
+
+  const sw = size.x * tf.scale, sd = size.z * tf.scale;
+  const bounds = new T.Box3(new T.Vector3(-sw / 2, 0, -sd / 2), new T.Vector3(sw / 2, 2, sd / 2));
+
+  /* 对外暴露的骨骼字典：把这套原生骨骼翻译成程序化绑骨那套键名
+     （body / head / armLeft / hipLeft…）。两套绑骨对外同一个形状，
+     动作系统和装备挂点就不用分情况判断。 */
+  const canon = resolved.mapped.bones;
+  const bones = {};
+  const put = (key, ...names) => {
+    for (const name of names) { if (canon[name]) { bones[key] = canon[name]; return; } }
+  };
+  put('body', 'Hips', 'Spine');
+  put('head', 'Head', 'Neck');
+  put('hipLeft', 'LeftUpLeg', 'LeftLeg');
+  put('hipRight', 'RightUpLeg', 'RightLeg');
+  put('kneeLeft', 'LeftLeg', 'LeftUpLeg');
+  put('kneeRight', 'RightLeg', 'RightUpLeg');
+  put('footLeft', 'LeftFoot', 'LeftLeg');
+  put('footRight', 'RightFoot', 'RightLeg');
+  put('armLeft', 'LeftArm', 'LeftForeArm', 'LeftShoulder');
+  put('armRight', 'RightArm', 'RightForeArm', 'RightShoulder');
+  /* 程序化绑骨的骨骼建在「身高 2 单位」的空间里，原生骨骼还在模型自己的单位里，
+     两者差一个 tf.scale。挂件用它对偏移和大小做换算，才不会有十倍的尺寸差。 */
+  const boneSpace = 1 / tf.scale;
+
+  const clip = pickClip(source, resolved.rigDef);
+  const mixer = clip ? new T.AnimationMixer(source) : null;
+  const action = mixer ? mixer.clipAction(clip) : null;
+  if (action) { action.setLoop(T.LoopRepeat, Infinity); action.play(); mixer.update(0); }
+
+  const rest = { position: root.position.clone(), rotation: root.rotation.clone(), scale: root.scale.clone() };
+  let time = 0;
+
+  function reset() {
+    root.position.copy(rest.position);
+    root.rotation.copy(rest.rotation);
+    root.scale.copy(rest.scale);
+    if (mixer) mixer.timeScale = 1;
+    root.updateMatrixWorld(true);
+  }
+
+  function update(dt, motion = 'idle') {
+    const step = Math.max(0, Math.min(Number.isFinite(dt) ? dt : 0, .1));
+    time += step;
+    /* 先复位整体变换：上一帧可能是 laugh() 留下的后仰姿态，不复位就会一直躺着 */
+    reset();
+    const walking = motion === 'walk' || motion === 'run';
+    if (mixer) {
+      mixer.timeScale = motion === 'run' ? 1.9 : motion === 'walk' ? 1.35 : 1;
+      mixer.update(step);
+    }
+    /* 自带 clip 里没有走/跑时，只给根节点一点颠簸与侧摆：看得出在移动，
+       也不假装有腿部动作（假装出来的姿势会把原生骨骼扭成麻花）。 */
+    root.position.y = walking ? Math.abs(Math.sin(time * (motion === 'run' ? 13 : 9))) * (motion === 'run' ? .035 : .018) : 0;
+    root.rotation.z = walking ? Math.sin(time * (motion === 'run' ? 6.5 : 4.5)) * .012 : 0;
+    root.updateMatrixWorld(true);
+  }
+
+  /* 「笑到躺下」与程序化绑骨完全同一套演法，只是把整体旋转作用在根节点上 */
+  const halfSize = bounds.getSize(new T.Vector3()).multiplyScalar(.5), bodyCenter = bounds.getCenter(new T.Vector3());
+  const rotation = new T.Matrix4(), transformedCenter = new T.Vector3();
+  function laugh(t) {
+    reset();
+    const pose = getLaughPose(t), angle = Math.max(0, pose.lean);
+    root.rotation.set(-angle + pose.shake, pose.turn, pose.roll);
+    root.scale.set(1 + pose.squash * .7, 1 - pose.squash, 1 + pose.squash * .7);
+    const e = rotation.makeRotationFromEuler(root.rotation).elements;
+    const extent = Math.abs(e[1]) * halfSize.x * root.scale.x + Math.abs(e[5]) * halfSize.y * root.scale.y + Math.abs(e[9]) * halfSize.z * root.scale.z;
+    transformedCenter.copy(bodyCenter).multiply(root.scale).applyMatrix4(rotation);
+    root.position.set(bodyCenter.x, bounds.min.y + extent + pose.lift, bodyCenter.z - halfSize.y * Math.sin(angle) * .55).sub(transformedCenter);
+    root.updateMatrixWorld(true);
+  }
+
+  function stats() {
+    return {
+      kind: 'native',
+      anatomyFrom: 'native-skeleton',
+      clips: clip ? [clip.name] : [],
+      bones: Object.keys(resolved.mapped.bones),
+      bindBounds: { min: [-sw / 2, 0, -sd / 2], max: [sw / 2, 2, sd / 2] }
+    };
+  }
+
+  return {
+    root, bones, skeleton: null, meshes: [], bounds, kind: 'native',
+    native: true, mixer, boneSpace, clip: clip ? clip.name : null, armLimit: 2.6, armSwing: 1,
+    reset, update, laugh, stats, get time() { return time; }
+  };
 }

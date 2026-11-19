@@ -140,9 +140,14 @@ export function attachGearVisuals(T, actor, equipped) {
     if (!id || !BUILDERS[id]) continue;
     const sock = SOCKET[slot], bone = anim.bones[sock.bone];
     if (!bone) continue;
+    /* 程序化绑骨的骨骼在「身高 2 单位」空间里，boneSpace = 1；
+       原生骨骼（forge 入库的角色）还在模型自己的单位里，偏移和大小都要换算，
+       否则挂件会跑到别处、或者大出十倍。 */
+    const k = anim.boneSpace || 1;
     const model = BUILDERS[id](T, id);
     model.name = "gear-" + id;
-    model.position.fromArray(sock.offset);
+    model.position.fromArray(sock.offset).multiplyScalar(k);
+    model.scale.multiplyScalar(k);
     bone.add(model);
     actor.userData.gearNodes.push(model);
   }

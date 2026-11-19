@@ -5,7 +5,7 @@ import * as T from "three";
 import { mergeGeometries } from "../vendor/three/BufferGeometryUtils.js";
 import { GLTFLoader } from "../vendor/three/GLTFLoader.js";
 import { MeshoptDecoder } from "../vendor/meshopt/meshopt_decoder.module.js";
-import { createPetMotion } from "./pet-motion.js?v=2";
+import { createPetMotion } from "./pet-motion.js?v=pm-4";
 import { makeAnimator } from "./creature.js?v=59";
 import { attachGearVisuals } from "./gear-visuals.js?v=1";
 import { Fight } from "./kof.js?v=60";
@@ -3298,7 +3298,13 @@ function buildRig(key, c, entry) {
   }
   // rigId：同一模型文件在不同场合可用不同绑骨（游戏主角用站立版奶龙的垂手绑骨，
   // 图鉴/桌宠的挥手版走 nailong 原参数，互不影响）
-  const rig = createPetMotion(root, entry.rigId || key);
+  // mode 强制 procedural：游戏里十个角色共用 srcScenes 里的同一份 scene，而原生模式
+  // 会把 scene 挂进自己的根节点（只能给一个 rig 用），地图里再出场一个就抢走了。
+  // 游戏要的逐骨动作（走/跑/出拳）也只有程序化绑骨能给，所以这里明确要求程序化。
+  const rig = createPetMotion(root, entry.rigId || key, {
+    ...entry,
+    rig: { ...(entry.rig || {}), mode: 'procedural' }
+  });
   rig.root.scale.setScalar(c.h / 2);
   if (entry.yaw) rig.root.rotation.y += entry.yaw;
   // 性能：这些是展台级高精度 GLB（单个 3~5 万三角、MeshPhysicalMaterial）。地图里同时

@@ -71,7 +71,45 @@ python -m http.server 8000 --bind 127.0.0.1
 # 打开 http://127.0.0.1:8000/pet3d.html
 ```
 
-各模型的输入文件、筛选记录、哈希与处理信息见 [模型来源](assets/models/SOURCES.md)。页面会显示当前模型出处。当前九位均为静态模型；旋转观察不代表已完成动作绑定。
+各模型的输入文件、筛选记录、哈希与处理信息见 [模型来源](assets/models/SOURCES.md)。页面会显示当前模型出处与制作规格（生成器、骨骼数、动画数、面数）。
+
+### 新角色怎么接进来：`js/3d-rig.js` 契约
+
+模型的「怎么动」不写在代码里，写在一份数据文件里（由 [naijiacun-model-forge](https://github.com/163-ai/naijiacun-model-forge) 入库时自动生成）：
+
+```js
+window.N3D_RIG = {
+  "anya": {
+    "anatomy": { "hip": 0.53, "knee": 0.3, "legX": 0.055, "legTop": 0.56, "head": 0.85, ... },
+    "rig": { "mode": "native", "kind": "biped", "idleClip": "idle-local" },
+    "meta": { "provider": "本地几何绑骨", "bones": 19, "animations": 1, "triangles": 12345 }
+  }
+};
+```
+
+`js/3d-models.js` 会把它并进 `N3D_MODELS`，三条管线都读同一份数据：
+
+| 位置 | 用法 |
+| --- | --- |
+| 展台 `js/pet3d.js` | 空闲时循环播放模型自带动画；动作期间暂停 mixer，让手写的整体演出独占骨骼 |
+| 图鉴/桌宠 `js/pet-motion.js` | `rig.mode: "native"` 时保留模型自带骨骼与动画，不重新烤顶点 |
+| 大冒险 `js/game2d.js` | 强制程序化绑骨（十个角色共用一份源场景，且需要逐骨走路/出拳姿势），比例取自 `anatomy` |
+
+**没有条目也不会坏**：`anatomy` 缺省时按「模型自带骨骼反推 → 站立人形默认比例」两级兜底，
+`rig.mode` 缺省走原来的程序化绑骨。骨骼命名由 `js/pet-rig.js` 归一，
+Mixamo（`LeftArm`）、localRig（`upperArmL`）、VRM（`J_Bip_L_UpperArm`）等写法都能认。
+
+自测（都不依赖浏览器）：
+
+```bash
+node tools/test-rig-contract.mjs     # 骨骼别名 + 从骨骼反推绑骨比例 + 坏数据校验
+node tools/test-pet-motion.mjs       # 绑骨入口：程序化 / 原生两种模式、laugh 与复位
+node tools/test-real-rigged-glb.mjs <模型.glb>
+                                     # 真机验证：拿一个绑过骨的 GLB 走完整入口
+```
+
+`test-real-rigged-glb.mjs` 不看模型文件名，只看骨骼：forge 用本地绑骨产出的 GLB、
+Meshy 自动绑骨的 GLB 都能喂。不给路径时直接跳过（仓库里不放模型文件）。
 
 ## 和村民聊两句（角色聊天）
 
@@ -286,6 +324,8 @@ npx serve .
 │   ├── avatars.js            # 内置原创 SVG 形象（没有图片时的默认头像）
 │   ├── tts.js                # 语音适配层（Key / 预生成 / 浏览器 三档降级）
 │   ├── chat.js               # 聊天引擎 + 聊天页（桌宠页复用同一个引擎）
+│   ├── pet-rig.js            # 骨骼名归一 + 从骨骼反推绑骨比例（各家生成器的叫法都能认）
+│   ├── 3d-rig.js             # 绑骨参数与制作信息（由 forge 入库时生成，空对象也合法）
 │   └── app.js                # 交互逻辑
 ├── assets/characters/        # 放你自己的角色形象图（见目录内 README）
 ├── scripts/

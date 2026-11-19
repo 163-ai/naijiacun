@@ -25,3 +25,18 @@ window.N3D_MODELS = {};
     license: "用户提供用于本项目展示；角色形象权利归相应权利人。"
   };
 });
+
+// 绑骨参数与制作信息由 forge 写入 js/3d-rig.js，这里并进登记表。
+// 只补空字段、不覆盖已有值：没有对应条目的老模型行为与改动前完全一致。
+(function () {
+  var extra = window.N3D_RIG;
+  if (!extra) return;
+  Object.keys(window.N3D_MODELS).forEach(function (id) {
+    var add = extra[id];
+    if (!add || typeof add !== "object") return;
+    var entry = window.N3D_MODELS[id];
+    ["anatomy", "rig", "meta"].forEach(function (key) {
+      if (add[key] && entry[key] == null) entry[key] = add[key];
+    });
+  });
+})();
