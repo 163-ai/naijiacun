@@ -388,17 +388,22 @@ function createNativeMotion(source, id, resolved) {
   /* 重算逆绑定矩阵（rebind）。
      现象：这批 GLB 的 skeleton 根节点比导出 IBM 时的位置整体高 1 单位，静止时
      蒙皮把所有顶点再抬高 1.0 —— 角色悬空一格、头被裁出画面（"无头" bug）。
-     根因是 IBM 与静止位姿不一致；与其重导资产，不如在绑定时直接以当前
-     （归一化后的）骨骼世界矩阵为准重建 boneInverses —— 静止时 boneMatrix
-     恒为单位阵，蒙皮结果 = 原始网格，任何 IBM 漂移都自动归零；
-     之后的 clip 旋转则以静止位姿为基准，动作照常。 */
+     根因是 IBM 与静止位姿不一致；与其重导资产，不如在绑定时直接重建 boneInverses。
+     关键（2026-11-20）：必须取「相对模型根节点」的骨骼矩阵
+       IBM = inverse(sourceWorld⁻¹ · boneWorld)
+     而不能取世界矩阵 inverse(boneWorld)。世界版在建完 rig 后只要外部再改根节点
+     （游戏给 rig.root 做 setScalar(h/2)、每帧移动/旋转角色），boneMatrix 就变成
+     rootWorld·rootWorldRebind⁻¹ ≠ I —— 顶点被这个差值反复揉搓：人物融化、粘连、
+     下沉半个身高（walk 时最明显）。相对版里 sourceWorld 与 boneWorld 里的外部
+     变换逐项相消，得到恒定的骨骼局部链 G_rel，对任意父级缩放/位移/旋转都成立。 */
+  const srcInv = new T.Matrix4().copy(source.matrixWorld).invert();
   source.traverse((object) => {
     if (!object.isSkinnedMesh || !object.skeleton) return;
     const skeleton = object.skeleton;
     const ok = skeleton.bones.every((bone) => bone.matrixWorld);
     if (ok) {
       skeleton.boneInverses = skeleton.bones.map(
-        (bone) => new T.Matrix4().copy(bone.matrixWorld).invert()
+        (bone) => new T.Matrix4().multiplyMatrices(srcInv, bone.matrixWorld).invert()
       );
       skeleton.update();
     }
@@ -473,22 +478,28 @@ function createNativeMotion(source, id, resolved) {
   const rest = { position: root.position.clone(), rotation: root.rotation.clone(), scale: root.scale.clone() };
   let time = 0;
 
-  function resetTransforms() {
-    root.position.copy(rest.position);
-    root.rotation.copy(rest.rotation);
-    root.scale.copy(rest.scale);
+  /* 2026-11-20：不再每帧把根节点刷回创建时的恒等位姿。游戏（game2d.buildRig）
+     会在建完 rig 后给 rig.root 设 scale(h/2)、yaw，并把 root 挂在随地图移动的
+     pivot 下——每帧 reset 会把这些全部抹掉（尺寸错、朝向错）。现在只在
+     legacyLaugh 真的写过根变换时，才在下一帧恢复它自己的快照。 */
+  let overridden = null;   /* legacyLaugh 写根变换前的快照 */
+  function restoreOverride() {
+    if (!overridden) return;
+    root.position.copy(overridden.position);
+    root.rotation.copy(overridden.rotation);
+    root.scale.copy(overridden.scale);
+    overridden = null;
     root.updateMatrixWorld(true);
   }
   function reset() {
-    resetTransforms();
+    restoreOverride();
     if (idleClip) playBase(idleClip, 0);
   }
 
   function update(dt, motion = 'idle') {
     const step = Math.max(0, Math.min(Number.isFinite(dt) ? dt : 0, .1));
     time += step;
-    /* 只清整体变换（上一帧可能走过根节点演法的 fallback），不动骨骼 local 姿势 */
-    resetTransforms();
+    restoreOverride();
     if (mixer) {
       const want = pickMotion(motion) || idleClip;
       if (want && want !== baseClip) playBase(want, 0.18);
@@ -501,6 +512,9 @@ function createNativeMotion(source, id, resolved) {
   const halfSize = bounds.getSize(new T.Vector3()).multiplyScalar(.5), bodyCenter = bounds.getCenter(new T.Vector3());
   const rotation = new T.Matrix4(), transformedCenter = new T.Vector3();
   function legacyLaugh(t) {
+    if (!overridden) {
+      overridden = { position: root.position.clone(), rotation: root.rotation.clone(), scale: root.scale.clone() };
+    }
     const pose = getLaughPose(t), angle = Math.max(0, pose.lean);
     root.rotation.set(-angle + pose.shake, pose.turn, pose.roll);
     root.scale.set(1 + pose.squash * .7, 1 - pose.squash, 1 + pose.squash * .7);
@@ -514,7 +528,7 @@ function createNativeMotion(source, id, resolved) {
   /** 展台动作：直接把对应骨骼 clip 设成 base，按渲染器的绝对时间轴取帧。
    *  name 可以是 laugh / wave / jump / sleep / nod / angry，缺省 laugh。 */
   function laugh(t, name = 'laugh') {
-    resetTransforms();
+    restoreOverride();
     const clip = (name && byName.get(name)) || byName.get('laugh');
     if (!clip || !mixer) { legacyLaugh(t); return true; }
     if (clip !== baseClip) playBase(clip, 0.12);

@@ -5,7 +5,7 @@ function load3D() {
   modules3D ||= Promise.all([
     import('../vendor/three/three.module.min.js'),
     import('../vendor/three/GLTFLoader.js'),
-    import('./pet-motion.js?v=pm-6')
+    import('./pet-motion.js?v=pm-7')
   ]).then(([T, loader, motion]) => ({ T, GLTFLoader: loader.GLTFLoader, createPetMotion: motion.createPetMotion }))
     .catch(error => { modules3D = null; throw error; });
   return modules3D;
